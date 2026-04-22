@@ -33,9 +33,22 @@ public class DuelListener implements Listener {
             event.setKeepInventory(true);
             event.setKeepLevel(true);
 
-            // Duel Death behandeln
+            // Duel Death behandeln (setzt pendingRoundRespawn für den Toten)
             Bukkit.getScheduler().runTask(plugin, () ->
                     plugin.getDuelManager().handleDuelDeath(dead, killer, false));
+
+            // Auto-Respawn erzwingen, damit der Spieler nicht auf dem
+            // "You Died" Screen hängen bleibt.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (dead.isOnline() && dead.isDead()) {
+                    try {
+                        dead.spigot().respawn();
+                    } catch (Throwable ignored) {
+                        // Paper fallback
+                        dead.spigot().respawn();
+                    }
+                }
+            }, 2L);
             return;
         }
 

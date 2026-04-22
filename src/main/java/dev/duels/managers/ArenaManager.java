@@ -71,6 +71,11 @@ public class ArenaManager {
                 arena.setCorner2(arenaCfg.getLocation(path + ".corner2"));
             }
 
+            // Allowed kits (empty list / missing = alle Kits erlaubt)
+            if (arenaCfg.isList(path + ".allowedKits")) {
+                arena.setAllowedKits(arenaCfg.getStringList(path + ".allowedKits"));
+            }
+
             // Snapshot load (your existing method)
             loadArenaSnapshot(arena);
 
@@ -154,6 +159,14 @@ public class ArenaManager {
         plugin.getConfigManager().getArenaConfig().set(path + ".corner1", locToString(arena.getCorner1()));
         plugin.getConfigManager().getArenaConfig().set(path + ".corner2", locToString(arena.getCorner2()));
 
+        // Allowed kits
+        if (arena.getAllowedKits().isEmpty()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".allowedKits", null);
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".allowedKits",
+                    new ArrayList<>(arena.getAllowedKits()));
+        }
+
         saveArenaSnapshot(arena);
         plugin.getConfigManager().saveArenaConfig();
     }
@@ -194,14 +207,22 @@ public class ArenaManager {
     }
 
     public Arena getRandomAvailableArena() {
+        return getRandomAvailableArenaForKit(null);
+    }
+
+    /**
+     * Returns a random fully-configured, free arena that allows the given kit.
+     * Pass {@code null} to ignore the kit constraint (legacy behaviour).
+     */
+    public Arena getRandomAvailableArenaForKit(String kitId) {
         List<Arena> available = new ArrayList<>();
         for (Arena arena : arenas.values()) {
-            if (!arena.isInUse() && arena.hasSnapshot() &&
-                    arena.getSpawn1() != null && arena.getSpawn2() != null &&
-                    arena.getCorner1() != null && arena.getCorner2() != null) {
-                available.add(arena);
-            }
-
+            if (arena.isInUse()) continue;
+            if (!arena.hasSnapshot()) continue;
+            if (arena.getSpawn1() == null || arena.getSpawn2() == null) continue;
+            if (arena.getCorner1() == null || arena.getCorner2() == null) continue;
+            if (kitId != null && !arena.isKitAllowed(kitId)) continue;
+            available.add(arena);
         }
 
         if (available.isEmpty()) return null;

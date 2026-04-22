@@ -92,11 +92,11 @@ public class QueueManager {
     }
 
     private void startQueueMatch(Player player1, Player player2, String kitName) {
-        // Arena holen
-        dev.duels.objects.Arena arena = plugin.getArenaManager().getRandomAvailableArena();
+        // Arena holen (nach erlaubtem Kit gefiltert)
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
         if (arena == null) {
-            player1.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
-            player2.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
+            player1.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
+            player2.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
             joinQueue(player1, kitName);
             joinQueue(player2, kitName);
             return;

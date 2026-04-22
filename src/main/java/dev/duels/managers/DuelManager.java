@@ -112,10 +112,10 @@ public class DuelManager {
 
         if (arena == null) {
             // fallback (shouldn't happen often)
-            arena = plugin.getArenaManager().getRandomAvailableArena();
+            arena = plugin.getArenaManager().getRandomAvailableArenaForKit(request.getKitName());
             if (arena == null) {
-                player1.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
-                player2.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
+                player1.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
+                player2.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
                 return;
             }
             arena.setInUse(true);
@@ -281,8 +281,18 @@ public class DuelManager {
             return;
         }
 
-        // Next round
+        // Nächste Runde vorbereiten
         session.setRound(session.getRound() + 1);
+
+        // Pending Respawns SOFORT setzen, damit der Auto-Respawn direkt in
+        // die Arena teleportiert (PlayerRespawnEvent wird evtl. bevor der
+        // asynchrone Arena-Reset fertig ist ausgelöst).
+        Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
+        if (arena != null && arena.getSpawn1() != null && arena.getSpawn2() != null) {
+            pendingRoundRespawn.put(session.getPlayer1(), arena.getSpawn1());
+            pendingRoundRespawn.put(session.getPlayer2(), arena.getSpawn2());
+        }
+
         startNextRound(session);
     }
 
@@ -308,25 +318,40 @@ public class DuelManager {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!isInDuel(p1.getUniqueId()) || !isInDuel(p2.getUniqueId())) return;
 
-                // Teleportieren
+                // Sicherstellen dass die pending Respawns gesetzt sind
                 if (arena.getSpawn1() != null && arena.getSpawn2() != null) {
-                    pendingRoundRespawn.put(session.getPlayer1(), arena.getSpawn1());
-                    pendingRoundRespawn.put(session.getPlayer2(), arena.getSpawn2());
+                    pendingRoundRespawn.putIfAbsent(session.getPlayer1(), arena.getSpawn1());
+                    pendingRoundRespawn.putIfAbsent(session.getPlayer2(), arena.getSpawn2());
                 }
 
-                // Teleport und Vorbereitung
-                p1.teleport(pendingRoundRespawn.getOrDefault(session.getPlayer1(), p1.getLocation()));
-                p2.teleport(pendingRoundRespawn.getOrDefault(session.getPlayer2(), p2.getLocation()));
-
-                forceRoundState(p1);
-                forceRoundState(p2);
-
-                plugin.getKitManager().giveKit(p1, session.getKitName());
-                plugin.getKitManager().giveKit(p2, session.getKitName());
+                // Lebende Spieler direkt teleportieren & ausstatten.
+                // Tote Spieler werden über den PlayerRespawnEvent (pending
+                // respawn) teleportiert und bekommen dort ihr Kit.
+                prepareRoundPlayer(p1, session);
+                prepareRoundPlayer(p2, session);
 
                 runRoundCountdown(session, p1, p2);
             });
         });
+    }
+
+    private void prepareRoundPlayer(Player player, DuelSession session) {
+        if (player == null || !player.isOnline()) return;
+
+        UUID uuid = player.getUniqueId();
+
+        // Toter Spieler: Auto-Respawn + PlayerRespawnEvent übernehmen Teleport + Kit.
+        if (roundDead.contains(uuid) || player.isDead()) {
+            return;
+        }
+
+        Location target = pendingRoundRespawn.get(uuid);
+        if (target != null) {
+            player.teleport(target);
+        }
+
+        forceRoundState(player);
+        plugin.getKitManager().giveKit(player, session.getKitName());
     }
 
     private void runRoundCountdown(DuelSession session, Player p1, Player p2) {
@@ -584,11 +609,11 @@ public class DuelManager {
             if (oldArena != null) oldArena.setInUse(false);
         }
 
-        // Arena jetzt auswählen und RESERVIEREN
-        Arena chosen = plugin.getArenaManager().getRandomAvailableArena();
+        // Arena jetzt auswählen und RESERVIEREN (gefiltert nach erlaubten Kits)
+        Arena chosen = plugin.getArenaManager().getRandomAvailableArenaForKit(request.getKitName());
         if (chosen == null) {
-            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
-            if (receiver != null) receiver.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
+            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
+            if (receiver != null) receiver.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
             return;
         }
         chosen.setInUse(true);
