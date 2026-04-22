@@ -5,6 +5,8 @@ import org.bukkit.block.data.BlockData;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,6 +18,9 @@ public class Arena {
     private Location corner1;
     private Location corner2;
     private boolean inUse;
+
+    // Allowed kits (empty = alle Kits erlaubt)
+    private final Set<String> allowedKits = new LinkedHashSet<>();
 
     // Snapshot data
     private String snapshotWorld;
@@ -83,4 +88,37 @@ public class Arena {
     public void removePlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.remove(v); }
     public boolean isPlayerPlacedBlock(BlockVector v) { return playerPlacedBlocks.contains(v); }
     public void clearPlayerPlacedBlocks() { playerPlacedBlocks.clear(); }
+
+    // Allowed kits management
+    public Set<String> getAllowedKits() { return allowedKits; }
+
+    public void setAllowedKits(java.util.Collection<String> kits) {
+        allowedKits.clear();
+        if (kits == null) return;
+        for (String k : kits) {
+            if (k != null && !k.isEmpty()) allowedKits.add(k.toLowerCase(Locale.ROOT));
+        }
+    }
+
+    public boolean addAllowedKit(String kitId) {
+        if (kitId == null || kitId.isEmpty()) return false;
+        return allowedKits.add(kitId.toLowerCase(Locale.ROOT));
+    }
+
+    public boolean removeAllowedKit(String kitId) {
+        if (kitId == null) return false;
+        return allowedKits.remove(kitId.toLowerCase(Locale.ROOT));
+    }
+
+    public void clearAllowedKits() { allowedKits.clear(); }
+
+    /**
+     * Returns true if this arena may host a duel using the given kit.
+     * An empty allow-list means "all kits allowed".
+     */
+    public boolean isKitAllowed(String kitId) {
+        if (allowedKits.isEmpty()) return true;
+        if (kitId == null) return false;
+        return allowedKits.contains(kitId.toLowerCase(Locale.ROOT));
+    }
 }
