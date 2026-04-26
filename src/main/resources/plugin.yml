@@ -80,6 +80,11 @@ commands:
     description: Accept a duel request
     usage: /<command>
 
+  party:
+    description: Manage your party (create, invite, kick, public, etc.)
+    usage: /<command> <create|invite|accept|deny|leave|kick|disband|public|join|list|info|menu>
+    aliases: [p]
+
 permissions:
   duels.*:
     description: Gives access to all duels commands
@@ -88,6 +93,8 @@ permissions:
       duels.fly: true
       duels.reload: true
       duels.setspawn: true
+      duels.party.size.30: true
+      duels.party.public: true
 
   duels.admin:
     description: Admin permissions
@@ -104,3 +111,19 @@ permissions:
   duels.setspawn:
     description: Set spawn location
     default: op
+
+  duels.party.size.15:
+    description: Default party size limit (15 members)
+    default: true
+
+  duels.party.size.20:
+    description: Allows party size up to 20 members
+    default: false
+
+  duels.party.size.30:
+    description: Allows party size up to 30 members
+    default: false
+
+  duels.party.public:
+    description: Allows opening a public party announced in chat
+    default: false

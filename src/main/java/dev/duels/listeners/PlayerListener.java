@@ -61,6 +61,10 @@ public class PlayerListener implements Listener {
             plugin.getDuelManager().handlePlayerDisconnect(uuid);
         }
 
+        if (plugin.getPartyManager() != null) {
+            plugin.getPartyManager().handlePlayerQuit(uuid);
+        }
+
         plugin.getScoreboardManager().removeScoreboard(uuid);
         plugin.getPlayerManager().savePlayerData(uuid);
     }
@@ -134,7 +138,7 @@ public class PlayerListener implements Listener {
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
 
-        // ✅ Only react on RIGHT CLICK (prevents “hit air with sword” triggering this)
+        // Only react on RIGHT CLICK (prevents "hit air with sword" triggering this)
         switch (event.getAction()) {
             case RIGHT_CLICK_AIR, RIGHT_CLICK_BLOCK -> { }
             default -> {
@@ -144,43 +148,128 @@ public class PlayerListener implements Listener {
 
         if (event.getItem() == null || !event.getItem().hasItemMeta()) return;
 
-        String displayName = event.getItem().getItemMeta().getDisplayName();
-        if (displayName == null) return;
-
-        // Queue Items
-        if (displayName.contains("ʟᴇᴀᴠᴇ ǫᴜᴇᴜᴇ")) {
-            event.setCancelled(true);
-
-            plugin.getQueueManager().leaveQueue(player);
-            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
-
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                plugin.getPlayerManager().refreshQueueSlotItem(player);
-            }, 1L);
-
+        // 1) Primary dispatch: Action-Tag (PDC) aus der konfigurierbaren Hotbar.
+        String action = plugin.getHotbarManager().readAction(event.getItem());
+        if (action != null && !action.isEmpty()) {
+            handleHotbarAction(event, player, action);
             return;
         }
 
+        // 2) Fallback: Display-Name-Matching (für Items ohne Tag, z.B. alte
+        //    Inventare während eines Plugin-Updates).
+        String displayName = event.getItem().getItemMeta().getDisplayName();
+        if (displayName == null) return;
+        handleLegacyDisplayName(event, player, displayName);
+    }
 
+    private void handleHotbarAction(PlayerInteractEvent event, Player player, String action) {
+        event.setCancelled(true);
+        switch (action) {
+            case "CHALLENGE" -> {
+                if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
+                    plugin.getGuiManager().openQueueGUI(player);
+                    player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                }
+            }
+            case "QUEUE_DYNAMIC" -> {
+                // Item ist dynamisch: entweder "Leave" (wenn in queue) oder "Rejoin last".
+                String meta = event.getItem().getItemMeta().getDisplayName();
+                if (meta != null && meta.contains("ʟᴇᴀᴠᴇ")) {
+                    plugin.getQueueManager().leaveQueue(player);
+                    player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+                } else {
+                    String lastKit = plugin.getQueueManager().getLastQueueKit(player.getUniqueId());
+                    if (lastKit != null) {
+                        plugin.getQueueManager().joinQueue(player, lastKit);
+                        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                    } else {
+                        player.sendMessage(plugin.getPrefix() + "§cNo last queue kit saved yet!");
+                    }
+                }
+                Bukkit.getScheduler().runTaskLater(plugin,
+                        () -> plugin.getPlayerManager().refreshQueueSlotItem(player), 1L);
+            }
+            case "STATS" -> {
+                plugin.getGuiManager().openStatsGUI(player);
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+            }
+            case "SETTINGS" -> {
+                plugin.getGuiManager().openSettingsGUI(player);
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+            }
+            case "VISIBILITY" -> {
+                plugin.getPlayerManager().toggleVisibility(player.getUniqueId());
+                plugin.getPlayerManager().updatePlayerVisibility(player);
+                plugin.getPlayerManager().applyVisibility(player);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+            }
+            case "PARTY_CREATE" -> {
+                if (plugin.getPartyManager().isInParty(player.getUniqueId())) {
+                    player.sendMessage(plugin.getPrefix() + "§cYou are already in a party.");
+                } else {
+                    plugin.getPartyManager().createParty(player);
+                    plugin.getHotbarManager().applyMode(player,
+                            dev.duels.managers.HotbarManager.MODE_PARTY_LEADER);
+                    player.sendMessage(plugin.getPrefix()
+                            + "§dParty §7created! Use §e/party invite <player> §7to invite players.");
+                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.2f);
+                }
+            }
+            case "PARTY_MENU" -> {
+                if (!plugin.getPartyManager().isLeader(player.getUniqueId())) {
+                    player.sendMessage(plugin.getPrefix() + "§cOnly the leader can open this menu.");
+                    return;
+                }
+                plugin.getGuiManager().openPartyMenu(player);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+            }
+            case "PARTY_INVITE" -> {
+                player.sendMessage(plugin.getPrefix() + "§7Usage: §e/party invite <player>");
+            }
+            case "PARTY_PUBLIC" -> {
+                plugin.getPartyManager().togglePublic(player);
+            }
+            case "PARTY_INFO" -> {
+                player.performCommand("party info");
+            }
+            case "PARTY_LEAVE" -> {
+                if (plugin.getPartyManager().isLeader(player.getUniqueId())) {
+                    var party = plugin.getPartyManager().getPartyByLeader(player.getUniqueId());
+                    if (party != null) plugin.getPartyManager().disband(party);
+                } else {
+                    plugin.getPartyManager().leaveParty(player);
+                }
+            }
+            default -> {
+                // Unbekannte Action — Fallback auf Display-Name
+                String dn = event.getItem().getItemMeta().getDisplayName();
+                if (dn != null) handleLegacyDisplayName(event, player, dn);
+            }
+        }
+    }
+
+    private void handleLegacyDisplayName(PlayerInteractEvent event, Player player, String displayName) {
+        if (displayName.contains("ʟᴇᴀᴠᴇ ǫᴜᴇᴜᴇ")) {
+            event.setCancelled(true);
+            plugin.getQueueManager().leaveQueue(player);
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+            Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> plugin.getPlayerManager().refreshQueueSlotItem(player), 1L);
+            return;
+        }
         if (displayName.contains("ᴊᴏɪɴ ʟᴀѕᴛ ǫᴜᴇᴜᴇ")) {
             event.setCancelled(true);
-
             String lastKit = plugin.getQueueManager().getLastQueueKit(player.getUniqueId());
             if (lastKit != null) {
                 plugin.getQueueManager().joinQueue(player, lastKit);
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
-
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    plugin.getPlayerManager().refreshQueueSlotItem(player);
-                }, 1L);
-
+                Bukkit.getScheduler().runTaskLater(plugin,
+                        () -> plugin.getPlayerManager().refreshQueueSlotItem(player), 1L);
             } else {
                 player.sendMessage(plugin.getPrefix() + "§cNo last queue kit saved yet!");
             }
             return;
         }
-
-        // Challenge Sword
         if (displayName.contains("ᴄʜᴀʟʟᴇɴɢᴇ")) {
             event.setCancelled(true);
             if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
@@ -189,36 +278,25 @@ public class PlayerListener implements Listener {
             }
             return;
         }
-
-        // Stats Book
         if (displayName.contains("ѕᴛᴀᴛѕ")) {
             event.setCancelled(true);
             plugin.getGuiManager().openStatsGUI(player);
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
             return;
         }
-
-        // Settings
         if (displayName.contains("ѕᴇᴛᴛɪɴɢѕ")) {
             event.setCancelled(true);
             plugin.getGuiManager().openSettingsGUI(player);
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
             return;
         }
-
-// Visibility Toggle
         if (displayName.contains("ᴘʟᴀʏᴇʀ ᴠɪѕɪʙɪʟɪᴛʏ")) {
             event.setCancelled(true);
-
             plugin.getPlayerManager().toggleVisibility(player.getUniqueId());
             plugin.getPlayerManager().updatePlayerVisibility(player);
             plugin.getPlayerManager().applyVisibility(player);
-
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
-            return;
         }
-
-
     }
 
     private void forceLobbyState(Player player) {

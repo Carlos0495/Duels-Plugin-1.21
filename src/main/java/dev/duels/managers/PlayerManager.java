@@ -148,47 +148,25 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 }
 
     public void setupPlayerInventory(Player player) {
-        player.getInventory().clear();
+        // Delegiert an HotbarManager (liest Items aus config.yml). Je nach
+        // Party-Status wird der passende Modus gewählt.
+        HotbarManager hotbar = plugin.getHotbarManager();
+        if (hotbar == null) {
+            // Fallback, falls das Plugin noch nicht voll initialisiert ist
+            // (z.B. während onEnable): nur Inventar leeren.
+            player.getInventory().clear();
+            player.updateInventory();
+            return;
+        }
 
-        // Slot 0: Challenge Sword
-        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
-        ItemMeta swordMeta = sword.getItemMeta();
-        swordMeta.setDisplayName("§aᴄʜᴀʟʟᴇɴɢᴇ");
-        swordMeta.setLore(java.util.Arrays.asList(
-                "§7Hit a §cPlayer §7to §achallenge §7them",
-                "§7Right-click to §ajoin the §aqueue"
-        ));
-        sword.setItemMeta(swordMeta);
-        player.getInventory().setItem(0, sword);
-
-        // Queue Slot (wird durch refreshQueueSlotItem gesetzt)
-        refreshQueueSlotItem(player);
-
-        // Slot 1: Stats
-        ItemStack stats = new ItemStack(Material.PAPER);
-        ItemMeta statsMeta = stats.getItemMeta();
-        statsMeta.setDisplayName("§bѕᴛᴀᴛѕ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        statsMeta.setLore(java.util.Arrays.asList("§7See your stats or see the leaderboard"));
-        stats.setItemMeta(statsMeta);
-        player.getInventory().setItem(1, stats);
-
-        // Slot 7: Visibility
-        ItemStack visibility = new ItemStack(Material.GREEN_DYE);
-        ItemMeta visibilityMeta = visibility.getItemMeta();
-        visibilityMeta.setDisplayName("§aᴘʟᴀʏᴇʀ ᴠɪѕɪʙɪʟɪᴛʏ ᴏɴ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        visibilityMeta.setLore(java.util.Arrays.asList("§7Change the Player visibility."));
-        visibility.setItemMeta(visibilityMeta);
-        player.getInventory().setItem(7, visibility);
-
-        // Slot 8: Settings
-        ItemStack settings = new ItemStack(Material.REPEATER);
-        ItemMeta settingsMeta = settings.getItemMeta();
-        settingsMeta.setDisplayName("§cѕᴇᴛᴛɪɴɢѕ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        settingsMeta.setLore(java.util.Arrays.asList("§7All kind of settings"));
-        settings.setItemMeta(settingsMeta);
-        player.getInventory().setItem(8, settings);
-
-        player.updateInventory();
+        String mode = HotbarManager.MODE_LOBBY;
+        PartyManager pm = plugin.getPartyManager();
+        if (pm != null && pm.isInParty(player.getUniqueId())) {
+            mode = pm.isLeader(player.getUniqueId())
+                    ? HotbarManager.MODE_PARTY_LEADER
+                    : HotbarManager.MODE_PARTY_MEMBER;
+        }
+        hotbar.applyMode(player, mode);
     }
     public void applyVisibility(Player viewer) {
         if (viewer == null) return;
@@ -228,24 +206,48 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         if (plugin.getDuelManager().isInDuel(uuid)) return;
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Slot 4: Queue Item
+        // Nur im Lobby-Hotbar-Mode relevant. Wenn der Spieler in einer Party
+        // ist, belegt der Party-Hotbar bereits Slot 4 — dann nicht
+        // überschreiben.
+        if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) return;
+
+        // Slot 4 (Queue) aus config lesen — falls der User den Slot umkonfiguriert
+        // hat, ehren wir das.
+        int queueSlot = 4;
+        String configuredSlotPath = "hotbar.lobby.queue.slot";
+        if (plugin.getConfigManager().getMainConfig().contains(configuredSlotPath)) {
+            queueSlot = plugin.getConfigManager().getMainConfig().getInt(configuredSlotPath, 4);
+        }
+
+        org.bukkit.NamespacedKey actionKey = plugin.getHotbarManager() != null
+                ? plugin.getHotbarManager().getActionKey()
+                : null;
+
         if (plugin.getQueueManager().isInQueue(uuid)) {
-            // Leave Queue Item
             ItemStack leaveQueue = new ItemStack(Material.BARRIER);
             ItemMeta meta = leaveQueue.getItemMeta();
             meta.setDisplayName("§cʟᴇᴀᴠᴇ ǫᴜᴇᴜᴇ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
             meta.setLore(java.util.Arrays.asList("§7Click to leave your current queue."));
+            if (actionKey != null) {
+                meta.getPersistentDataContainer().set(actionKey,
+                        org.bukkit.persistence.PersistentDataType.STRING,
+                        HotbarManager.ACTION_QUEUE_DYNAMIC);
+            }
             leaveQueue.setItemMeta(meta);
-            player.getInventory().setItem(4, leaveQueue);
+            player.getInventory().setItem(queueSlot, leaveQueue);
         } else {
-            // Join Last Queue Item
             ItemStack joinQueue = new ItemStack(Material.PLAYER_HEAD);
             SkullMeta headMeta = (SkullMeta) joinQueue.getItemMeta();
             headMeta.setDisplayName("§aᴊᴏɪɴ ʟᴀѕᴛ ǫᴜᴇᴜᴇ ᴀɢᴀɪɴ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
             headMeta.setLore(java.util.Arrays.asList("§7Here you can join the same Queue again."));
             headMeta.setOwningPlayer(player);
+            if (actionKey != null) {
+                headMeta.getPersistentDataContainer().set(actionKey,
+                        org.bukkit.persistence.PersistentDataType.STRING,
+                        HotbarManager.ACTION_QUEUE_DYNAMIC);
+            }
             joinQueue.setItemMeta(headMeta);
-            player.getInventory().setItem(4, joinQueue);
+            player.getInventory().setItem(queueSlot, joinQueue);
         }
 
         player.updateInventory();

@@ -17,6 +17,7 @@ public class DuelSession {
     private int winsP2;
     private int round;
     private boolean roundStarting;
+    private boolean matchEnded;
 
     public DuelSession(UUID player1, UUID player2, String kitName, String arenaName, int timeLeft, int bestOf) {
         this.player1 = player1;
@@ -29,6 +30,7 @@ public class DuelSession {
         this.winsP2 = 0;
         this.round = 1;
         this.roundStarting = false;
+        this.matchEnded = false;
     }
 
     public UUID getPlayer1() { return player1; }
@@ -46,6 +48,8 @@ public class DuelSession {
     public void setRound(int round) { this.round = round; }
     public boolean isRoundStarting() { return roundStarting; }
     public void setRoundStarting(boolean roundStarting) { this.roundStarting = roundStarting; }
+    public boolean isMatchEnded() { return matchEnded; }
+    public void setMatchEnded(boolean matchEnded) { this.matchEnded = matchEnded; }
 
     public UUID getOpponent(UUID player) {
         if (player1.equals(player)) return player2;

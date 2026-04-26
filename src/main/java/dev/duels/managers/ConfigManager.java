@@ -121,7 +121,7 @@ public class ConfigManager {
             mainConfig.set("duel-time", 180);
             mainConfig.set("request-timeout", 30);
             mainConfig.set("default-map", "§cᴅᴜᴇʟѕ ᴍᴀᴘ");
-            mainConfig.set("default-bestof", 3);
+            mainConfig.set("default-bestof", 1);
             mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10));
             plugin.saveConfig();
         }

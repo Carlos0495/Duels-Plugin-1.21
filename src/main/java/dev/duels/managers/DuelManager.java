@@ -237,8 +237,12 @@ public class DuelManager {
         DuelSession session = activeDuels.get(deadId);
         if (session == null) return;
 
-        // Anti-double trigger
+        // Anti-double trigger (round-transition race)
         if (session.isRoundStarting()) return;
+        // Anti-double trigger (match already ended, e.g. void death right after
+        // the final hit in Bo1 would otherwise re-enter and start a phantom
+        // round 2). Once the match is over we ignore further deaths.
+        if (session.isMatchEnded()) return;
         session.setRoundStarting(true);
 
         UUID winnerId = session.getOpponent(deadId);
@@ -277,6 +281,13 @@ public class DuelManager {
         // Match over?
         if (session.getWinsP1() >= session.requiredWins() || session.getWinsP2() >= session.requiredWins()) {
             session.setRoundStarting(false);
+            // Flag Match als beendet BEVOR endDuel läuft, damit ein
+            // nachfolgender Void-/Fall-/Fire-Tod kein Phantom-Round-Start
+            // triggern kann (z.B. Bo1: Verlierer stirbt → Match over → endDuel
+            // startet async Arena-Reset; der Gewinner fällt in den Void
+            // während des Resets → handleDuelDeath dürfte NICHT eine neue
+            // Runde starten).
+            session.setMatchEnded(true);
             endDuel(deadId, winner, disconnected);
             return;
         }
@@ -886,5 +897,88 @@ public class DuelManager {
         boolean isExpired() {
             return System.currentTimeMillis() - timestamp > AUTOSELECT_TIMEOUT_MS;
         }
+    }
+
+    // ---------- Party Duel Starters ----------
+
+    /**
+     * Startet eine Reihe von 1v1-Duells aus paarweise gepickten Spielern.
+     * Jedes Paar bekommt eine eigene Arena (sofern verfügbar). Spieler ohne
+     * Partner sitzen aus.
+     */
+    public int startPartyPairs(List<Player> pairsFlat, String kitName, int bestOf) {
+        int started = 0;
+        for (int i = 0; i + 1 < pairsFlat.size(); i += 2) {
+            Player a = pairsFlat.get(i);
+            Player b = pairsFlat.get(i + 1);
+            if (a == null || b == null || !a.isOnline() || !b.isOnline()) continue;
+            if (isInDuel(a.getUniqueId()) || isInDuel(b.getUniqueId())) continue;
+
+            Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
+            if (arena == null) {
+                a.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit; skipping pair.");
+                b.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit; skipping pair.");
+                continue;
+            }
+            arena.setInUse(true);
+
+            DuelRequest req = new DuelRequest(
+                    a.getUniqueId(), b.getUniqueId(),
+                    kitName, arena.getName(),
+                    Math.max(1, bestOf)
+            );
+            startDuel(req);
+            started++;
+        }
+        return started;
+    }
+
+    /** 1v1 zwischen zwei Party-Mitgliedern starten. */
+    public boolean startPartyDuelOne(Player a, Player b, String kitName, int bestOf) {
+        if (a == null || b == null || !a.isOnline() || !b.isOnline()) return false;
+        if (isInDuel(a.getUniqueId()) || isInDuel(b.getUniqueId())) {
+            a.sendMessage(plugin.getPrefix() + "§cOne of you is already in a duel.");
+            return false;
+        }
+        Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
+        if (arena == null) {
+            a.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
+            b.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
+            return false;
+        }
+        arena.setInUse(true);
+        DuelRequest req = new DuelRequest(
+                a.getUniqueId(), b.getUniqueId(),
+                kitName, arena.getName(),
+                Math.max(1, bestOf)
+        );
+        startDuel(req);
+        return true;
+    }
+
+    /**
+     * FFA: Mitglieder zufällig in 1v1-Paare einteilen. Bei ungerader Anzahl
+     * sitzt ein Spieler aus.
+     */
+    public int startPartyFFA(List<Player> members, String kitName, int bestOf) {
+        List<Player> shuffled = new ArrayList<>(members);
+        Collections.shuffle(shuffled);
+        if (shuffled.size() < 2) return 0;
+        return startPartyPairs(shuffled, kitName, bestOf);
+    }
+
+    /**
+     * Team vs Team: alle Team-1-Mitglieder werden in Reihenfolge gegen alle
+     * Team-2-Mitglieder gepairt. Überzählige sitzen aus.
+     */
+    public int startPartyTeams(List<Player> team1, List<Player> team2, String kitName, int bestOf) {
+        int n = Math.min(team1.size(), team2.size());
+        if (n < 1) return 0;
+        List<Player> flat = new ArrayList<>(n * 2);
+        for (int i = 0; i < n; i++) {
+            flat.add(team1.get(i));
+            flat.add(team2.get(i));
+        }
+        return startPartyPairs(flat, kitName, bestOf);
     }
 }

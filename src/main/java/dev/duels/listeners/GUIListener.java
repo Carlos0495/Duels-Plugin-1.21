@@ -139,8 +139,16 @@ public class GUIListener implements Listener {
             return;
         }
 
+        // Party GUIs
+        if (title.equals(GUIManager.PARTY_MENU_TITLE)
+                || title.equals(GUIManager.PARTY_SELECT_MEMBER_TITLE)
+                || title.equals(GUIManager.PARTY_TEAMS_TITLE)
+                || title.equals(GUIManager.PARTY_KIT_SELECT_TITLE)) {
+            handlePartyGUIClick(event, player, top, clickedInv, title);
+            return;
+        }
+
         // Stats GUI
-// Stats GUI
         if (title.equals(GUIManager.STATS_GUI_TITLE)) {
             event.setCancelled(true);
 
@@ -644,6 +652,151 @@ public class GUIListener implements Listener {
             if (words.length > 0) return words[0];
         }
         return null;
+    }
+
+    // ----------------- Party GUIs -----------------
+
+    private void handlePartyGUIClick(InventoryClickEvent event, Player player,
+                                     Inventory top, Inventory clickedInv, String title) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+
+        PersistentDataContainer pdc = clicked.getItemMeta().getPersistentDataContainer();
+        String menuAction = pdc.get(plugin.getGuiManager().getPartyActionKey(), PersistentDataType.STRING);
+        String memberId = pdc.get(plugin.getGuiManager().getPartyMemberKey(), PersistentDataType.STRING);
+        String kitId = pdc.get(plugin.getGuiManager().getPartyKitKey(), PersistentDataType.STRING);
+        String pendingAction = pdc.get(plugin.getGuiManager().getPartyPendingActionKey(), PersistentDataType.STRING);
+
+        // Close button
+        String displayName = clicked.getItemMeta().getDisplayName();
+        if (displayName != null && (displayName.contains("§cClose") || displayName.equals("§7Close"))) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            return;
+        }
+
+        var partyMgr = plugin.getPartyManager();
+        var party = partyMgr.getPartyByLeader(player.getUniqueId());
+        if (party == null) {
+            player.sendMessage(plugin.getPrefix() + "§cYou are no longer a party leader.");
+            player.closeInventory();
+            return;
+        }
+
+        // 1) Party-Menü -> Mode-Auswahl
+        if (title.equals(GUIManager.PARTY_MENU_TITLE)) {
+            if (menuAction == null) return;
+            switch (menuAction) {
+                case "DUEL_ONE" -> plugin.getGuiManager().openPartyMemberSelect(player, "DUEL_ONE");
+                case "FFA" -> plugin.getGuiManager().openPartyKitSelect(player, "FFA", null);
+                case "TEAMS" -> plugin.getGuiManager().openPartyTeamsGUI(player);
+                case "PUBLIC" -> {
+                    partyMgr.togglePublic(player);
+                    plugin.getGuiManager().openPartyMenu(player);
+                }
+                case "DISBAND" -> {
+                    partyMgr.disband(party);
+                    player.closeInventory();
+                }
+            }
+            return;
+        }
+
+        // 2) Member-Selection (für DUEL_ONE)
+        if (title.equals(GUIManager.PARTY_SELECT_MEMBER_TITLE)) {
+            if (memberId == null) return;
+            // Weiter zur Kit-Selection mit dem Target im pending
+            plugin.getGuiManager().openPartyKitSelect(player, "DUEL_ONE", memberId);
+            return;
+        }
+
+        // 3) Team-Assignment GUI
+        if (title.equals(GUIManager.PARTY_TEAMS_TITLE)) {
+            if (menuAction != null) {
+                if (menuAction.equals("TEAMS_RESET")) {
+                    party.resetTeams();
+                    plugin.getGuiManager().openPartyTeamsGUI(player);
+                    return;
+                }
+                if (menuAction.equals("TEAMS_START")) {
+                    plugin.getGuiManager().openPartyKitSelect(player, "TEAMS_START", null);
+                    return;
+                }
+            }
+            if (memberId != null) {
+                try {
+                    UUID uuid = UUID.fromString(memberId);
+                    if (event.isShiftClick()) {
+                        party.setTeam(uuid, 0);
+                    } else if (event.isRightClick()) {
+                        party.setTeam(uuid, 2);
+                    } else {
+                        party.setTeam(uuid, 1);
+                    }
+                    plugin.getGuiManager().openPartyTeamsGUI(player);
+                } catch (IllegalArgumentException ignored) {}
+            }
+            return;
+        }
+
+        // 4) Kit-Selection -> Duel(s) starten
+        if (title.equals(GUIManager.PARTY_KIT_SELECT_TITLE)) {
+            if (kitId == null || pendingAction == null) return;
+
+            int bestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 1);
+
+            switch (pendingAction) {
+                case "DUEL_ONE" -> {
+                    if (memberId == null) {
+                        player.sendMessage(plugin.getPrefix() + "§cMissing target.");
+                        return;
+                    }
+                    try {
+                        UUID targetId = UUID.fromString(memberId);
+                        Player target = Bukkit.getPlayer(targetId);
+                        if (target == null) {
+                            player.sendMessage(plugin.getPrefix() + "§cTarget is offline.");
+                            return;
+                        }
+                        plugin.getDuelManager().startPartyDuelOne(player, target, kitId, bestOf);
+                        player.closeInventory();
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                case "FFA" -> {
+                    java.util.List<Player> members = new java.util.ArrayList<>();
+                    for (UUID m : party.getMembers()) {
+                        Player p = Bukkit.getPlayer(m);
+                        if (p != null && p.isOnline()) members.add(p);
+                    }
+                    int started = plugin.getDuelManager().startPartyFFA(members, kitId, bestOf);
+                    plugin.getPartyManager().broadcast(party,
+                            "§6FFA §7started §f" + started + " §7duels.");
+                    player.closeInventory();
+                }
+                case "TEAMS_START" -> {
+                    java.util.List<Player> t1 = new java.util.ArrayList<>();
+                    java.util.List<Player> t2 = new java.util.ArrayList<>();
+                    for (UUID m : party.getMembers()) {
+                        Player p = Bukkit.getPlayer(m);
+                        if (p == null || !p.isOnline()) continue;
+                        int t = party.getTeam(m);
+                        if (t == 1) t1.add(p);
+                        else if (t == 2) t2.add(p);
+                    }
+                    if (t1.isEmpty() || t2.isEmpty()) {
+                        player.sendMessage(plugin.getPrefix() + "§cBoth teams must have at least one player.");
+                        return;
+                    }
+                    int started = plugin.getDuelManager().startPartyTeams(t1, t2, kitId, bestOf);
+                    plugin.getPartyManager().broadcast(party,
+                            "§bTeam vs Team §7started §f" + started + " §7duels.");
+                    player.closeInventory();
+                }
+            }
+        }
     }
 }
 

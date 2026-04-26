@@ -5,7 +5,10 @@ import dev.duels.objects.Arena;
 import dev.duels.objects.BlockVector;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.WorldCreator;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.*;
 
@@ -15,6 +18,14 @@ public class ArenaManager {
     private final Map<String, Arena> arenas = new HashMap<>();
     private final Map<String, Arena> availableArenas = new HashMap<>();
     private Location spawnLocation;
+    /**
+     * Gespeicherte Spawn-Kodierung "world,x,y,z,yaw,pitch". Wird benötigt, wenn
+     * die Spawn-Welt beim Plugin-Enable noch nicht geladen ist (z.B. Multiverse-
+     * Welten die erst später geladen werden). In dem Fall ist {@link #spawnLocation}
+     * vorerst {@code null}; beim {@code WorldLoadEvent} wird {@link #tryResolveSpawn()}
+     * nachträglich die Location berechnen.
+     */
+    private String pendingSpawnString;
 
     public ArenaManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -24,10 +35,7 @@ public class ArenaManager {
         arenas.clear();
         availableArenas.clear();
 
-        // Lobby spawn from main config (can stay as Bukkit Location)
-        if (plugin.getConfigManager().getMainConfig().contains("spawn")) {
-            spawnLocation = plugin.getConfigManager().getMainConfig().getLocation("spawn");
-        }
+        loadSpawnFromConfig();
 
         var arenaCfg = plugin.getConfigManager().getArenaConfig();
         if (arenaCfg == null || !arenaCfg.contains("arenas")) return;
@@ -336,15 +344,130 @@ public class ArenaManager {
 
     public void setSpawnLocation(Location location) {
         this.spawnLocation = location;
-        plugin.getConfigManager().getMainConfig().set("spawn", location);
+        String s = locToString(location);
+        this.pendingSpawnString = s;
+
+        var main = plugin.getConfigManager().getMainConfig();
+        // Neues String-Format schreiben, altes Bukkit-Location-Format entfernen
+        // (damit nach einem /setspawn nur noch eine Variante in der config.yml
+        // steht; beim nächsten Reload liest loadSpawnFromConfig zuerst den
+        // String und ignoriert das alte Format).
+        main.set("spawn-string", s);
+        if (main.contains("spawn") && !main.isString("spawn")) {
+            main.set("spawn", null);
+        }
+        plugin.saveConfig();
         plugin.getConfigManager().saveAllConfigs();
-
-
     }
 
 
     public Location getSpawnLocation() {
+        // Lazy-Resolve: wenn Welt beim Plugin-Enable noch nicht geladen war,
+        // versuchen wir hier nochmal — die Welt ist jetzt vielleicht da
+        // (z.B. weil Multiverse/PlotSquared nach uns initialisiert hat).
+        if (spawnLocation == null && pendingSpawnString != null) {
+            tryResolveSpawn();
+        }
         return spawnLocation;
+    }
+
+    /**
+     * Wird vom {@code WorldListener} aufgerufen, sobald eine neue Welt geladen
+     * wird. Falls der Lobby-Spawn in genau dieser Welt liegt, wird die Location
+     * jetzt nachträglich aufgelöst.
+     */
+    public void onWorldLoaded(String worldName) {
+        if (spawnLocation != null) return;
+        if (pendingSpawnString == null) return;
+        String[] parts = pendingSpawnString.split(",", 2);
+        if (parts.length < 1) return;
+        if (!parts[0].equalsIgnoreCase(worldName)) return;
+        tryResolveSpawn();
+        if (spawnLocation != null) {
+            plugin.getLogger().info("Resolved lobby spawn in world '" + worldName + "' after world load.");
+        }
+    }
+
+    private void loadSpawnFromConfig() {
+        var main = plugin.getConfigManager().getMainConfig();
+
+        // 1) Neues String-Format (bevorzugt, funktioniert auch wenn Welt
+        //    beim Plugin-Enable noch nicht geladen ist).
+        if (main.isString("spawn-string")) {
+            pendingSpawnString = main.getString("spawn-string");
+            tryResolveSpawn();
+            return;
+        }
+
+        // 2) Altes Bukkit-Location-Format (rückwärtskompatibel). Wenn die Welt
+        //    geladen ist, funktioniert getLocation normal. Falls nicht, bauen
+        //    wir den String manuell aus der ConfigurationSection und
+        //    migrieren beim nächsten /setspawn automatisch.
+        if (!main.contains("spawn") || main.isString("spawn")) return;
+
+        try {
+            Location legacy = main.getLocation("spawn");
+            if (legacy != null && legacy.getWorld() != null) {
+                spawnLocation = legacy;
+                pendingSpawnString = locToString(legacy);
+                // Migrieren: in neues Format überführen, altes Format löschen
+                main.set("spawn-string", pendingSpawnString);
+                main.set("spawn", null);
+                plugin.saveConfig();
+                return;
+            }
+        } catch (Throwable ignored) {}
+
+        // Welt nicht geladen — rekonstruiere pendingSpawnString aus dem
+        // ConfigurationSection-Key "world" etc. damit NICHTS verloren geht.
+        ConfigurationSection sec = main.getConfigurationSection("spawn");
+        if (sec != null) {
+            String worldName = sec.getString("world");
+            if (worldName != null && !worldName.isEmpty()) {
+                double x = sec.getDouble("x");
+                double y = sec.getDouble("y");
+                double z = sec.getDouble("z");
+                double yaw = sec.getDouble("yaw", 0);
+                double pitch = sec.getDouble("pitch", 0);
+                pendingSpawnString = worldName + "," + x + "," + y + "," + z + "," + yaw + "," + pitch;
+                // Migrieren, aber altes Format NICHT entfernen, bis Welt da
+                // ist — falls wir die String-Encoding falsch interpretiert
+                // haben, wäre sonst Datenverlust möglich.
+                main.set("spawn-string", pendingSpawnString);
+                plugin.saveConfig();
+                tryResolveSpawn();
+                if (spawnLocation == null) {
+                    plugin.getLogger().warning("Lobby spawn world '" + worldName
+                            + "' is not loaded yet. Spawn will be resolved after the world loads.");
+                }
+            }
+        }
+    }
+
+    private void tryResolveSpawn() {
+        if (pendingSpawnString == null || pendingSpawnString.isEmpty()) return;
+
+        Location loc = stringToLoc(pendingSpawnString);
+        if (loc != null) {
+            spawnLocation = loc;
+            return;
+        }
+
+        // Welt nicht geladen — versuchen zu laden
+        String worldName = pendingSpawnString.split(",", 2)[0];
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            try {
+                World loaded = new WorldCreator(worldName).createWorld();
+                if (loaded != null) {
+                    Location loc2 = stringToLoc(pendingSpawnString);
+                    if (loc2 != null) spawnLocation = loc2;
+                }
+            } catch (Throwable t) {
+                plugin.getLogger().warning("Could not auto-load world '" + worldName
+                        + "' for lobby spawn: " + t.getMessage());
+            }
+        }
     }
 
     // Füge diese Methoden zur ArenaManager Klasse hinzu:

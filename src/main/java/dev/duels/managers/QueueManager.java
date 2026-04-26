@@ -102,8 +102,11 @@ public class QueueManager {
             return;
         }
 
-        // DuelRequest erstellen
-        int bestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 3);
+        // DuelRequest erstellen. Fallback konsistent mit ConfigManager-Default
+        // (1); früher war hier 3, sodass Queue-Matches immer Bo3 liefen, auch
+        // wenn der User default-bestof in der Config auf 1 gesetzt hatte und
+        // noch kein Key existierte.
+        int bestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 1);
         DuelRequest request = new DuelRequest(
                 player1.getUniqueId(),
                 player2.getUniqueId(),

@@ -18,6 +18,8 @@ public final class DuelsPlugin extends JavaPlugin {
     private PlayerManager playerManager;
     private ScoreboardManager scoreboardManager;
     private GUIManager guiManager;
+    private HotbarManager hotbarManager;
+    private PartyManager partyManager;
 
     @Override
     public void onEnable() {
@@ -34,11 +36,14 @@ public final class DuelsPlugin extends JavaPlugin {
         queueManager = new QueueManager(this);
         duelManager = new DuelManager(this);
         guiManager = new GUIManager(this);
+        hotbarManager = new HotbarManager(this);
+        partyManager = new PartyManager(this);
 
         // Konfigurationen laden
         configManager.loadAllConfigs();
         configManager.reloadPlayersConfig();
         kitManager.loadCustomLayoutsFromFile();
+        hotbarManager.loadHotbarConfig();
 
         Bukkit.getScheduler().runTaskLater(this, () -> arenaManager.loadArenas(), 40L);
         kitManager.loadKits();
@@ -78,6 +83,7 @@ public final class DuelsPlugin extends JavaPlugin {
         duelManager.cleanupAll();
         arenaManager.cleanup();
         queueManager.cleanup();
+        if (partyManager != null) partyManager.cleanupAll();
         playerManager.saveAllData();
         configManager.saveAllConfigs();
 
@@ -90,7 +96,7 @@ public final class DuelsPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new ArenaListener(this), this);
         Bukkit.getPluginManager().registerEvents(new GUIListener(this), this);
         Bukkit.getPluginManager().registerEvents(new HotbarLockListener(this), this);
-
+        Bukkit.getPluginManager().registerEvents(new WorldListener(this), this);
     }
 
     private void registerCommands() {
@@ -112,6 +118,12 @@ public final class DuelsPlugin extends JavaPlugin {
         getCommand("fly").setExecutor(new FlyCommand(this));
         getCommand("spawn").setExecutor(new SpawnCommand(this));
         getCommand("accept").setExecutor(new AcceptCommand(this));
+
+        PartyCommand partyCmd = new PartyCommand(this);
+        if (getCommand("party") != null) {
+            getCommand("party").setExecutor(partyCmd);
+            getCommand("party").setTabCompleter(partyCmd);
+        }
     }
 
     private void startTasks() {
@@ -141,6 +153,8 @@ public final class DuelsPlugin extends JavaPlugin {
     public PlayerManager getPlayerManager() { return playerManager; }
     public ScoreboardManager getScoreboardManager() { return scoreboardManager; }
     public GUIManager getGuiManager() { return guiManager; }
+    public HotbarManager getHotbarManager() { return hotbarManager; }
+    public PartyManager getPartyManager() { return partyManager; }
 
     // Konstanten
     public String getPrefix() {

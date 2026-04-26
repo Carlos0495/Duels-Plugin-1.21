@@ -52,16 +52,7 @@ public class HotbarLockListener implements Listener {
         String title = event.getView().getTitle();
 
         // allow clicks in your custom GUIs (GUIListener will handle cancelling)
-        if (title.equals(dev.duels.guis.GUIManager.QUEUE_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.BESTOF_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.EDIT_LAYOUTS_GUI_TITLE)
-                || title.startsWith(dev.duels.guis.GUIManager.EDIT_LAYOUT_GUI_TITLE_PREFIX)
-                || title.equals(dev.duels.guis.GUIManager.DUEL_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.KITS_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.SETTINGS_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.STATS_GUI_TITLE)) {
-            return;
-        }
+        if (isPluginGUI(title)) return;
 
         event.setCancelled(true);
         player.updateInventory();
@@ -74,19 +65,25 @@ public class HotbarLockListener implements Listener {
 
         String title = event.getView().getTitle();
 
-        if (title.equals(dev.duels.guis.GUIManager.QUEUE_GUI_TITLE)
+        if (isPluginGUI(title)) return;
+
+        event.setCancelled(true);
+        player.updateInventory();
+    }
+
+    private boolean isPluginGUI(String title) {
+        return title.equals(dev.duels.guis.GUIManager.QUEUE_GUI_TITLE)
                 || title.equals(dev.duels.guis.GUIManager.BESTOF_GUI_TITLE)
                 || title.equals(dev.duels.guis.GUIManager.EDIT_LAYOUTS_GUI_TITLE)
                 || title.startsWith(dev.duels.guis.GUIManager.EDIT_LAYOUT_GUI_TITLE_PREFIX)
                 || title.equals(dev.duels.guis.GUIManager.DUEL_GUI_TITLE)
                 || title.equals(dev.duels.guis.GUIManager.KITS_GUI_TITLE)
                 || title.equals(dev.duels.guis.GUIManager.SETTINGS_GUI_TITLE)
-                || title.equals(dev.duels.guis.GUIManager.STATS_GUI_TITLE)) {
-            return;
-        }
-
-        event.setCancelled(true);
-        player.updateInventory();
+                || title.equals(dev.duels.guis.GUIManager.STATS_GUI_TITLE)
+                || title.equals(dev.duels.guis.GUIManager.PARTY_MENU_TITLE)
+                || title.equals(dev.duels.guis.GUIManager.PARTY_SELECT_MEMBER_TITLE)
+                || title.equals(dev.duels.guis.GUIManager.PARTY_TEAMS_TITLE)
+                || title.equals(dev.duels.guis.GUIManager.PARTY_KIT_SELECT_TITLE);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

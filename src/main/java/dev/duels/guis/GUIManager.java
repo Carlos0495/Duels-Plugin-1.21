@@ -30,6 +30,11 @@ public class GUIManager {
     public static final String STATS_GUI_TITLE = "§bYour Stats";
     public static final String EDIT_LAYOUTS_GUI_TITLE = "§6Edit Kit Inventory Layouts";
     public static final String EDIT_LAYOUT_GUI_TITLE_PREFIX = "§eEdit Layout: ";
+    // Party GUI titles
+    public static final String PARTY_MENU_TITLE = "§dParty Menu";
+    public static final String PARTY_SELECT_MEMBER_TITLE = "§dPick a Member to Duel";
+    public static final String PARTY_TEAMS_TITLE = "§dAssign Teams";
+    public static final String PARTY_KIT_SELECT_TITLE = "§dSelect a Kit §8(Party)";
 
     // PDC keys
     private final NamespacedKey queueKitKey;
@@ -701,6 +706,196 @@ public class GUIManager {
 
     public void closeGUI(UUID playerId) {
         openGUIs.remove(playerId);
+    }
+
+    // ------------------ Party GUIs ------------------
+
+    /** PDC key für die Party-Menü-Actions (DUEL_ONE, FFA, TEAMS, PUBLIC, DISBAND). */
+    private final org.bukkit.NamespacedKey partyActionKey =
+            new org.bukkit.NamespacedKey(DuelsPlugin.getInstance(), "party_menu_action");
+    /** PDC key für Member-UUID beim "Pick a Member" / "Assign Teams" GUI. */
+    private final org.bukkit.NamespacedKey partyMemberKey =
+            new org.bukkit.NamespacedKey(DuelsPlugin.getInstance(), "party_menu_member");
+    /** PDC key für Kit-ID im Party-Kit-Selector. */
+    private final org.bukkit.NamespacedKey partyKitKey =
+            new org.bukkit.NamespacedKey(DuelsPlugin.getInstance(), "party_menu_kit");
+    /** PDC key für vorgemerkten Mode (welche Aktion die Kit-Auswahl anstößt). */
+    private final org.bukkit.NamespacedKey partyPendingActionKey =
+            new org.bukkit.NamespacedKey(DuelsPlugin.getInstance(), "party_pending_action");
+
+    public org.bukkit.NamespacedKey getPartyActionKey() { return partyActionKey; }
+    public org.bukkit.NamespacedKey getPartyMemberKey() { return partyMemberKey; }
+    public org.bukkit.NamespacedKey getPartyKitKey() { return partyKitKey; }
+    public org.bukkit.NamespacedKey getPartyPendingActionKey() { return partyPendingActionKey; }
+
+    /** Haupt-Party-Menü (nur für Leader). */
+    public void openPartyMenu(Player leader) {
+        dev.duels.objects.Party party = plugin.getPartyManager().getPartyByLeader(leader.getUniqueId());
+        if (party == null) {
+            leader.sendMessage(plugin.getPrefix() + "§cYou are not a party leader.");
+            return;
+        }
+
+        Inventory inv = Bukkit.createInventory(null, 27, PARTY_MENU_TITLE);
+
+        inv.setItem(10, partyActionItem(Material.DIAMOND_SWORD, "§aDuel one from party",
+                Arrays.asList("§7Pick a single party member", "§7and start a 1v1 duel."),
+                "DUEL_ONE"));
+
+        inv.setItem(12, partyActionItem(Material.CROSSBOW, "§6Free for All",
+                Arrays.asList("§7Pair everyone randomly.", "§7Whoever ends up alone sits out."),
+                "FFA"));
+
+        inv.setItem(14, partyActionItem(Material.SHIELD, "§bTeam 1 vs Team 2",
+                Arrays.asList("§7Pick who is in which team,", "§7then pair them up."),
+                "TEAMS"));
+
+        String publicLabel = party.isPublic() ? "§cDisable Public Party" : "§aMake Party Public";
+        inv.setItem(16, partyActionItem(Material.BEACON, publicLabel,
+                Arrays.asList("§7Public parties appear in chat", "§7and anyone can join."),
+                "PUBLIC"));
+
+        inv.setItem(22, partyActionItem(Material.BARRIER, "§cDisband Party", null, "DISBAND"));
+        inv.setItem(26, createItem(Material.ARROW, "§7Close", null));
+
+        leader.openInventory(inv);
+        openGUIs.put(leader.getUniqueId(), new GUI(PARTY_MENU_TITLE, System.currentTimeMillis()));
+    }
+
+    private ItemStack partyActionItem(Material mat, String name, List<String> lore, String action) {
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(name);
+        if (lore != null) meta.setLore(lore);
+        meta.getPersistentDataContainer().set(partyActionKey, PersistentDataType.STRING, action);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** GUI zum Auswählen eines Gegners aus der Party (für DUEL_ONE). */
+    public void openPartyMemberSelect(Player leader, String pendingAction) {
+        dev.duels.objects.Party party = plugin.getPartyManager().getPartyByLeader(leader.getUniqueId());
+        if (party == null) return;
+
+        Inventory inv = Bukkit.createInventory(null, 54, PARTY_SELECT_MEMBER_TITLE);
+
+        int slot = 10;
+        for (UUID memberId : party.getMembers()) {
+            if (memberId.equals(leader.getUniqueId())) continue;
+            Player m = Bukkit.getPlayer(memberId);
+            if (m == null || !m.isOnline()) continue;
+
+            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta meta = (SkullMeta) head.getItemMeta();
+            meta.setOwningPlayer(m);
+            meta.setDisplayName("§e" + m.getName());
+            meta.setLore(Arrays.asList("§7Click to start a 1v1 duel."));
+            meta.getPersistentDataContainer().set(partyMemberKey, PersistentDataType.STRING, memberId.toString());
+            meta.getPersistentDataContainer().set(partyPendingActionKey, PersistentDataType.STRING, pendingAction);
+            head.setItemMeta(meta);
+
+            inv.setItem(slot, head);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
+
+        leader.openInventory(inv);
+        openGUIs.put(leader.getUniqueId(), new GUI(PARTY_SELECT_MEMBER_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Team-Auswahl-GUI (Klick auf Kopf → Team 1/2 togglen). */
+    public void openPartyTeamsGUI(Player leader) {
+        dev.duels.objects.Party party = plugin.getPartyManager().getPartyByLeader(leader.getUniqueId());
+        if (party == null) return;
+
+        Inventory inv = Bukkit.createInventory(null, 54, PARTY_TEAMS_TITLE);
+
+        int slot = 10;
+        for (UUID memberId : party.getMembers()) {
+            Player m = Bukkit.getPlayer(memberId);
+            if (m == null || !m.isOnline()) continue;
+
+            int team = party.getTeam(memberId);
+            String teamLabel = team == 1 ? " §9(Team 1)" : team == 2 ? " §c(Team 2)" : " §7(unassigned)";
+
+            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta meta = (SkullMeta) head.getItemMeta();
+            meta.setOwningPlayer(m);
+            meta.setDisplayName("§e" + m.getName() + teamLabel);
+            meta.setLore(Arrays.asList(
+                    "§7Left-click: §9Team 1",
+                    "§7Right-click: §cTeam 2",
+                    "§7Shift-click: §7Unassign"));
+            meta.getPersistentDataContainer().set(partyMemberKey, PersistentDataType.STRING, memberId.toString());
+            head.setItemMeta(meta);
+            inv.setItem(slot, head);
+
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        ItemStack start = new ItemStack(Material.EMERALD);
+        ItemMeta startMeta = start.getItemMeta();
+        startMeta.setDisplayName("§aStart Team vs Team Duel");
+        startMeta.setLore(Arrays.asList("§7Pairs team1[i] vs team2[i]."));
+        startMeta.getPersistentDataContainer().set(partyActionKey, PersistentDataType.STRING, "TEAMS_START");
+        start.setItemMeta(startMeta);
+        inv.setItem(48, start);
+
+        ItemStack reset = new ItemStack(Material.RED_DYE);
+        ItemMeta resetMeta = reset.getItemMeta();
+        resetMeta.setDisplayName("§cReset Teams");
+        resetMeta.getPersistentDataContainer().set(partyActionKey, PersistentDataType.STRING, "TEAMS_RESET");
+        reset.setItemMeta(resetMeta);
+        inv.setItem(50, reset);
+
+        inv.setItem(53, createItem(Material.BARRIER, "§cClose", null));
+
+        leader.openInventory(inv);
+        openGUIs.put(leader.getUniqueId(), new GUI(PARTY_TEAMS_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Kit-Auswahl für Party-Duelle. pendingAction: DUEL_ONE (mit pendingTarget), FFA oder TEAMS_START. */
+    public void openPartyKitSelect(Player leader, String pendingAction, String pendingTargetUuid) {
+        Inventory inv = Bukkit.createInventory(null, 54, PARTY_KIT_SELECT_TITLE);
+
+        Set<String> kits = plugin.getKitManager().getKitNames();
+        if (kits.isEmpty()) {
+            leader.sendMessage(plugin.getPrefix() + "§cNo kits available!");
+            return;
+        }
+
+        List<String> sortedKits = new ArrayList<>(kits);
+        sortedKits.sort(String::compareToIgnoreCase);
+
+        int slot = 10;
+        for (String kitId : sortedKits) {
+            Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
+            ItemStack kitItem = new ItemStack(previewMat);
+            ItemMeta meta = kitItem.getItemMeta();
+            KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+            meta.setDisplayName(kit != null ? kit.getDisplayName() : kitId);
+            meta.setLore(Arrays.asList("§7Click to start with this kit."));
+            meta.getPersistentDataContainer().set(partyKitKey, PersistentDataType.STRING, kitId);
+            meta.getPersistentDataContainer().set(partyPendingActionKey, PersistentDataType.STRING, pendingAction);
+            if (pendingTargetUuid != null) {
+                meta.getPersistentDataContainer().set(partyMemberKey, PersistentDataType.STRING, pendingTargetUuid);
+            }
+            kitItem.setItemMeta(meta);
+            inv.setItem(slot, kitItem);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
+
+        leader.openInventory(inv);
+        openGUIs.put(leader.getUniqueId(), new GUI(PARTY_KIT_SELECT_TITLE, System.currentTimeMillis()));
     }
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
