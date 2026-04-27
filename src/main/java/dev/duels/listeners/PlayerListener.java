@@ -64,6 +64,9 @@ public class PlayerListener implements Listener {
         if (plugin.getPartyManager() != null) {
             plugin.getPartyManager().handlePlayerQuit(uuid);
         }
+        if (plugin.getPartyFFAManager() != null) {
+            plugin.getPartyFFAManager().handlePlayerQuit(uuid);
+        }
 
         plugin.getScoreboardManager().removeScoreboard(uuid);
         plugin.getPlayerManager().savePlayerData(uuid);

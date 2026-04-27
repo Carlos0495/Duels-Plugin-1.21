@@ -25,6 +25,32 @@ public class DuelListener implements Listener {
         Player dead = event.getEntity();
         Player killer = dead.getKiller();
 
+        // Party-FFA-Arena Teilnehmer? Eigene Death-Pipeline.
+        if (plugin.getPartyFFAManager().isParticipant(dead.getUniqueId())) {
+            event.setDeathMessage(null);
+            event.getDrops().clear();
+            event.setDroppedExp(0);
+            event.setKeepInventory(true);
+            event.setKeepLevel(true);
+
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    plugin.getPartyFFAManager().handleDeath(dead));
+
+            // Auto-Respawn
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (dead.isOnline() && dead.isDead()) {
+                    try { dead.spigot().respawn(); } catch (Throwable ignored) { dead.spigot().respawn(); }
+                }
+            }, 2L);
+
+            // Kill-Stat für Killer
+            if (killer != null) {
+                plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
+            }
+            plugin.getPlayerManager().addStat(dead.getUniqueId(), "deaths", 1);
+            return;
+        }
+
         // In Duel?
         if (plugin.getDuelManager().isInDuel(dead.getUniqueId())) {
             event.setDeathMessage(null);
@@ -76,6 +102,11 @@ public class DuelListener implements Listener {
             return;
         }
 
+        // In Party-FFA - Schaden erlauben
+        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) {
+            return;
+        }
+
         // In Creative - Schaden erlauben
         if (player.getGameMode() == GameMode.CREATIVE) {
             return;
@@ -95,6 +126,21 @@ public class DuelListener implements Listener {
 
         // In Duel - Schaden erlauben
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
+            return;
+        }
+
+        // Party-FFA: PvP nur zwischen Mitgliedern derselben Session zulassen.
+        // Andere Damager (z.B. zufälliger Lobby-Spieler, der über das FFA-
+        // Areal läuft) werden geblockt.
+        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) {
+            if (event.getDamager() instanceof Player damager) {
+                if (plugin.getPartyFFAManager().canDamage(damager.getUniqueId(), player.getUniqueId())) {
+                    return;
+                }
+                event.setCancelled(true);
+                return;
+            }
+            // Umweltschaden (Void/Fall/Fire) im FFA durchlassen
             return;
         }
 

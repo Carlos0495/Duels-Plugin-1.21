@@ -26,6 +26,20 @@ public class MainCommand implements CommandExecutor {
             return true;
         }
 
+        if (args.length > 0 && args[0].equalsIgnoreCase("setpartyffaspawn")) {
+            if (!sender.hasPermission("duels.admin")) {
+                sender.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+                return true;
+            }
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                return true;
+            }
+            plugin.getArenaManager().setPartyFFASpawn(p.getLocation());
+            p.sendMessage(plugin.getPrefix() + "§aParty-FFA spawn set to your current location.");
+            return true;
+        }
+
         // Hilfe anzeigen
         sender.sendMessage(plugin.getPrefix() + "§aDuels Plugin by Ryhox.");
         sender.sendMessage("§3Commands:");
@@ -43,6 +57,7 @@ public class MainCommand implements CommandExecutor {
 
         if (sender.hasPermission("duels.admin")) {
             sender.sendMessage("§c/setspawn §8- §7Set spawn location");
+            sender.sendMessage("§c/duels setpartyffaspawn §8- §7Set Party-FFA arena spawn");
             sender.sendMessage("§c/setkills <player> <amount> §8- §7Set player kills");
             sender.sendMessage("§c/setdeaths <player> <amount> §8- §7Set player deaths");
             sender.sendMessage("§c/setwins <player> <amount> §8- §7Set player wins");

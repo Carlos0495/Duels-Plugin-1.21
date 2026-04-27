@@ -52,6 +52,25 @@ public class KitManager {
                 kit.setPreviewMaterial(Material.DIAMOND_SWORD);
             }
 
+            // Breakable Blocks laden (Liste von Material-Namen, case-insensitive,
+            // ungültige Einträge werden geloggt und ignoriert).
+            kit.getBreakableBlocks().clear();
+            java.util.List<String> breakable =
+                    kitsSection.getStringList(kitId + ".breakable-blocks");
+            for (String entry : breakable) {
+                if (entry == null || entry.trim().isEmpty()) continue;
+                try {
+                    Material m = Material.matchMaterial(entry.trim().toUpperCase());
+                    if (m == null) {
+                        plugin.getLogger().warning("Kit '" + kitId + "': unknown material in breakable-blocks: " + entry);
+                        continue;
+                    }
+                    kit.getBreakableBlocks().add(m);
+                } catch (Exception ex) {
+                    plugin.getLogger().warning("Kit '" + kitId + "': bad breakable-blocks entry: " + entry);
+                }
+            }
+
             // Items laden
             if (kitsSection.contains(kitId + ".items")) {
                 ConfigurationSection itemsSection = kitsSection.getConfigurationSection(kitId + ".items");
@@ -84,6 +103,22 @@ public class KitManager {
         plugin.getConfigManager().getKitsConfig().set(path + ".displayName", uncolorize(kit.getDisplayName()));
 
         plugin.getConfigManager().getKitsConfig().set(path + ".preview_material", kit.getPreviewMaterial().name());
+
+        // Breakable blocks als String-Liste speichern (nur wenn nicht leer,
+        // sonst wird die Liste explizit geleert für sauberes YAML).
+        if (kit.getBreakableBlocks().isEmpty()) {
+            // Nicht überschreiben falls User die Liste manuell in YAML editiert
+            // hat und das Kit nur über UI gespeichert wird ohne breakable-Blocks
+            // verändert zu haben — lese existierenden Wert und respektiere ihn.
+            if (!plugin.getConfigManager().getKitsConfig().contains(path + ".breakable-blocks")) {
+                plugin.getConfigManager().getKitsConfig().set(path + ".breakable-blocks", new java.util.ArrayList<String>());
+            }
+        } else {
+            java.util.List<String> names = new java.util.ArrayList<>(kit.getBreakableBlocks().size());
+            for (Material m : kit.getBreakableBlocks()) names.add(m.name());
+            java.util.Collections.sort(names);
+            plugin.getConfigManager().getKitsConfig().set(path + ".breakable-blocks", names);
+        }
 
         // Alte Items löschen
         plugin.getConfigManager().getKitsConfig().set(path + ".items", null);
@@ -276,6 +311,12 @@ public class KitManager {
         private String displayName; // colored
         private Material previewMaterial;
         private final Map<Integer, ItemStack> items = new HashMap<>();
+        // Konfigurierbare Materialien, die im Duel mit diesem Kit gebrochen
+        // bzw. (zwischen)gesetzt werden dürfen. Leer = nichts darf gebrochen
+        // werden (Standardverhalten für Pure-PvP-Kits). Crystal-Kits haben
+        // typischerweise OBSIDIAN, BEDROCK (place by crystal explosion target)
+        // und END_CRYSTAL hier drin.
+        private final java.util.Set<Material> breakableBlocks = java.util.EnumSet.noneOf(Material.class);
 
         public Kit(String id) {
             this.id = id;
@@ -302,6 +343,12 @@ public class KitManager {
 
         public ItemStack getItem(int slot) {
             return items.get(slot);
+        }
+
+        public java.util.Set<Material> getBreakableBlocks() { return breakableBlocks; }
+
+        public boolean isBreakable(Material m) {
+            return breakableBlocks.contains(m);
         }
     }
     public String getKitDisplayName(String kitId) {

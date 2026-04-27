@@ -27,6 +27,10 @@ public class ArenaManager {
      */
     private String pendingSpawnString;
 
+    /** Eigener Spawn für Party-FFA (alle gegen alle in einer Arena). */
+    private Location partyFFASpawn;
+    private String pendingPartyFFASpawnString;
+
     public ArenaManager(DuelsPlugin plugin) {
         this.plugin = plugin;
     }
@@ -36,6 +40,7 @@ public class ArenaManager {
         availableArenas.clear();
 
         loadSpawnFromConfig();
+        loadPartyFFASpawnFromConfig();
 
         var arenaCfg = plugin.getConfigManager().getArenaConfig();
         if (arenaCfg == null || !arenaCfg.contains("arenas")) return;
@@ -377,14 +382,59 @@ public class ArenaManager {
      * jetzt nachträglich aufgelöst.
      */
     public void onWorldLoaded(String worldName) {
-        if (spawnLocation != null) return;
-        if (pendingSpawnString == null) return;
-        String[] parts = pendingSpawnString.split(",", 2);
-        if (parts.length < 1) return;
-        if (!parts[0].equalsIgnoreCase(worldName)) return;
-        tryResolveSpawn();
-        if (spawnLocation != null) {
-            plugin.getLogger().info("Resolved lobby spawn in world '" + worldName + "' after world load.");
+        // Lobby-Spawn
+        if (spawnLocation == null && pendingSpawnString != null) {
+            String[] parts = pendingSpawnString.split(",", 2);
+            if (parts.length >= 1 && parts[0].equalsIgnoreCase(worldName)) {
+                tryResolveSpawn();
+                if (spawnLocation != null) {
+                    plugin.getLogger().info("Resolved lobby spawn in world '" + worldName + "' after world load.");
+                }
+            }
+        }
+
+        // Party-FFA-Spawn — gleiches Lazy-Load-Schema
+        if (partyFFASpawn == null && pendingPartyFFASpawnString != null) {
+            String[] parts = pendingPartyFFASpawnString.split(",", 2);
+            if (parts.length >= 1 && parts[0].equalsIgnoreCase(worldName)) {
+                Location loc = stringToLoc(pendingPartyFFASpawnString);
+                if (loc != null) {
+                    partyFFASpawn = loc;
+                    plugin.getLogger().info("Resolved Party-FFA spawn in world '" + worldName + "' after world load.");
+                }
+            }
+        }
+    }
+
+    public Location getPartyFFASpawn() {
+        if (partyFFASpawn == null && pendingPartyFFASpawnString != null) {
+            Location loc = stringToLoc(pendingPartyFFASpawnString);
+            if (loc != null) partyFFASpawn = loc;
+        }
+        return partyFFASpawn;
+    }
+
+    public void setPartyFFASpawn(Location location) {
+        this.partyFFASpawn = location;
+        String s = locToString(location);
+        this.pendingPartyFFASpawnString = s;
+        var main = plugin.getConfigManager().getMainConfig();
+        main.set("party-ffa-spawn-string", s);
+        plugin.saveConfig();
+        plugin.getConfigManager().saveAllConfigs();
+    }
+
+    private void loadPartyFFASpawnFromConfig() {
+        var main = plugin.getConfigManager().getMainConfig();
+        if (!main.isString("party-ffa-spawn-string")) return;
+        pendingPartyFFASpawnString = main.getString("party-ffa-spawn-string");
+        Location loc = stringToLoc(pendingPartyFFASpawnString);
+        if (loc != null) {
+            partyFFASpawn = loc;
+        } else {
+            String worldName = pendingPartyFFASpawnString.split(",", 2)[0];
+            plugin.getLogger().warning("Party-FFA spawn world '" + worldName
+                    + "' is not loaded yet. Will resolve after world load.");
         }
     }
 

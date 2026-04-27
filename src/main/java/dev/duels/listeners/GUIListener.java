@@ -771,9 +771,23 @@ public class GUIListener implements Listener {
                         Player p = Bukkit.getPlayer(m);
                         if (p != null && p.isOnline()) members.add(p);
                     }
-                    int started = plugin.getDuelManager().startPartyFFA(members, kitId, bestOf);
-                    plugin.getPartyManager().broadcast(party,
-                            "§6FFA §7started §f" + started + " §7duels.");
+                    // Wenn ein Party-FFA-Spawn gesetzt ist, nutzen wir den
+                    // "echten" all-vs-all Arena-Modus (ein Areal, last alive
+                    // wins). Andernfalls Fallback auf Pair-FFA (klassische
+                    // 1v1-Duelle, zufällig gepaart).
+                    if (plugin.getArenaManager().getPartyFFASpawn() != null) {
+                        String err = plugin.getPartyFFAManager().start(party, kitId, members);
+                        if (err != null) {
+                            player.sendMessage(plugin.getPrefix() + "§c" + err);
+                        } else {
+                            plugin.getPartyManager().broadcast(party,
+                                    "§6FFA Arena §7started!");
+                        }
+                    } else {
+                        int started = plugin.getDuelManager().startPartyFFA(members, kitId, bestOf);
+                        plugin.getPartyManager().broadcast(party,
+                                "§6FFA §7started §f" + started + " §7duels.");
+                    }
                     player.closeInventory();
                 }
                 case "TEAMS_START" -> {

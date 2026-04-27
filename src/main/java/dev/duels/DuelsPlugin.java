@@ -20,6 +20,7 @@ public final class DuelsPlugin extends JavaPlugin {
     private GUIManager guiManager;
     private HotbarManager hotbarManager;
     private PartyManager partyManager;
+    private PartyFFAManager partyFFAManager;
 
     @Override
     public void onEnable() {
@@ -38,6 +39,7 @@ public final class DuelsPlugin extends JavaPlugin {
         guiManager = new GUIManager(this);
         hotbarManager = new HotbarManager(this);
         partyManager = new PartyManager(this);
+        partyFFAManager = new PartyFFAManager(this);
 
         // Konfigurationen laden
         configManager.loadAllConfigs();
@@ -97,6 +99,7 @@ public final class DuelsPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new GUIListener(this), this);
         Bukkit.getPluginManager().registerEvents(new HotbarLockListener(this), this);
         Bukkit.getPluginManager().registerEvents(new WorldListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new dev.duels.listeners.BlockBreakListener(this), this);
     }
 
     private void registerCommands() {
@@ -155,6 +158,7 @@ public final class DuelsPlugin extends JavaPlugin {
     public GUIManager getGuiManager() { return guiManager; }
     public HotbarManager getHotbarManager() { return hotbarManager; }
     public PartyManager getPartyManager() { return partyManager; }
+    public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
 
     // Konstanten
     public String getPrefix() {
