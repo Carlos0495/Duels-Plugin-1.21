@@ -46,6 +46,7 @@ public final class DuelsPlugin extends JavaPlugin {
         configManager.reloadPlayersConfig();
         kitManager.loadCustomLayoutsFromFile();
         hotbarManager.loadHotbarConfig();
+        partyManager.loadConfig();
 
         Bukkit.getScheduler().runTaskLater(this, () -> arenaManager.loadArenas(), 40L);
         kitManager.loadKits();

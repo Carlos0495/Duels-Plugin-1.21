@@ -41,8 +41,21 @@ public class PartyManager {
 
     public PartyManager(DuelsPlugin plugin) {
         this.plugin = plugin;
-        // Defaults
+        // Konstruktor bewusst seiteneffekt-frei lassen: Bei Plugin-Enable wird
+        // PartyManager VOR ConfigManager.loadAllConfigs() instanziiert; wenn
+        // wir hier auf getMainConfig() zugreifen, ist mainConfig noch null
+        // und das ganze Plugin scheitert beim Enable (rot in /plugins).
+        // Defaults werden später in loadConfig() gesetzt.
+    }
+
+    /**
+     * Schreibt die Standardwerte für Partys in {@code config.yml} falls noch
+     * keine vorhanden sind. Muss NACH {@code ConfigManager.loadAllConfigs()}
+     * aufgerufen werden.
+     */
+    public void loadConfig() {
         var main = plugin.getConfigManager().getMainConfig();
+        if (main == null) return;
         boolean dirty = false;
         if (!main.contains("party.size.default")) { main.set("party.size.default", 15); dirty = true; }
         if (!main.contains("party.size.tier1")) { main.set("party.size.tier1", 20); dirty = true; }
