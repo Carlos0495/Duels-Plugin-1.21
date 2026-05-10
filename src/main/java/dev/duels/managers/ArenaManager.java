@@ -246,9 +246,12 @@ public class ArenaManager {
         List<Arena> available = new ArrayList<>();
         for (Arena arena : arenas.values()) {
             if (arena.isInUse()) continue;
-            if (!arena.hasSnapshot()) continue;
+            // Block-Level Snapshot ist NICHT mehr Pflicht für die Queue —
+            // bei Sumo/NoDebuff oder zu großen Arenen wird kein Snapshot
+            // genommen, das Duell läuft trotzdem. resetArena() überspringt
+            // dann nur den Block-Restore (Entities werden weiterhin
+            // gekillt).
             if (arena.getSpawn1() == null || arena.getSpawn2() == null) continue;
-            if (arena.getCorner1() == null || arena.getCorner2() == null) continue;
             if (kitId != null && !arena.isKitAllowed(kitId)) continue;
             available.add(arena);
         }
@@ -292,11 +295,8 @@ public class ArenaManager {
         for (Arena arena : arenas.values()) {
             StringBuilder reason = new StringBuilder();
             if (arena.isInUse()) reason.append("inUse ");
-            if (!arena.hasSnapshot()) reason.append("noSnapshot ");
             if (arena.getSpawn1() == null) reason.append("noSpawn1 ");
             if (arena.getSpawn2() == null) reason.append("noSpawn2 ");
-            if (arena.getCorner1() == null) reason.append("noCorner1 ");
-            if (arena.getCorner2() == null) reason.append("noCorner2 ");
             if (kitId != null && !arena.isKitAllowed(kitId)) reason.append("kitNotAllowed ");
             if (reason.length() == 0) reason.append("ok? (would have matched — race?)");
             plugin.getLogger().warning("  - " + arena.getName() + ": " + reason.toString().trim());
@@ -324,7 +324,12 @@ public class ArenaManager {
     }
 
     public void resetArena(Arena arena, Runnable onComplete) {
-        if (arena == null || !arena.hasSnapshot()) {
+        if (arena == null) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+        // Wenn keine Bounds gesetzt sind, gibt's nichts zurückzusetzen.
+        if (!arena.hasSnapshotBounds()) {
             if (onComplete != null) onComplete.run();
             return;
         }
@@ -335,12 +340,15 @@ public class ArenaManager {
             return;
         }
 
-        // Blocks setzen + Entities (Arrows, gedroppte Items, Crystals, Trides
-        // etc.) entfernen — alles sync, weil Bukkit-API main-thread-only.
+        // Blocks setzen (falls Snapshot vorhanden) + Entities (Arrows,
+        // gedroppte Items, Crystals, Trides etc.) entfernen — alles sync,
+        // weil Bukkit-API main-thread-only.
         Bukkit.getScheduler().runTask(plugin, () -> {
-            for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
-                BlockVector v = e.getKey();
-                world.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+            if (arena.hasSnapshot()) {
+                for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
+                    BlockVector v = e.getKey();
+                    world.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+                }
             }
             cleanupArenaEntities(world, arena);
             if (onComplete != null) onComplete.run();
@@ -354,7 +362,7 @@ public class ArenaManager {
      * Spieler bleibt unangetastet.
      */
     private void cleanupArenaEntities(org.bukkit.World world, Arena arena) {
-        if (world == null || !arena.hasSnapshot()) return;
+        if (world == null || !arena.hasSnapshotBounds()) return;
         int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
         int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();
         // Etwas Padding nach oben/außen, damit Arrows die im Snapshot-Rand

@@ -55,6 +55,13 @@ public class Arena {
     public String getSnapshotWorld() { return snapshotWorld; }
     public void setSnapshotWorld(String snapshotWorld) { this.snapshotWorld = snapshotWorld; }
 
+    /** True wenn Bounds gesetzt sind (auch wenn keine Block-Daten erfasst wurden). */
+    public boolean hasSnapshotBounds() {
+        return snapshotWorld != null
+                && !(snapshotMinX == 0 && snapshotMinY == 0 && snapshotMinZ == 0
+                  && snapshotMaxX == 0 && snapshotMaxY == 0 && snapshotMaxZ == 0);
+    }
+
     public void setSnapshotBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         this.snapshotMinX = minX;
         this.snapshotMinY = minY;

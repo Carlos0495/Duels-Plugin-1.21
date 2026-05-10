@@ -128,10 +128,13 @@ public class PartyFFAManager {
                         session.graceTask = null;
                     }
                     broadcastToSession(session, "§a§lGO! §7PvP is now enabled.");
+                    showTitleToSession(session, "§a§lGO!", "§7PvP enabled", 0, 30, 10);
                     return;
                 }
                 int secLeft = (session.graceTicksLeft + 19) / 20;
                 if (session.graceTicksLeft % 20 == 0) {
+                    // Title-Countdown jede Sekunde (User-Wunsch).
+                    showTitleToSession(session, "§e§l" + secLeft, "§7PvP in §6" + secLeft + "s", 0, 25, 5);
                     if (secLeft <= 5 || secLeft == 10) {
                         broadcastToSession(session, "§ePvP in §6" + secLeft + "s§7...");
                     }
@@ -170,7 +173,7 @@ public class PartyFFAManager {
             if (session.alive.size() <= 1) {
                 // Match endet sowieso gleich → ist okay, gleich endSession lassen
             }
-            plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchor);
+            plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchor, session.leaderId);
         }, 3L);
 
         if (session.alive.size() <= 1) {
@@ -230,10 +233,25 @@ public class PartyFFAManager {
         // Alle restlichen Teilnehmer (Tote im Spectator-Modus) zurück in Lobby
         plugin.getSpectateManager().endMatch("ffa:" + session.leaderId);
 
-        // Komplett aus dem playerToSession räumen — auch Spieler die im
-        // Spectator-Mode hängen, falls etwas verpasst wurde.
+        // Sicherheits-Restore: jeder Teilnehmer (außer Sieger, der ist schon
+        // teleportiert) wird zwangsweise auf SURVIVAL + Lobby + Lobby-Inv
+        // zurückgesetzt. Falls SpectateManager einen Spieler verpasst (z.B.
+        // weil er disconnected war als er starb), fängt das den Bug ab.
+        UUID winnerId = winner != null ? winner.getUniqueId() : null;
+        Location lobbySpawn = plugin.getArenaManager().getSpawnLocation();
         for (UUID u : session.allParticipants) {
             playerToSession.remove(u);
+            if (u.equals(winnerId)) continue;
+            Player p = Bukkit.getPlayer(u);
+            if (p == null || !p.isOnline()) continue;
+            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
+                p.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            }
+            if (lobbySpawn != null) p.teleport(lobbySpawn);
+            DuelManager.clearFullInventory(p);
+            plugin.getPlayerManager().forceLobbyState(p);
+            plugin.getPlayerManager().setupPlayerInventory(p);
+            plugin.getPlayerManager().applyLobbyFly(p);
         }
         sessionsByLeader.remove(session.leaderId);
 
@@ -246,6 +264,17 @@ public class PartyFFAManager {
             // gedroppte Items, Crystals etc.) und stellt den Snapshot wieder
             // her — Pendant zum Duell-Ende.
             plugin.getArenaManager().resetArena(arena, () -> arena.setInUse(false));
+        }
+    }
+
+    /** Sendet einen Title an alle aktuell teilnehmenden Spieler der Session. */
+    private void showTitleToSession(FFASession session, String title, String subtitle,
+                                    int fadeIn, int stay, int fadeOut) {
+        for (UUID u : session.allParticipants) {
+            Player p = Bukkit.getPlayer(u);
+            if (p != null && p.isOnline()) {
+                p.sendTitle(title, subtitle, fadeIn, stay, fadeOut);
+            }
         }
     }
 

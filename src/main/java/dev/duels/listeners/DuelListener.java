@@ -136,39 +136,13 @@ public class DuelListener implements Listener {
 
     @EventHandler
     public void onItemDrop(PlayerDropItemEvent event) {
-        Player player = event.getPlayer();
-
-        // In Duel oder Party-FFA: droppen erlauben (z.B. um Items zu tauschen,
-        // Crystals/Pots wegzuwerfen). Inventar wird nach dem Match sowieso
-        // komplett geleert.
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
-        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
-
-        // In Survival/Lobby - Item Drop verhindern (nicht Creative)
-        if (player.getGameMode() != GameMode.CREATIVE) {
-            event.setCancelled(true);
-        }
+        // Drop ist global erlaubt (User-Wunsch). Nur Lobby-Hotbar-Items
+        // (PDC-Tag) werden im HotbarLockListener separat geblockt.
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDropItem(EntityDropItemEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
-
-            // Im Duel/FFA: durchlassen (siehe onItemDrop).
-            if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
-            if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
-
-            // In Survival - Item Drop verhindern
-            if (player.getGameMode() != GameMode.CREATIVE) {
-                event.setCancelled(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onCraftItem(org.bukkit.event.inventory.CraftItemEvent event) {
-        event.setCancelled(true);
+        // Drop global erlaubt (User-Wunsch).
     }
 
     @EventHandler

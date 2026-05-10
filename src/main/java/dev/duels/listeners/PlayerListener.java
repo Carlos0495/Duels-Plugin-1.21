@@ -189,8 +189,11 @@ public class PlayerListener implements Listener {
      * {@link org.bukkit.event.entity.EntityDamageByEntityEvent} — wir
      * canceln den Damage und öffnen stattdessen die GUI.
      */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onAttackEntity(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
+        // ignoreCancelled=false + LOWEST: läuft AUCH wenn ein Anti-PvP-Plugin
+        // den Hit cancelt (das Event geht trotzdem durch, nur cancelled=true).
+        // Wir lesen den Hit selbst, öffnen die GUI und canceln den Damage.
         if (!(event.getDamager() instanceof Player player)) return;
         if (!(event.getEntity() instanceof Player target)) return;
 

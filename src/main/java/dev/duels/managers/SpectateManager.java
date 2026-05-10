@@ -93,14 +93,16 @@ public class SpectateManager {
      * Matches. Pre-Snapshot wird aus der ursprünglichen Lobby genommen
      * (Lobby-Spawn), nicht aus der Death-Location.
      */
-    public void enterAutoSpectateForFFA(Player dead, UUID someAliveTeammate) {
+    public void enterAutoSpectateForFFA(Player dead, UUID someAliveTeammate, UUID sessionLeaderId) {
         if (dead == null) return;
         SpectateInfo info = new SpectateInfo();
         Location lobby = plugin.getArenaManager().getSpawnLocation();
         info.previousLocation = lobby != null ? lobby.clone() : dead.getLocation();
         info.previousGameMode = GameMode.SURVIVAL;
         info.targetId = someAliveTeammate;
-        info.matchKey = "ffa:" + someAliveTeammate;
+        // matchKey muss zum endMatch("ffa:" + leaderId) Aufruf passen, damit
+        // die Spectator beim Session-Ende wieder in SURVIVAL + Lobby kommen.
+        info.matchKey = "ffa:" + sessionLeaderId;
         spectators.put(dead.getUniqueId(), info);
 
         dead.setGameMode(GameMode.SPECTATOR);
