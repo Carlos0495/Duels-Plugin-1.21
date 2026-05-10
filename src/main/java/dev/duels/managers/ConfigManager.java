@@ -87,9 +87,18 @@ public class ConfigManager {
         }
     }
 
+    /**
+     * Schreibt Default-Werte einzeln und nur wenn der Key fehlt (per-Key-
+     * Guard). Speichert nur dann zurück, wenn wirklich was hinzugefügt
+     * wurde. So überleben User-Edits an einzelnen Keys den Plugin-Neustart.
+     */
     private void setDefaults() {
+        boolean dirty = false;
         if (!mainConfig.contains("scoreboard-title")) {
             mainConfig.set("scoreboard-title", "§3§l🪓 Duels");
+            dirty = true;
+        }
+        if (!mainConfig.contains("scoreboard-lines")) {
             mainConfig.set("scoreboard-lines", java.util.Arrays.asList(
                     "",
                     "§a☻ §7ᴏɴʟɪɴᴇ §a%online%",
@@ -104,6 +113,9 @@ public class ConfigManager {
                     "§b🧪 §7ᴡɪɴ ʀᴀᴛᴇ §b%winrate%",
                     ""
             ));
+            dirty = true;
+        }
+        if (!mainConfig.contains("duel-scoreboard-lines")) {
             mainConfig.set("duel-scoreboard-lines", java.util.Arrays.asList(
                     "",
                     "§a☻ §7ᴏɴʟɪɴᴇ §a%online%",
@@ -118,13 +130,16 @@ public class ConfigManager {
                     "§e🧪 §7ᴛɪᴍᴇ ʟᴇꜰᴛ §e%timeleft%",
                     ""
             ));
-            mainConfig.set("duel-time", 180);
-            mainConfig.set("request-timeout", 30);
-            mainConfig.set("default-map", "§cᴅᴜᴇʟѕ ᴍᴀᴘ");
-            mainConfig.set("default-bestof", 1);
-            mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10));
-            plugin.saveConfig();
+            dirty = true;
         }
+        if (!mainConfig.contains("duel-time")) { mainConfig.set("duel-time", 180); dirty = true; }
+        if (!mainConfig.contains("request-timeout")) { mainConfig.set("request-timeout", 30); dirty = true; }
+        if (!mainConfig.contains("default-map")) { mainConfig.set("default-map", "§cᴅᴜᴇʟѕ ᴍᴀᴘ"); dirty = true; }
+        if (!mainConfig.contains("default-bestof")) { mainConfig.set("default-bestof", 1); dirty = true; }
+        if (!mainConfig.contains("bestof-options")) { mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10)); dirty = true; }
+        if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
+        if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
+        if (dirty) plugin.saveConfig();
     }
 
     /**
@@ -145,6 +160,27 @@ public class ConfigManager {
      */
     public void saveAllConfigs() {
         savePlayersConfig();
+    }
+
+    /**
+     * Lädt {@code config.yml} frisch von Disk in den Speicher. WICHTIG vor
+     * jedem Schreib-Pfad, der nur einzelne Keys ändert (z.B. /setspawn).
+     * Sonst hätten Hand-Edits, die der Admin direkt in der Datei gemacht
+     * hat, eine Race mit dem stale In-Memory-Zustand verloren.
+     */
+    public void reloadMainConfigFromDisk() {
+        plugin.reloadConfig();
+        this.mainConfig = plugin.getConfig();
+    }
+
+    public void reloadKitsConfigFromDisk() {
+        if (kitsFile == null) return;
+        this.kitsConfig = YamlConfiguration.loadConfiguration(kitsFile);
+    }
+
+    public void reloadArenaConfigFromDisk() {
+        if (arenaFile == null) return;
+        this.arenaConfig = YamlConfiguration.loadConfiguration(arenaFile);
     }
 
     public void savePlayersConfig() {

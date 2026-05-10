@@ -91,13 +91,28 @@ public class KitManager {
                 }
             }
 
-            // Pro-Kit Duell-Dauer (Sekunden). -1 = bis einer stirbt.
-            if (kitsSection.contains(kitId + ".duration-seconds")) {
-                kit.setDurationSeconds(kitsSection.getInt(kitId + ".duration-seconds", 0));
+            // Pro-Kit Duell-Dauer:
+            //   duration-seconds: 0  → globaler Default (config.yml: duel-time)
+            //   duration-seconds: N  → exakt N Sekunden für dieses Kit
+            //   until-death: true    → kein Timer, läuft bis einer stirbt
+            // Beim ersten Laden werden Default-Werte (0 / false) automatisch
+            // in kits.yml geschrieben, damit der Admin sie einfach finden
+            // und editieren kann (User-Wunsch: "ich weiß nicht wie ich die
+            // kit timer einstellen kann").
+            boolean wroteDefaults = false;
+            if (!kitsSection.contains(kitId + ".duration-seconds")) {
+                kitsSection.set(kitId + ".duration-seconds", 0);
+                wroteDefaults = true;
             }
-            if (kitsSection.contains(kitId + ".until-death")) {
-                kit.setUntilDeath(kitsSection.getBoolean(kitId + ".until-death", false));
+            if (!kitsSection.contains(kitId + ".until-death")) {
+                kitsSection.set(kitId + ".until-death", false);
+                wroteDefaults = true;
             }
+            if (wroteDefaults) {
+                plugin.getConfigManager().saveKitsConfig();
+            }
+            kit.setDurationSeconds(kitsSection.getInt(kitId + ".duration-seconds", 0));
+            kit.setUntilDeath(kitsSection.getBoolean(kitId + ".until-death", false));
 
             // Items laden
             if (kitsSection.contains(kitId + ".items")) {
@@ -122,6 +137,10 @@ public class KitManager {
     }
 
     public void saveKit(String kitId, Kit kit) {
+        // Vor dem Schreiben Disk-Stand laden, sonst werden Hand-Edits an
+        // anderen Kits in kits.yml beim nächsten saveKit überschrieben
+        // (Config-Reset-Fix).
+        plugin.getConfigManager().reloadKitsConfigFromDisk();
         String path = "kits." + kitId;
 
         // keep legacy field if you want (optional), but the important one is displayName
@@ -174,6 +193,7 @@ public class KitManager {
 
     public void deleteKit(String kitId) {
         kits.remove(kitId);
+        plugin.getConfigManager().reloadKitsConfigFromDisk();
         plugin.getConfigManager().getKitsConfig().set("kits." + kitId, null);
         plugin.getConfigManager().saveKitsConfig();
     }

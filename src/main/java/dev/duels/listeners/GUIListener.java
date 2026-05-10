@@ -405,12 +405,13 @@ public class GUIListener implements Listener {
                 break;
         }
 
-        // Klick im Player-Inventar (bottom): alles ignorieren, aber Hotbar 0-8 sperren
+        // Klick im Player-Inventar (bottom): während die Layout-Edit-GUI
+        // offen ist KOMPLETT sperren. Sonst kann der Spieler ein Item aus
+        // dem Kit-Slot picken (Cursor) und in seinem echten Inventar
+        // ablegen → Free-Item-Bug. Items im Inventar bleiben sichtbar,
+        // sind aber nicht klickbar während die GUI offen ist.
         if (clickedInv != null && clickedInv.equals(event.getView().getBottomInventory())) {
-            int slot = event.getSlot(); // 0-35 bottom
-            if (slot >= 0 && slot <= 8) {
-                event.setCancelled(true);
-            }
+            event.setCancelled(true);
             return;
         }
 
@@ -830,27 +831,26 @@ public class GUIListener implements Listener {
                     } catch (IllegalArgumentException ignored) {}
                 }
                 case "FFA" -> {
+                    // Party-FFA = alle gegen alle auf EINER Map (User-Wunsch).
+                    // Pair-FFA-Fallback wurde bewusst entfernt — wenn der
+                    // Admin keinen FFA-Spawn gesetzt hat, soll er das tun
+                    // statt eine andere Mode-Variante geliefert zu bekommen.
+                    if (plugin.getArenaManager().getPartyFFASpawn() == null) {
+                        player.sendMessage(plugin.getPrefix() + "§cParty-FFA spawn is not set!");
+                        player.sendMessage(plugin.getPrefix() + "§7Admin: stand on the FFA spawn point and run §e/duels setpartyffaspawn§7.");
+                        player.closeInventory();
+                        return;
+                    }
                     java.util.List<Player> members = new java.util.ArrayList<>();
                     for (UUID m : party.getMembers()) {
                         Player p = Bukkit.getPlayer(m);
                         if (p != null && p.isOnline()) members.add(p);
                     }
-                    // Wenn ein Party-FFA-Spawn gesetzt ist, nutzen wir den
-                    // "echten" all-vs-all Arena-Modus (ein Areal, last alive
-                    // wins). Andernfalls Fallback auf Pair-FFA (klassische
-                    // 1v1-Duelle, zufällig gepaart).
-                    if (plugin.getArenaManager().getPartyFFASpawn() != null) {
-                        String err = plugin.getPartyFFAManager().start(party, kitId, members);
-                        if (err != null) {
-                            player.sendMessage(plugin.getPrefix() + "§c" + err);
-                        } else {
-                            plugin.getPartyManager().broadcast(party,
-                                    "§6FFA Arena §7started!");
-                        }
+                    String err = plugin.getPartyFFAManager().start(party, kitId, members);
+                    if (err != null) {
+                        player.sendMessage(plugin.getPrefix() + "§c" + err);
                     } else {
-                        int started = plugin.getDuelManager().startPartyFFA(members, kitId, bestOf);
-                        plugin.getPartyManager().broadcast(party,
-                                "§6FFA §7started §f" + started + " §7duels.");
+                        plugin.getPartyManager().broadcast(party, "§6FFA Arena §7started!");
                     }
                     player.closeInventory();
                 }

@@ -148,10 +148,21 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 }
 
     public void setupPlayerInventory(Player player) {
-        // Vor dem Hotbar-Setup: Armor + Offhand leeren. Hauptinventar wird
-        // von HotbarManager.applyMode() ohnehin gecleart (Slots 0-8). Hier
-        // sorgen wir dafür, dass nach jedem Duel/Disconnect/Forfeit auch
-        // Helm/Brust/Hose/Schuhe/Offhand garantiert weg sind.
+        // In der Lobby-Welt: Hotbar setzen (HotbarManager.applyMode räumt
+        // davor Slots 0-8 ab und schreibt die konfigurierten Items rein).
+        // Außerhalb der Lobby-Welt: NUR die PDC-getaggten Hotbar-Items aus
+        // dem Inventar entfernen, sonst NICHTS anfassen — Rüstung, Offhand
+        // und sonstige Items des Spielers bleiben unangetastet (User-Bug:
+        // Welt-Wechsel hat vorher Rüstung gelöscht).
+        if (!isInLobbyWorld(player)) {
+            removeHotbarItems(player);
+            player.updateInventory();
+            return;
+        }
+
+        // In der Lobby-Welt: Hotbar via HotbarManager applizieren. Das setzt
+        // automatisch Slot 0-8. Armor + Offhand sind in der Lobby grund-
+        // sätzlich nicht vorgesehen — die werden nur hier (Lobby) geclearet.
         var inv = player.getInventory();
         inv.setHelmet(null);
         inv.setChestplate(null);
@@ -159,15 +170,6 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         inv.setBoots(null);
         inv.setItemInOffHand(null);
 
-        // Hotbar-Items werden NUR in der Lobby-Welt gegeben. Außerhalb
-        // bleibt das Inventar leer (User-Wunsch: Hotbar nur in der Lobby).
-        if (!isInLobbyWorld(player)) {
-            player.updateInventory();
-            return;
-        }
-
-        // Delegiert an HotbarManager (liest Items aus config.yml). Je nach
-        // Party-Status wird der passende Modus gewählt.
         HotbarManager hotbar = plugin.getHotbarManager();
         if (hotbar == null) {
             player.getInventory().clear();
@@ -183,6 +185,34 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
                     : HotbarManager.MODE_PARTY_MEMBER;
         }
         hotbar.applyMode(player, mode);
+    }
+
+    /**
+     * Entfernt alle PDC-getaggten Hotbar-Items aus dem Inventar. Andere
+     * Items, Rüstung und Offhand bleiben unangetastet. Wird beim Verlassen
+     * der Lobby-Welt aufgerufen.
+     */
+    public void removeHotbarItems(Player player) {
+        if (player == null) return;
+        HotbarManager hm = plugin.getHotbarManager();
+        if (hm == null) return;
+        var inv = player.getInventory();
+        for (int i = 0; i < inv.getSize(); i++) {
+            var item = inv.getItem(i);
+            if (item == null) continue;
+            String action = hm.readAction(item);
+            if (action != null && !action.isEmpty()) {
+                inv.setItem(i, null);
+            }
+        }
+        // Offhand auch checken (falls dort ein Hotbar-Item gelandet ist).
+        var off = inv.getItemInOffHand();
+        if (off != null) {
+            String action = hm.readAction(off);
+            if (action != null && !action.isEmpty()) {
+                inv.setItemInOffHand(null);
+            }
+        }
     }
 
     /** True, falls der Spieler in der Welt steht, in der der Plugin-Spawn gesetzt ist. */

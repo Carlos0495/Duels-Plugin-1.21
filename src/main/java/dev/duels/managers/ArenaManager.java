@@ -165,6 +165,9 @@ public class ArenaManager {
     }
 
     public void saveArena(Arena arena) {
+        // Vor dem Schreiben Disk-Stand laden, damit Hand-Edits an anderen
+        // Arenen / Keys in arena.yml erhalten bleiben (Config-Reset-Fix).
+        plugin.getConfigManager().reloadArenaConfigFromDisk();
         String path = "arenas." + arena.getName();
 
         plugin.getConfigManager().getArenaConfig().set(path + ".spawn1", locToString(arena.getSpawn1()));
@@ -380,6 +383,7 @@ public class ArenaManager {
 
         arenas.remove(name);
         availableArenas.remove(name);
+        plugin.getConfigManager().reloadArenaConfigFromDisk();
         plugin.getConfigManager().getArenaConfig().set("arenas." + name, null);
         plugin.getConfigManager().saveArenaConfig();
 
@@ -395,6 +399,8 @@ public class ArenaManager {
         String s = locToString(location);
         this.pendingSpawnString = s;
 
+        // Reload-before-modify: Hand-Edits an config.yml überleben.
+        plugin.getConfigManager().reloadMainConfigFromDisk();
         var main = plugin.getConfigManager().getMainConfig();
         // Neues String-Format schreiben, altes Bukkit-Location-Format entfernen
         // (damit nach einem /setspawn nur noch eine Variante in der config.yml
@@ -462,6 +468,7 @@ public class ArenaManager {
         this.partyFFASpawn = location;
         String s = locToString(location);
         this.pendingPartyFFASpawnString = s;
+        plugin.getConfigManager().reloadMainConfigFromDisk();
         var main = plugin.getConfigManager().getMainConfig();
         main.set("party-ffa-spawn-string", s);
         plugin.saveConfig();
