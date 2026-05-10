@@ -774,7 +774,11 @@ public class GUIManager {
                 "DUEL_ONE"));
 
         inv.setItem(12, partyActionItem(Material.CROSSBOW, "§6Free for All",
-                Arrays.asList("§7Pair everyone randomly.", "§7Whoever ends up alone sits out."),
+                Arrays.asList(
+                        "§7All party members spawn at the",
+                        "§7configured FFA spawn and fight",
+                        "§7on one map. §fLast one alive wins.",
+                        "§8Dead players go into spectator."),
                 "FFA"));
 
         inv.setItem(14, partyActionItem(Material.SHIELD, "§bTeam 1 vs Team 2",

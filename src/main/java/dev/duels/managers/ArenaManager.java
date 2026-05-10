@@ -241,8 +241,50 @@ public class ArenaManager {
             available.add(arena);
         }
 
-        if (available.isEmpty()) return null;
+        if (available.isEmpty()) {
+            // Diagnostik: warum hat keine Arena gepasst? Hilft dem Admin
+            // Setup-Probleme zu finden ("freie Arena ist da, queue startet
+            // trotzdem nicht").
+            logArenaSelectionFailure(kitId);
+            return null;
+        }
         return available.get(new Random().nextInt(available.size()));
+    }
+
+    /** Loggt pro Arena ob sie disqualifiziert wurde und warum. */
+    private void logArenaSelectionFailure(String kitId) {
+        if (arenas.isEmpty()) {
+            plugin.getLogger().warning("Arena selection: no arenas configured at all.");
+            return;
+        }
+        plugin.getLogger().warning("Arena selection failed for kit='" + kitId + "'. Reasons per arena:");
+        for (Arena arena : arenas.values()) {
+            StringBuilder reason = new StringBuilder();
+            if (arena.isInUse()) reason.append("inUse ");
+            if (!arena.hasSnapshot()) reason.append("noSnapshot ");
+            if (arena.getSpawn1() == null) reason.append("noSpawn1 ");
+            if (arena.getSpawn2() == null) reason.append("noSpawn2 ");
+            if (arena.getCorner1() == null) reason.append("noCorner1 ");
+            if (arena.getCorner2() == null) reason.append("noCorner2 ");
+            if (kitId != null && !arena.isKitAllowed(kitId)) reason.append("kitNotAllowed ");
+            if (reason.length() == 0) reason.append("ok? (would have matched — race?)");
+            plugin.getLogger().warning("  - " + arena.getName() + ": " + reason.toString().trim());
+        }
+    }
+
+    /**
+     * Räumt nach Plugin-Restart alle "inUse"-Flags ab. Falls der Server
+     * mitten in einem Duel gecrasht/neu gestartet ist, wären sonst alle
+     * betroffenen Arenen für immer als belegt markiert und der User würde
+     * "no arena free" sehen obwohl alle frei sind.
+     */
+    public void resetAllInUseFlags() {
+        for (Arena arena : arenas.values()) {
+            if (arena.isInUse()) {
+                arena.setInUse(false);
+                plugin.getLogger().info("Arena '" + arena.getName() + "' inUse flag cleared on startup.");
+            }
+        }
     }
 
     public String reserveRandomFreeArenaName() {

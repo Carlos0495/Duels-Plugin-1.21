@@ -10,8 +10,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.entity.Entity;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.*;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.UUID;
@@ -178,6 +180,40 @@ public class PlayerListener implements Listener {
         String displayName = event.getItem().getItemMeta().getDisplayName();
         if (displayName == null) return;
         handleLegacyDisplayName(event, player, displayName);
+    }
+
+    /**
+     * Rechtsklick mit dem Lobby-Schwert (oder einem anderen CHALLENGE-getaggten
+     * Item) auf einen anderen Spieler → öffnet die Kit-Auswahl-GUI für ein
+     * direktes 1v1-Duell mit diesem Spieler. War vom User explizit gewünscht
+     * ("Mit dem schwert in der lobby kann ich niemanden mehr herausfordern").
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        Player player = event.getPlayer();
+        Entity clicked = event.getRightClicked();
+        if (!(clicked instanceof Player target)) return;
+
+        org.bukkit.inventory.ItemStack hand = player.getInventory().getItemInMainHand();
+        if (hand == null || hand.getType().isAir() || !hand.hasItemMeta()) return;
+
+        String action = plugin.getHotbarManager().readAction(hand);
+        if (action == null) return;
+        if (!"CHALLENGE".equals(action)) return;
+
+        // Nicht im Duel/FFA Spam — und nur in der Lobby-Welt.
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (!plugin.getPlayerManager().isInLobbyWorld(player)) return;
+        if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
+            player.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " is already in a duel.");
+            event.setCancelled(true);
+            return;
+        }
+        if (player.equals(target)) return;
+
+        event.setCancelled(true);
+        plugin.getGuiManager().openDuelGUI(player, target);
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
     }
 
     private void handleHotbarAction(PlayerInteractEvent event, Player player, String action) {

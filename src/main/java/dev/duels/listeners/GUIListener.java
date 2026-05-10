@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
@@ -874,6 +875,27 @@ public class GUIListener implements Listener {
                     player.closeInventory();
                 }
             }
+        }
+    }
+
+    /**
+     * Wenn die Edit-Layout-GUI geschlossen wird, Cursor leeren bzw. das auf
+     * dem Cursor liegende Item zurück in einen freien Top-Slot legen. Sonst
+     * würde Bukkit das Cursor-Item ins Player-Inventar droppen — ein Free-
+     * Item-Bug, weil das Item ja eigentlich Bestandteil des Kit-Layouts ist.
+     */
+    @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        String title = event.getView().getTitle();
+        if (title == null) return;
+
+        if (title.startsWith(GUIManager.EDIT_LAYOUT_GUI_TITLE_PREFIX)) {
+            ItemStack cursor = event.getView().getCursor();
+            if (cursor != null && !cursor.getType().isAir()) {
+                event.getView().setCursor(null);
+            }
+            player.updateInventory();
         }
     }
 }
