@@ -17,6 +17,7 @@ public class Arena {
     private Location spawn2;
     private Location corner1;
     private Location corner2;
+    private Location ffaSpawn;
     private boolean inUse;
 
     // Allowed kits (empty = alle Kits erlaubt)
@@ -43,6 +44,9 @@ public class Arena {
     public void setCorner1(Location corner1) { this.corner1 = corner1; }
     public Location getCorner2() { return corner2; }
     public void setCorner2(Location corner2) { this.corner2 = corner2; }
+    public Location getFfaSpawn() { return ffaSpawn; }
+    public void setFfaSpawn(Location ffaSpawn) { this.ffaSpawn = ffaSpawn; }
+    public boolean hasFfaSpawn() { return ffaSpawn != null; }
     public boolean isInUse() { return inUse; }
     public void setInUse(boolean inUse) { this.inUse = inUse; }
 

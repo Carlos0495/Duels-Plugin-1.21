@@ -183,35 +183,37 @@ public class PlayerListener implements Listener {
     }
 
     /**
-     * Rechtsklick mit dem Lobby-Schwert (oder einem anderen CHALLENGE-getaggten
-     * Item) auf einen anderen Spieler → öffnet die Kit-Auswahl-GUI für ein
-     * direktes 1v1-Duell mit diesem Spieler. War vom User explizit gewünscht
-     * ("Mit dem schwert in der lobby kann ich niemanden mehr herausfordern").
+     * Linksklick mit dem Lobby-Schwert (CHALLENGE-getaggtes Item) auf einen
+     * anderen Spieler → öffnet die Kit-Auswahl-GUI für ein direktes 1v1.
+     * Linksklick auf einen Spieler ist in Bukkit ein
+     * {@link org.bukkit.event.entity.EntityDamageByEntityEvent} — wir
+     * canceln den Damage und öffnen stattdessen die GUI.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onInteractEntity(PlayerInteractEntityEvent event) {
-        Player player = event.getPlayer();
-        Entity clicked = event.getRightClicked();
-        if (!(clicked instanceof Player target)) return;
+    public void onAttackEntity(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof Player target)) return;
 
         org.bukkit.inventory.ItemStack hand = player.getInventory().getItemInMainHand();
         if (hand == null || hand.getType().isAir() || !hand.hasItemMeta()) return;
 
         String action = plugin.getHotbarManager().readAction(hand);
-        if (action == null) return;
         if (!"CHALLENGE".equals(action)) return;
 
-        // Nicht im Duel/FFA Spam — und nur in der Lobby-Welt.
+        // Nur in der Lobby-Welt + nicht selber im Duel/FFA.
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
         if (!plugin.getPlayerManager().isInLobbyWorld(player)) return;
-        if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
-            player.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " is already in a duel.");
+        if (player.equals(target)) {
             event.setCancelled(true);
             return;
         }
-        if (player.equals(target)) return;
 
         event.setCancelled(true);
+
+        if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
+            player.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " is already in a duel.");
+            return;
+        }
         plugin.getGuiManager().openDuelGUI(player, target);
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
     }

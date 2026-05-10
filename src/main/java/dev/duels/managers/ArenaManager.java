@@ -89,6 +89,13 @@ public class ArenaManager {
                 arena.setAllowedKits(arenaCfg.getStringList(path + ".allowedKits"));
             }
 
+            // Per-Arena FFA-Spawn (optional). Wenn gesetzt, kann diese Arena
+            // für Party-FFA reserviert werden — mehrere Parties = mehrere
+            // Maps gleichzeitig.
+            if (arenaCfg.isString(path + ".ffa-spawn")) {
+                arena.setFfaSpawn(stringToLoc(arenaCfg.getString(path + ".ffa-spawn")));
+            }
+
             // Snapshot load (your existing method)
             loadArenaSnapshot(arena);
 
@@ -174,6 +181,11 @@ public class ArenaManager {
         plugin.getConfigManager().getArenaConfig().set(path + ".spawn2", locToString(arena.getSpawn2()));
         plugin.getConfigManager().getArenaConfig().set(path + ".corner1", locToString(arena.getCorner1()));
         plugin.getConfigManager().getArenaConfig().set(path + ".corner2", locToString(arena.getCorner2()));
+        if (arena.hasFfaSpawn()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".ffa-spawn", locToString(arena.getFfaSpawn()));
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".ffa-spawn", null);
+        }
 
         // Allowed kits
         if (arena.getAllowedKits().isEmpty()) {
@@ -248,6 +260,25 @@ public class ArenaManager {
             logArenaSelectionFailure(kitId);
             return null;
         }
+        return available.get(new Random().nextInt(available.size()));
+    }
+
+    /**
+     * Findet eine freie Arena, die das gegebene Kit erlaubt UND einen
+     * eigenen FFA-Spawn hat. Mehrere Parties können parallel auf
+     * verschiedenen Maps FFA spielen — jede Party belegt eine eigene
+     * Arena. Wenn keine passende Arena verfügbar ist, gibt {@code null}
+     * zurück (User muss dann warten oder Admin braucht mehr Maps).
+     */
+    public Arena getRandomFFAArenaForKit(String kitId) {
+        List<Arena> available = new ArrayList<>();
+        for (Arena arena : arenas.values()) {
+            if (arena.isInUse()) continue;
+            if (!arena.hasFfaSpawn()) continue;
+            if (kitId != null && !arena.isKitAllowed(kitId)) continue;
+            available.add(arena);
+        }
+        if (available.isEmpty()) return null;
         return available.get(new Random().nextInt(available.size()));
     }
 
@@ -613,6 +644,22 @@ public class ArenaManager {
     }
 
     // Füge diese Methoden zur ArenaManager Klasse hinzu:
+
+    /**
+     * Setzt den FFA-Spawn für die gegebene Arena (Multi-Map FFA).
+     * Speichert sofort in arena.yml — überlebt Restart.
+     */
+    public boolean setArenaFfaSpawn(String arenaName, Location location) {
+        Arena arena = arenas.get(arenaName);
+        if (arena == null) {
+            arena = new Arena(arenaName);
+            arenas.put(arenaName, arena);
+            availableArenas.put(arenaName, arena);
+        }
+        arena.setFfaSpawn(location);
+        saveArena(arena);
+        return true;
+    }
 
     public boolean setArenaSpawn1(String arenaName, Location location) {
         Arena arena = arenas.get(arenaName);

@@ -53,16 +53,30 @@ public class PartyFFAManager {
         if (kitName == null || kitName.isEmpty()) return "Invalid kit.";
         if (members == null || members.size() < 2) return "Need at least 2 online members.";
 
-        Location spawn = plugin.getArenaManager().getPartyFFASpawn();
-        if (spawn == null) {
-            return "Party-FFA spawn is not set! Use §e/duels setpartyffaspawn §7as admin.";
-        }
         if (!plugin.getKitManager().kitExists(kitName)) {
             return "Kit no longer exists.";
         }
 
+        // Pro Party eine eigene Arena reservieren (Multi-Map FFA, User-Wunsch:
+        // mehrere Parties können parallel auf verschiedenen Maps FFA spielen).
+        // Fallback: wenn keine Arena einen eigenen FFA-Spawn hat, nutzen wir
+        // den globalen partyFFASpawn (Legacy-Pfad).
+        dev.duels.objects.Arena reservedArena =
+                plugin.getArenaManager().getRandomFFAArenaForKit(kitName);
+        Location spawn;
+        if (reservedArena != null) {
+            spawn = reservedArena.getFfaSpawn();
+            reservedArena.setInUse(true);
+        } else {
+            spawn = plugin.getArenaManager().getPartyFFASpawn();
+            if (spawn == null) {
+                return "No FFA arena available for this kit. §7Admin: stand on the FFA spawn point and run §e/arena setffaspawn <arena> §7(per arena), or §e/duels setpartyffaspawn §7for the legacy global spawn.";
+            }
+        }
+
         for (UUID m : party.getMembers()) {
             if (playerToSession.containsKey(m)) {
+                if (reservedArena != null) reservedArena.setInUse(false);
                 return "Party already has an active FFA session.";
             }
         }
@@ -71,6 +85,7 @@ public class PartyFFAManager {
                 .getInt("party.ffa-grace-seconds", 10);
 
         FFASession session = new FFASession(party.getLeader(), kitName);
+        session.reservedArena = reservedArena;
         session.graceTicksLeft = Math.max(0, graceSeconds) * 20;
         for (Player p : members) {
             if (p == null || !p.isOnline()) continue;
@@ -221,6 +236,17 @@ public class PartyFFAManager {
             playerToSession.remove(u);
         }
         sessionsByLeader.remove(session.leaderId);
+
+        // Multi-Map FFA: reservierte Arena freigeben + Entities killen +
+        // Snapshot-Restore. Dadurch können andere Parties die Arena
+        // sofort wieder benutzen.
+        if (session.reservedArena != null) {
+            dev.duels.objects.Arena arena = session.reservedArena;
+            // resetArena() killt bereits Nicht-Spieler-Entities (Arrows,
+            // gedroppte Items, Crystals etc.) und stellt den Snapshot wieder
+            // her — Pendant zum Duell-Ende.
+            plugin.getArenaManager().resetArena(arena, () -> arena.setInUse(false));
+        }
     }
 
     private void broadcastToSession(FFASession session, String msg) {
@@ -243,6 +269,8 @@ public class PartyFFAManager {
         public int graceTicksLeft;
         public BukkitTask graceTask;
         public boolean ended;
+        /** Reservierte Arena (Multi-Map FFA). {@code null} = Legacy-Pfad mit globalem Spawn. */
+        public dev.duels.objects.Arena reservedArena;
 
         public FFASession(UUID leaderId, String kitName) {
             this.leaderId = leaderId;

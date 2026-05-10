@@ -832,16 +832,10 @@ public class GUIListener implements Listener {
                     } catch (IllegalArgumentException ignored) {}
                 }
                 case "FFA" -> {
-                    // Party-FFA = alle gegen alle auf EINER Map (User-Wunsch).
-                    // Pair-FFA-Fallback wurde bewusst entfernt — wenn der
-                    // Admin keinen FFA-Spawn gesetzt hat, soll er das tun
-                    // statt eine andere Mode-Variante geliefert zu bekommen.
-                    if (plugin.getArenaManager().getPartyFFASpawn() == null) {
-                        player.sendMessage(plugin.getPrefix() + "§cParty-FFA spawn is not set!");
-                        player.sendMessage(plugin.getPrefix() + "§7Admin: stand on the FFA spawn point and run §e/duels setpartyffaspawn§7.");
-                        player.closeInventory();
-                        return;
-                    }
+                    // Party-FFA: alle auf EINER Map (User-Wunsch).
+                    // Multi-Map: PartyFFAManager.start() reserviert eine
+                    // freie Arena mit eigenem FFA-Spawn passend zum Kit.
+                    // Setup-Hinweise lässt der Manager als String zurück.
                     java.util.List<Player> members = new java.util.ArrayList<>();
                     for (UUID m : party.getMembers()) {
                         Player p = Bukkit.getPlayer(m);

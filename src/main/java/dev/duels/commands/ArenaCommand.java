@@ -39,6 +39,7 @@ public class ArenaCommand implements CommandExecutor {
             case "setsecond" -> handleSetSecond(player, args);
             case "setcorner1" -> handleSetCorner1(player, args);
             case "setcorner2" -> handleSetCorner2(player, args);
+            case "setffaspawn" -> handleSetFfaSpawn(player, args);
             case "create" -> handleCreate(player, args);
             case "list" -> handleList(player);
             case "delete" -> handleDelete(player, args);
@@ -64,6 +65,7 @@ public class ArenaCommand implements CommandExecutor {
         player.sendMessage(plugin.getPrefix() + "§7  setsecond <arenaName> §8- §aSet second spawn point");
         player.sendMessage(plugin.getPrefix() + "§7  setcorner1 <arenaName> §8- §aSet first corner");
         player.sendMessage(plugin.getPrefix() + "§7  setcorner2 <arenaName> §8- §aSet second corner");
+        player.sendMessage(plugin.getPrefix() + "§7  setffaspawn <arenaName> §8- §6Set per-arena FFA spawn");
         player.sendMessage(plugin.getPrefix() + "§7  create <arenaName> §8- §aCreate arena (saves Snapshot)");
         player.sendMessage(plugin.getPrefix() + "§7  list §8- §aList all arenas");
         player.sendMessage(plugin.getPrefix() + "§7  delete <arenaName> §8- §cDelete an arena");
@@ -99,6 +101,17 @@ public class ArenaCommand implements CommandExecutor {
 
         plugin.getArenaManager().setArenaSpawn2(arenaName, location);
         player.sendMessage(plugin.getPrefix() + "§aSecond spawn point set for arena: " + arenaName);
+    }
+
+    private void handleSetFfaSpawn(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage(plugin.getPrefix() + "§7Usage: /arena setffaspawn <arenaName>");
+            return;
+        }
+        String arenaName = args[1];
+        Location location = player.getLocation();
+        plugin.getArenaManager().setArenaFfaSpawn(arenaName, location);
+        player.sendMessage(plugin.getPrefix() + "§6FFA spawn §7set for arena §e" + arenaName + "§7. Multi-Map FFA can use this map now.");
     }
 
     private void handleSetCorner1(Player player, String[] args) {
