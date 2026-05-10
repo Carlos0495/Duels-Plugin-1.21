@@ -259,14 +259,38 @@ public class ArenaManager {
             return;
         }
 
-        // Blocks setzen (sync, weil Block-API main thread)
+        // Blocks setzen + Entities (Arrows, gedroppte Items, Crystals, Trides
+        // etc.) entfernen — alles sync, weil Bukkit-API main-thread-only.
         Bukkit.getScheduler().runTask(plugin, () -> {
             for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
                 BlockVector v = e.getKey();
                 world.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
             }
+            cleanupArenaEntities(world, arena);
             if (onComplete != null) onComplete.run();
         });
+    }
+
+    /**
+     * Killt alle Nicht-Spieler-Entities (Arrows, gedroppte Items, EnderCrystals,
+     * Tridents, ItemFrames-Drops etc.) in der Bounding-Box der Arena. Spieler
+     * werden NIE entfernt — ein im Reset noch tp-mäßig drin steckender
+     * Spieler bleibt unangetastet.
+     */
+    private void cleanupArenaEntities(org.bukkit.World world, Arena arena) {
+        if (world == null || !arena.hasSnapshot()) return;
+        int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
+        int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();
+        // Etwas Padding nach oben/außen, damit Arrows die im Snapshot-Rand
+        // stecken auch noch erwischt werden.
+        double pad = 2.0;
+        for (org.bukkit.entity.Entity e : world.getNearbyEntities(
+                new org.bukkit.util.BoundingBox(
+                        minX - pad, minY - pad, minZ - pad,
+                        maxX + 1 + pad, maxY + 1 + pad, maxZ + 1 + pad))) {
+            if (e instanceof org.bukkit.entity.Player) continue;
+            try { e.remove(); } catch (Throwable ignored) {}
+        }
     }
 
     public Arena getArena(String name) {
@@ -303,12 +327,19 @@ public class ArenaManager {
         return true;
     }
 
-    private void captureArenaSnapshot(Arena arena) {
+    /**
+     * Erfasst den Block-Snapshot der Arena. Wenn die Arena das konfigurierte
+     * Volumen-Limit ({@code arena.max-snapshot-blocks}, default 200000)
+     * überschreitet, wird das Capture übersprungen — die Arena ist dann
+     * "spielbar, aber nicht reset-bar". Das verhindert OOM bei riesigen
+     * Build-Arenen.
+     */
+    private boolean captureArenaSnapshot(Arena arena) {
         arena.getOriginalBlocks().clear();
 
         Location c1 = arena.getCorner1();
         Location c2 = arena.getCorner2();
-        if (c1 == null || c2 == null || c1.getWorld() == null) return;
+        if (c1 == null || c2 == null || c1.getWorld() == null) return false;
 
         int minX = Math.min(c1.getBlockX(), c2.getBlockX());
         int maxX = Math.max(c1.getBlockX(), c2.getBlockX());
@@ -316,6 +347,17 @@ public class ArenaManager {
         int maxY = Math.max(c1.getBlockY(), c2.getBlockY());
         int minZ = Math.min(c1.getBlockZ(), c2.getBlockZ());
         int maxZ = Math.max(c1.getBlockZ(), c2.getBlockZ());
+
+        long volume = (long)(maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        var main = plugin.getConfigManager().getMainConfig();
+        long max = main.getLong("arena.max-snapshot-blocks", 200000L);
+        if (max > 0 && volume > max) {
+            plugin.getLogger().warning("Arena '" + arena.getName() + "' is too big to snapshot ("
+                    + volume + " > " + max + " blocks). Set 'arena.max-snapshot-blocks' higher to allow it.");
+            arena.setSnapshotWorld(c1.getWorld().getName());
+            arena.setSnapshotBounds(minX, minY, minZ, maxX, maxY, maxZ);
+            return false;
+        }
 
         arena.setSnapshotWorld(c1.getWorld().getName());
         arena.setSnapshotBounds(minX, minY, minZ, maxX, maxY, maxZ);
@@ -329,6 +371,7 @@ public class ArenaManager {
                 }
             }
         }
+        return true;
     }
 
     public boolean deleteArena(String name) {
@@ -362,7 +405,8 @@ public class ArenaManager {
             main.set("spawn", null);
         }
         plugin.saveConfig();
-        plugin.getConfigManager().saveAllConfigs();
+        // Kein saveAllConfigs() hier — das würde players.yml unnötig
+        // mitschreiben und keine andere Datei wurde geändert.
     }
 
 
@@ -421,7 +465,6 @@ public class ArenaManager {
         var main = plugin.getConfigManager().getMainConfig();
         main.set("party-ffa-spawn-string", s);
         plugin.saveConfig();
-        plugin.getConfigManager().saveAllConfigs();
     }
 
     private void loadPartyFFASpawnFromConfig() {

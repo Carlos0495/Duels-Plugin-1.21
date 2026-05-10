@@ -39,12 +39,12 @@ public class BlockBreakListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
-        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        String kitId = currentKitId(player);
+        if (kitId == null) return;
+        KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+        if (kit == null) { event.setCancelled(true); return; }
 
-        DuelSession session = plugin.getDuelManager().getDuelSession(player.getUniqueId());
-        if (session == null) return;
-
-        if (!isAllowed(session, event.getBlock().getType())) {
+        if (!kit.isBreakable(event.getBlock().getType())) {
             event.setCancelled(true);
         }
     }
@@ -52,14 +52,27 @@ public class BlockBreakListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
-        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        String kitId = currentKitId(player);
+        if (kitId == null) return;
+        KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+        if (kit == null) { event.setCancelled(true); return; }
 
-        DuelSession session = plugin.getDuelManager().getDuelSession(player.getUniqueId());
-        if (session == null) return;
-
-        if (!isAllowed(session, event.getBlockPlaced().getType())) {
+        if (!kit.isPlaceable(event.getBlockPlaced().getType())) {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * Liefert das aktive Kit eines Spielers, falls er entweder im Duel oder
+     * in einer Party-FFA-Session ist. Sonst {@code null} (= Listener nicht
+     * eingreifen, andere Plugins/Permissions regeln Lobby-Schutz).
+     */
+    private String currentKitId(Player player) {
+        DuelSession s = plugin.getDuelManager().getDuelSession(player.getUniqueId());
+        if (s != null) return s.getKitName();
+        var ffa = plugin.getPartyFFAManager().getSession(player.getUniqueId());
+        if (ffa != null) return ffa.kitName;
+        return null;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

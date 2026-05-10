@@ -54,6 +54,35 @@ public class GUIListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // Custom-Round-Count Eingabe.
+        GUIManager.PendingCustomBestOf pending = plugin.getGuiManager().peekPendingCustomBestOf(uuid);
+        if (pending != null) {
+            event.setCancelled(true);
+            String msg = event.getMessage().trim();
+            if (msg.equalsIgnoreCase("cancel")) {
+                plugin.getGuiManager().consumePendingCustomBestOf(uuid);
+                player.sendMessage(plugin.getPrefix() + "§7Custom rounds cancelled.");
+                return;
+            }
+            int n;
+            try {
+                n = Integer.parseInt(msg);
+            } catch (NumberFormatException ex) {
+                player.sendMessage(plugin.getPrefix() + "§cNot a number. Try again, or §ccancel§c.");
+                return;
+            }
+            if (n < 1 || n > 100) {
+                player.sendMessage(plugin.getPrefix() + "§cValue must be between 1 and 100.");
+                return;
+            }
+            plugin.getGuiManager().consumePendingCustomBestOf(uuid);
+            final int firstTo = n;
+            final UUID targetId = pending.target;
+            final String kitId = pending.kitId;
+            Bukkit.getScheduler().runTask(plugin, () -> sendCustomDuelRequest(player, targetId, kitId, firstTo));
+            return;
+        }
+
         if (!awaitingStatsSearch.contains(uuid)) return;
 
         event.setCancelled(true);
@@ -77,6 +106,29 @@ public class GUIListener implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> {
             plugin.getGuiManager().openCompareGUI(player, targetUuid);
         });
+    }
+
+    private void sendCustomDuelRequest(Player sender, UUID targetId, String kitId, int firstTo) {
+        Player target = Bukkit.getPlayer(targetId);
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(plugin.getPrefix() + "§cTarget player is offline.");
+            return;
+        }
+        String arenaName = plugin.getArenaManager().reserveRandomFreeArenaName();
+        if (arenaName == null) {
+            sender.sendMessage(plugin.getPrefix() + "§cNo free arena available!");
+            return;
+        }
+        DuelRequest request = new DuelRequest(
+                sender.getUniqueId(),
+                targetId,
+                kitId,
+                arenaName,
+                firstTo
+        );
+        plugin.getDuelManager().addDuelRequest(targetId, request);
+        sender.sendMessage(plugin.getPrefix() + "§7Sent duel request to §c" + target.getName()
+                + " §7| Kit: §e" + kitId + " §7| First to §f" + firstTo);
     }
 
     @EventHandler
@@ -265,6 +317,18 @@ public class GUIListener implements Listener {
         Integer bestOf = pdc.get(bestOfValueKey, PersistentDataType.INTEGER);
         String kitId = pdc.get(duelKitKey, PersistentDataType.STRING);
         String targetStr = pdc.get(duelTargetKey, PersistentDataType.STRING);
+
+        // Custom-Button: kein bestof-Wert gesetzt, aber Kit+Target da → Chat-Prompt.
+        if (bestOf == null && kitId != null && !kitId.isEmpty() && targetStr != null && !targetStr.isEmpty()
+                && name.contains("Custom")) {
+            try {
+                UUID tu = UUID.fromString(targetStr);
+                player.closeInventory();
+                plugin.getGuiManager().closeGUI(player.getUniqueId());
+                plugin.getGuiManager().beginCustomBestOfPrompt(player, tu, kitId);
+            } catch (IllegalArgumentException ignored) {}
+            return;
+        }
 
         if (bestOf == null || kitId == null || kitId.isEmpty() || targetStr == null || targetStr.isEmpty()) {
             player.sendMessage(plugin.getPrefix() + "§cMissing duel data (bestof/kit/target).");

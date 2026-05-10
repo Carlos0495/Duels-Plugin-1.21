@@ -114,6 +114,10 @@ public class PartyManager {
         UUID uuid = leader.getUniqueId();
         if (isInParty(uuid)) return parties.get(memberToLeader.get(uuid));
 
+        // Beim Eröffnen einer Party automatisch alle Queue-Eintragungen
+        // entfernen (User-Wunsch: Party blockiert Queues + Duel-Requests).
+        plugin.getQueueManager().leaveAllQueues(uuid);
+
         Party party = new Party(uuid);
         parties.put(uuid, party);
         memberToLeader.put(uuid, uuid);
@@ -285,6 +289,9 @@ public class PartyManager {
             return false;
         }
 
+        // Beim Beitreten Queue-Eintragungen entfernen.
+        plugin.getQueueManager().leaveAllQueues(target.getUniqueId());
+
         party.addMember(target.getUniqueId());
         memberToLeader.put(target.getUniqueId(), leaderId);
         invitingLeaders.remove(leaderId);
@@ -338,6 +345,8 @@ public class PartyManager {
             joiner.sendMessage(plugin.getPrefix() + "§cThat party is full.");
             return false;
         }
+
+        plugin.getQueueManager().leaveAllQueues(joiner.getUniqueId());
 
         party.addMember(joiner.getUniqueId());
         memberToLeader.put(joiner.getUniqueId(), leader.getUniqueId());

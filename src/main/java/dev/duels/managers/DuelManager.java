@@ -124,13 +124,26 @@ public class DuelManager {
             arena.setInUse(true);
         }
 
+        // Duel-Dauer ermitteln: Kit-spezifisch > globaler Default. -1 oder
+        // until-death=true heißt "kein Timer" (wird in updateDuelTimers
+        // ignoriert).
+        int duelTime = plugin.getConfigManager().getMainConfig().getInt("duel-time", 180);
+        var kitObj = plugin.getKitManager().getKit(request.getKitName());
+        if (kitObj != null) {
+            if (kitObj.isUntilDeath() || kitObj.getDurationSeconds() == -1) {
+                duelTime = -1;
+            } else if (kitObj.getDurationSeconds() > 0) {
+                duelTime = kitObj.getDurationSeconds();
+            }
+        }
+
         // DuelSession erstellen
         DuelSession session = new DuelSession(
                 player1.getUniqueId(),
                 player2.getUniqueId(),
                 request.getKitName(),
                 arena.getName(),
-                plugin.getConfigManager().getMainConfig().getInt("duel-time", 180),
+                duelTime,
                 request.getBestOf()
         );
 
@@ -521,11 +534,29 @@ public class DuelManager {
     private void restoreToLobby(Player p) {
         if (p == null || !p.isOnline()) return;
 
+        // Inventar komplett leeren (User-Wunsch: nach jedem Duel Inventar +
+        // Armor + Offhand weg, auch wenn der Gegner geleaved hat). Hotbar
+        // wird unten via setupPlayerInventory neu gesetzt.
+        clearFullInventory(p);
+
         plugin.getPlayerManager().forceLobbyState(p);
         plugin.getPlayerManager().setupPlayerInventory(p);
         plugin.getPlayerManager().refreshQueueSlotItem(p);
         plugin.getPlayerManager().applyLobbyFly(p);
         plugin.getScoreboardManager().updateScoreboard(p);
+    }
+
+    /** Leert Hauptinventar, Armor-Slots und Offhand. */
+    public static void clearFullInventory(Player p) {
+        if (p == null) return;
+        var inv = p.getInventory();
+        inv.clear();
+        inv.setHelmet(null);
+        inv.setChestplate(null);
+        inv.setLeggings(null);
+        inv.setBoots(null);
+        inv.setItemInOffHand(null);
+        p.updateInventory();
     }
 
     private void forceRoundState(Player player) {
@@ -541,6 +572,13 @@ public class DuelManager {
     }
 
     public void cleanupDuel(UUID player1, UUID player2) {
+        // Spectator dieses Matches in die Lobby zurückbringen.
+        if (plugin.getSpectateManager() != null && player1 != null && player2 != null) {
+            UUID a = player1, b = player2;
+            if (a.compareTo(b) > 0) { UUID t = a; a = b; b = t; }
+            plugin.getSpectateManager().endMatch("duel:" + a + ":" + b);
+        }
+
         activeDuels.remove(player1);
         if (player2 != null) activeDuels.remove(player2);
 
@@ -550,14 +588,10 @@ public class DuelManager {
         roundDead.remove(player1);
         if (player2 != null) roundDead.remove(player2);
 
-        Player p1 = Bukkit.getPlayer(player1);
-        Player p2 = player2 != null ? Bukkit.getPlayer(player2) : null;
-
         savedStates.remove(player1);
         if (player2 != null) savedStates.remove(player2);
 
         plugin.getPlayerManager().restoreAllVisibility();
-
     }
 
     public void cleanupAll() {
@@ -575,6 +609,8 @@ public class DuelManager {
 
     public void updateDuelTimers() {
         for (DuelSession session : new HashSet<>(activeDuels.values())) {
+            // -1 bedeutet "until-death" Mode: kein Timer, läuft bis einer stirbt.
+            if (session.getTimeLeft() < 0) continue;
             if (session.getTimeLeft() > 0) {
                 session.setTimeLeft(session.getTimeLeft() - 1);
             } else {
@@ -602,6 +638,17 @@ public class DuelManager {
         if (isInDuel(senderId) || isInDuel(target)) {
             if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cSomeone is already in a duel.");
             return;
+        }
+        // Party blockt Duel-Requests in beide Richtungen.
+        if (plugin.getPartyManager() != null) {
+            if (plugin.getPartyManager().isInParty(senderId)) {
+                if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cYou are in a party. Leave it to send duel requests.");
+                return;
+            }
+            if (plugin.getPartyManager().isInParty(target)) {
+                if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cThat player is in a party.");
+                return;
+            }
         }
 
         // cooldown (per sender)

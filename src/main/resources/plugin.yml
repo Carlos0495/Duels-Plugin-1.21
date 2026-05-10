@@ -85,6 +85,16 @@ commands:
     usage: /<command> <create|invite|accept|deny|leave|kick|disband|public|join|list|info|menu>
     aliases: [p]
 
+  spectate:
+    description: Spectate a duel or FFA
+    usage: /<command> <player|stop>
+    aliases: [spec, watch]
+
+  dkit:
+    description: Open kit edit GUI directly (admin)
+    usage: /<command> edit <kitName>
+    aliases: ["duels:kit"]
+
 permissions:
   duels.*:
     description: Gives access to all duels commands

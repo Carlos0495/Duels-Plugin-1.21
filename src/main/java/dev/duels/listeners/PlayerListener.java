@@ -67,6 +67,9 @@ public class PlayerListener implements Listener {
         if (plugin.getPartyFFAManager() != null) {
             plugin.getPartyFFAManager().handlePlayerQuit(uuid);
         }
+        if (plugin.getSpectateManager() != null) {
+            plugin.getSpectateManager().handlePlayerQuit(uuid);
+        }
 
         plugin.getScoreboardManager().removeScoreboard(uuid);
         plugin.getPlayerManager().savePlayerData(uuid);
@@ -103,6 +106,18 @@ public class PlayerListener implements Listener {
                 plugin.getPlayerManager().applyLobbyFly(player);
             }
         }, 1L);
+    }
+
+    @EventHandler
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        // Spieler im Duel/FFA: nichts machen, ihre Inventare gehören dem Match.
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+        // setupPlayerInventory entscheidet selbst (basierend auf der neuen
+        // Welt) ob Hotbar gesetzt oder Inventar geleert wird.
+        plugin.getPlayerManager().setupPlayerInventory(player);
     }
 
     @EventHandler

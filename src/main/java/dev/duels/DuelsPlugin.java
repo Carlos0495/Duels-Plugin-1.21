@@ -21,6 +21,7 @@ public final class DuelsPlugin extends JavaPlugin {
     private HotbarManager hotbarManager;
     private PartyManager partyManager;
     private PartyFFAManager partyFFAManager;
+    private SpectateManager spectateManager;
 
     @Override
     public void onEnable() {
@@ -40,6 +41,7 @@ public final class DuelsPlugin extends JavaPlugin {
         hotbarManager = new HotbarManager(this);
         partyManager = new PartyManager(this);
         partyFFAManager = new PartyFFAManager(this);
+        spectateManager = new SpectateManager(this);
 
         // Konfigurationen laden
         configManager.loadAllConfigs();
@@ -123,6 +125,18 @@ public final class DuelsPlugin extends JavaPlugin {
         getCommand("spawn").setExecutor(new SpawnCommand(this));
         getCommand("accept").setExecutor(new AcceptCommand(this));
 
+        if (getCommand("spectate") != null) {
+            SpectateCommand spec = new SpectateCommand(this);
+            getCommand("spectate").setExecutor(spec);
+            getCommand("spectate").setTabCompleter(spec);
+        }
+
+        if (getCommand("dkit") != null) {
+            KitEditCommand ke = new KitEditCommand(this);
+            getCommand("dkit").setExecutor(ke);
+            getCommand("dkit").setTabCompleter(ke);
+        }
+
         PartyCommand partyCmd = new PartyCommand(this);
         if (getCommand("party") != null) {
             getCommand("party").setExecutor(partyCmd);
@@ -160,6 +174,7 @@ public final class DuelsPlugin extends JavaPlugin {
     public HotbarManager getHotbarManager() { return hotbarManager; }
     public PartyManager getPartyManager() { return partyManager; }
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
+    public SpectateManager getSpectateManager() { return spectateManager; }
 
     // Konstanten
     public String getPrefix() {

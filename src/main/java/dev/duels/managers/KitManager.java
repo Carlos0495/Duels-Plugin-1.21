@@ -71,6 +71,34 @@ public class KitManager {
                 }
             }
 
+            // Placeable Blocks laden (gleiches Format wie breakable-blocks).
+            // Crystal-Kit will typischerweise OBSIDIAN + END_CRYSTAL platzieren
+            // dürfen; Buildup-Modi z.B. zusätzlich COBBLESTONE etc.
+            kit.getPlaceableBlocks().clear();
+            java.util.List<String> placeable =
+                    kitsSection.getStringList(kitId + ".placeable-blocks");
+            for (String entry : placeable) {
+                if (entry == null || entry.trim().isEmpty()) continue;
+                try {
+                    Material m = Material.matchMaterial(entry.trim().toUpperCase());
+                    if (m == null) {
+                        plugin.getLogger().warning("Kit '" + kitId + "': unknown material in placeable-blocks: " + entry);
+                        continue;
+                    }
+                    kit.getPlaceableBlocks().add(m);
+                } catch (Exception ex) {
+                    plugin.getLogger().warning("Kit '" + kitId + "': bad placeable-blocks entry: " + entry);
+                }
+            }
+
+            // Pro-Kit Duell-Dauer (Sekunden). -1 = bis einer stirbt.
+            if (kitsSection.contains(kitId + ".duration-seconds")) {
+                kit.setDurationSeconds(kitsSection.getInt(kitId + ".duration-seconds", 0));
+            }
+            if (kitsSection.contains(kitId + ".until-death")) {
+                kit.setUntilDeath(kitsSection.getBoolean(kitId + ".until-death", false));
+            }
+
             // Items laden
             if (kitsSection.contains(kitId + ".items")) {
                 ConfigurationSection itemsSection = kitsSection.getConfigurationSection(kitId + ".items");
@@ -118,6 +146,18 @@ public class KitManager {
             for (Material m : kit.getBreakableBlocks()) names.add(m.name());
             java.util.Collections.sort(names);
             plugin.getConfigManager().getKitsConfig().set(path + ".breakable-blocks", names);
+        }
+
+        // Placeable Blocks ebenso speichern.
+        if (kit.getPlaceableBlocks().isEmpty()) {
+            if (!plugin.getConfigManager().getKitsConfig().contains(path + ".placeable-blocks")) {
+                plugin.getConfigManager().getKitsConfig().set(path + ".placeable-blocks", new java.util.ArrayList<String>());
+            }
+        } else {
+            java.util.List<String> names = new java.util.ArrayList<>(kit.getPlaceableBlocks().size());
+            for (Material m : kit.getPlaceableBlocks()) names.add(m.name());
+            java.util.Collections.sort(names);
+            plugin.getConfigManager().getKitsConfig().set(path + ".placeable-blocks", names);
         }
 
         // Alte Items löschen
@@ -317,11 +357,26 @@ public class KitManager {
         // typischerweise OBSIDIAN, BEDROCK (place by crystal explosion target)
         // und END_CRYSTAL hier drin.
         private final java.util.Set<Material> breakableBlocks = java.util.EnumSet.noneOf(Material.class);
+        // Materialien, die im Duel platziert werden dürfen. Wird typischerweise
+        // für Crystal-Kits (END_CRYSTAL, OBSIDIAN), Buildup-Modi etc. genutzt.
+        // Leer = nichts darf platziert werden.
+        private final java.util.Set<Material> placeableBlocks = java.util.EnumSet.noneOf(Material.class);
+
+        // Pro-Kit Duell-Dauer in Sekunden. -1 oder untilDeath=true → kein
+        // Timer (Match läuft bis einer stirbt). 0 oder leer → globaler
+        // Default aus config (duel-time).
+        private int durationSeconds = 0;
+        private boolean untilDeath = false;
 
         public Kit(String id) {
             this.id = id;
             this.previewMaterial = Material.DIAMOND_SWORD;
         }
+
+        public int getDurationSeconds() { return durationSeconds; }
+        public void setDurationSeconds(int v) { this.durationSeconds = v; }
+        public boolean isUntilDeath() { return untilDeath; }
+        public void setUntilDeath(boolean b) { this.untilDeath = b; }
 
         public String getId() { return id; }
 
@@ -346,9 +401,14 @@ public class KitManager {
         }
 
         public java.util.Set<Material> getBreakableBlocks() { return breakableBlocks; }
+        public java.util.Set<Material> getPlaceableBlocks() { return placeableBlocks; }
 
         public boolean isBreakable(Material m) {
             return breakableBlocks.contains(m);
+        }
+
+        public boolean isPlaceable(Material m) {
+            return placeableBlocks.contains(m);
         }
     }
     public String getKitDisplayName(String kitId) {

@@ -148,12 +148,28 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 }
 
     public void setupPlayerInventory(Player player) {
+        // Vor dem Hotbar-Setup: Armor + Offhand leeren. Hauptinventar wird
+        // von HotbarManager.applyMode() ohnehin gecleart (Slots 0-8). Hier
+        // sorgen wir dafür, dass nach jedem Duel/Disconnect/Forfeit auch
+        // Helm/Brust/Hose/Schuhe/Offhand garantiert weg sind.
+        var inv = player.getInventory();
+        inv.setHelmet(null);
+        inv.setChestplate(null);
+        inv.setLeggings(null);
+        inv.setBoots(null);
+        inv.setItemInOffHand(null);
+
+        // Hotbar-Items werden NUR in der Lobby-Welt gegeben. Außerhalb
+        // bleibt das Inventar leer (User-Wunsch: Hotbar nur in der Lobby).
+        if (!isInLobbyWorld(player)) {
+            player.updateInventory();
+            return;
+        }
+
         // Delegiert an HotbarManager (liest Items aus config.yml). Je nach
         // Party-Status wird der passende Modus gewählt.
         HotbarManager hotbar = plugin.getHotbarManager();
         if (hotbar == null) {
-            // Fallback, falls das Plugin noch nicht voll initialisiert ist
-            // (z.B. während onEnable): nur Inventar leeren.
             player.getInventory().clear();
             player.updateInventory();
             return;
@@ -167,6 +183,19 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
                     : HotbarManager.MODE_PARTY_MEMBER;
         }
         hotbar.applyMode(player, mode);
+    }
+
+    /** True, falls der Spieler in der Welt steht, in der der Plugin-Spawn gesetzt ist. */
+    public boolean isInLobbyWorld(Player player) {
+        if (player == null || player.getWorld() == null) return false;
+        Location spawn = plugin.getArenaManager().getSpawnLocation();
+        if (spawn == null || spawn.getWorld() == null) {
+            // Spawn nicht (oder noch nicht) gesetzt: vorsichtshalber als
+            // Lobby behandeln (sonst hätte der User keine Hotbar bevor er
+            // /setspawn macht).
+            return true;
+        }
+        return player.getWorld().getUID().equals(spawn.getWorld().getUID());
     }
     public void applyVisibility(Player viewer) {
         if (viewer == null) return;
@@ -338,23 +367,12 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     public void applyDuelVisibility(Player p1, Player p2) {
         if (p1 == null || p2 == null) return;
 
-        // Duelists: hide everyone except each other
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (other.equals(p1) || other.equals(p2)) continue;
-            p1.hidePlayer(plugin, other);
-            p2.hidePlayer(plugin, other);
-        }
-
-        // Ensure duelists see each other
+        // User-Wunsch: Spieler im Duel bleiben in der Tab-Liste sichtbar.
+        // Statt sie hart zu verstecken, sorgen wir nur dafür, dass die
+        // beiden Duelisten sich gegenseitig sehen können (falls sie vorher
+        // per Visibility-Toggle versteckt waren).
         p1.showPlayer(plugin, p2);
         p2.showPlayer(plugin, p1);
-
-        // Everyone else: hide BOTH duelists
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (viewer.equals(p1) || viewer.equals(p2)) continue;
-            viewer.hidePlayer(plugin, p1);
-            viewer.hidePlayer(plugin, p2);
-        }
     }
 
 
@@ -374,19 +392,9 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 
 
     public void enforceDuelPrivacyForJoin(Player joiner) {
-        if (joiner == null) return;
-
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (other.equals(joiner)) continue;
-
-            boolean otherInDuel = plugin.getDuelManager().isInDuel(other.getUniqueId());
-
-            // If other is in a duel: joiner can't see them AND they can't see joiner
-            if (otherInDuel) {
-                joiner.hidePlayer(plugin, other);
-                other.hidePlayer(plugin, joiner);
-            }
-        }
+        // User-Wunsch: Spieler in Duels bleiben in der Tab-Liste sichtbar.
+        // Wir verstecken sie nicht mehr beim Join eines neuen Spielers.
+        // (Methode bleibt als No-Op für API-Kompatibilität.)
     }
 
 

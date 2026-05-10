@@ -312,9 +312,9 @@ public class GUIManager {
 
         int slot = 10;
         for (int bestOf : options) {
-            if (slot >= 17) break;
+            if (slot >= 16) break;
 
-            ItemStack item = createItem(Material.PAPER, "§eBest of " + bestOf,
+            ItemStack item = createItem(Material.PAPER, "§eFirst to " + bestOf,
                     Arrays.asList("§7Kit: §b" + display, "§7Target: §c" + target.getName(), "", "§eClick to choose"));
 
             ItemMeta meta = item.getItemMeta();
@@ -328,6 +328,15 @@ public class GUIManager {
             slot++;
         }
 
+        // Custom-Button: schließt GUI und startet Chat-Input für 1-100.
+        ItemStack custom = createItem(Material.ANVIL, "§6Custom...",
+                Arrays.asList("§7Type a number §f1-100 §7in chat.", "§7Type §ccancel §7to abort.", "", "§eClick to enter custom value"));
+        ItemMeta cm = custom.getItemMeta();
+        cm.getPersistentDataContainer().set(duelKitKey, PersistentDataType.STRING, kitId);
+        cm.getPersistentDataContainer().set(duelTargetKey, PersistentDataType.STRING, target.getUniqueId().toString());
+        custom.setItemMeta(cm);
+        inv.setItem(16, custom);
+
         ItemStack back = createItem(Material.ARROW, "§cBack", null);
         inv.setItem(18, back);
 
@@ -336,6 +345,28 @@ public class GUIManager {
 
         sender.openInventory(inv);
         openGUIs.put(sender.getUniqueId(), new GUI(BESTOF_GUI_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Wartet auf eine Chat-Zahl (1-100) für Custom-FirstTo. */
+    private final java.util.Map<UUID, PendingCustomBestOf> pendingCustomBestOf = new java.util.HashMap<>();
+
+    public static class PendingCustomBestOf {
+        public final UUID target;
+        public final String kitId;
+        public PendingCustomBestOf(UUID target, String kitId) { this.target = target; this.kitId = kitId; }
+    }
+
+    public void beginCustomBestOfPrompt(Player sender, UUID target, String kitId) {
+        pendingCustomBestOf.put(sender.getUniqueId(), new PendingCustomBestOf(target, kitId));
+        sender.sendMessage(plugin.getPrefix() + "§eType a number §f1-100 §ein chat to set the round count, or §ccancel§e.");
+    }
+
+    public PendingCustomBestOf consumePendingCustomBestOf(UUID player) {
+        return pendingCustomBestOf.remove(player);
+    }
+
+    public PendingCustomBestOf peekPendingCustomBestOf(UUID player) {
+        return pendingCustomBestOf.get(player);
     }
 
     public void openSettingsGUI(Player player) {

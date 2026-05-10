@@ -127,11 +127,24 @@ public class ConfigManager {
         }
     }
 
+    /**
+     * Wird beim Plugin-Disable aufgerufen. Wir speichern hier ausschließlich
+     * {@code players.yml}, weil dort Stat- und Layout-Updates rein im RAM
+     * landen und sonst verloren gingen.
+     *
+     * <p>Bewusst NICHT mehr gespeichert werden:
+     * <ul>
+     *     <li>{@code config.yml} – jede Änderung in dieser Datei wird sofort
+     *     beim Setzen via {@code plugin.saveConfig()} persistiert. Ein
+     *     Blanket-Save am Ende würde Hand-Edits, die der Admin im laufenden
+     *     Betrieb in der Datei gemacht hat, mit dem alten In-Memory-Stand
+     *     überschreiben (Hauptursache für den "Config-Reset"-Bug).</li>
+     *     <li>{@code kits.yml} / {@code arena.yml} – werden ebenfalls direkt
+     *     geschrieben, wenn der Admin per Command etwas ändert.</li>
+     * </ul>
+     */
     public void saveAllConfigs() {
-        plugin.saveConfig();
         savePlayersConfig();
-        saveKitsConfig();
-        saveArenaConfig();
     }
 
     public void savePlayersConfig() {

@@ -25,6 +25,13 @@ public class QueueManager {
 
         UUID uuid = player.getUniqueId();
 
+        // Spieler in einer Party können keine Queues betreten — sie sollen
+        // ausschließlich über das Party-Menü duellieren (User-Wunsch).
+        if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) {
+            player.sendMessage(plugin.getPrefix() + "§cYou can't join a queue while in a party. Leave the party first.");
+            return;
+        }
+
         // Aus allen Queues entfernen
         leaveAllQueues(uuid);
 

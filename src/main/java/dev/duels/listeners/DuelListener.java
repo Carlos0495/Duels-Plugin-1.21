@@ -97,25 +97,11 @@ public class DuelListener implements Listener {
 
         Player player = (Player) event.getEntity();
 
-        // In Duel - Schaden erlauben
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            return;
-        }
-
-        // In Party-FFA - Schaden erlauben
-        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) {
-            return;
-        }
-
-        // In Creative - Schaden erlauben
-        if (player.getGameMode() == GameMode.CREATIVE) {
-            return;
-        }
-
-        // Im Lobby - Schaden blockieren
-        event.setCancelled(true);
-        player.setFoodLevel(20);
-        player.setSaturation(20f);
+        // Außerhalb Duel/FFA: kein Damage-Block durch dieses Plugin mehr.
+        // User regelt PvP/PvE in der Lobby über andere Plugins.
+        // (Plugin sorgt nur dafür, dass keine externen Plugins den Spieler
+        // im Duel/FFA sterben lassen wenn sie es nicht sollten — das wird
+        // durch die separaten Damage-By-Entity-Hooks unten gehandhabt.)
     }
 
     @EventHandler
@@ -144,43 +130,21 @@ public class DuelListener implements Listener {
             return;
         }
 
-        // In Creative - Schaden erlauben
-        if (player.getGameMode() == GameMode.CREATIVE) {
-            return;
-        }
-
-        // Diamond Sword Hit für Duel Request
-        if (event.getDamager() instanceof Player) {
-            Player damager = (Player) event.getDamager();
-            if (damager.getInventory().getItemInMainHand().getType() == Material.DIAMOND_SWORD) {
-                event.setCancelled(true);
-
-                // Duel Request senden
-                if (!plugin.getDuelManager().isInDuel(damager.getUniqueId()) &&
-                        !plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-                    plugin.getGuiManager().openDuelGUI(damager, player);
-                }
-                return;
-            }
-        }
-
-        // Im Lobby - Schaden blockieren
-        event.setCancelled(true);
-        player.setFoodLevel(20);
-        player.setSaturation(20f);
+        // Außerhalb Duel/FFA: Plugin blockt nichts mehr (User regelt PvP /
+        // Diamond-Sword-Shortcut über andere Plugins). Standard-Vanilla.
     }
 
     @EventHandler
     public void onItemDrop(PlayerDropItemEvent event) {
         Player player = event.getPlayer();
 
-        // In Duel - Item Drop verhindern
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            event.setCancelled(true);
-            return;
-        }
+        // In Duel oder Party-FFA: droppen erlauben (z.B. um Items zu tauschen,
+        // Crystals/Pots wegzuwerfen). Inventar wird nach dem Match sowieso
+        // komplett geleert.
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
 
-        // In Survival - Item Drop verhindern
+        // In Survival/Lobby - Item Drop verhindern (nicht Creative)
         if (player.getGameMode() != GameMode.CREATIVE) {
             event.setCancelled(true);
         }
@@ -191,11 +155,9 @@ public class DuelListener implements Listener {
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
 
-            // In Duel - Item Drop verhindern
-            if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-                event.setCancelled(true);
-                return;
-            }
+            // Im Duel/FFA: durchlassen (siehe onItemDrop).
+            if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+            if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
 
             // In Survival - Item Drop verhindern
             if (player.getGameMode() != GameMode.CREATIVE) {
