@@ -124,8 +124,14 @@ public class SpectateManager {
         Location dest = lobby != null ? lobby : info.previousLocation;
         if (dest != null) spectator.teleport(dest);
         plugin.getPlayerManager().forceLobbyState(spectator);
-        plugin.getPlayerManager().setupPlayerInventory(spectator);
         plugin.getPlayerManager().applyLobbyFly(spectator);
+        // 2-Tick-Delay: nach Cross-World-Teleport ist player.getWorld() erst
+        // ab nächstem Tick wirklich die Lobby — setupPlayerInventory würde
+        // sonst denken wir sind in der Spectate-Welt und keine Hotbar setzen.
+        final Player sp = spectator;
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (sp.isOnline()) plugin.getPlayerManager().setupPlayerInventory(sp);
+        }, 2L);
         spectator.sendMessage(plugin.getPrefix() + "§7You stopped spectating.");
     }
 

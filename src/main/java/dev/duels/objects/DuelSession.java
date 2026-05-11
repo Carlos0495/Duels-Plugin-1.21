@@ -12,6 +12,7 @@ public class DuelSession {
     private final String kitName;
     private final String arenaName;
     private int timeLeft;
+    private final int initialDuration;
     private final int bestOf;
     private int winsP1;
     private int winsP2;
@@ -25,6 +26,7 @@ public class DuelSession {
         this.kitName = kitName;
         this.arenaName = arenaName;
         this.timeLeft = timeLeft;
+        this.initialDuration = timeLeft;
         this.bestOf = Math.max(1, bestOf);
         this.winsP1 = 0;
         this.winsP2 = 0;
@@ -39,6 +41,7 @@ public class DuelSession {
     public String getArenaName() { return arenaName; }
     public int getTimeLeft() { return timeLeft; }
     public void setTimeLeft(int timeLeft) { this.timeLeft = timeLeft; }
+    public int getInitialDuration() { return initialDuration; }
     public int getBestOf() { return bestOf; }
     public int getWinsP1() { return winsP1; }
     public void setWinsP1(int winsP1) { this.winsP1 = winsP1; }

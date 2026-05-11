@@ -294,6 +294,12 @@ public class DuelManager {
         // Match over?
         if (session.getWinsP1() >= session.requiredWins() || session.getWinsP2() >= session.requiredWins()) {
             session.setRoundStarting(false);
+            // Match-End Win/Lose Title (User-Wunsch). Zeigt großen Titel an
+            // beide Spieler.
+            winner.sendTitle("§a§lVICTORY", "§7" + scoreFormat, 0, 60, 20);
+            dead.sendTitle("§c§lDEFEAT", "§7" + scoreFormat, 0, 60, 20);
+            winner.playSound(winner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+            dead.playSound(dead.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
             // Flag Match als beendet BEVOR endDuel läuft, damit ein
             // nachfolgender Void-/Fall-/Fire-Tod kein Phantom-Round-Start
             // triggern kann (z.B. Bo1: Verlierer stirbt → Match over → endDuel
@@ -304,6 +310,13 @@ public class DuelManager {
             endDuel(deadId, winner, disconnected);
             return;
         }
+
+        // Zwischen-Runden Title (User-Wunsch): kurz "X hat Runde gewonnen"
+        // anzeigen, dann erst nächste Runde starten.
+        final String winnerName = winner.getName();
+        final int currentRound = session.getRound();
+        winner.sendTitle("§a§lRound won!", "§7" + scoreFormat, 0, 40, 10);
+        dead.sendTitle("§c§lRound lost", "§7" + winnerName + " §7won round §f" + currentRound, 0, 40, 10);
 
         // Nächste Runde vorbereiten
         session.setRound(session.getRound() + 1);
@@ -317,7 +330,9 @@ public class DuelManager {
             pendingRoundRespawn.put(session.getPlayer2(), arena.getSpawn2());
         }
 
-        startNextRound(session);
+        // 2.5s Verzögerung damit der Zwischen-Runden-Title sichtbar bleibt
+        // bevor die nächste Runde anfängt (User-Wunsch).
+        Bukkit.getScheduler().runTaskLater(plugin, () -> startNextRound(session), 50L);
     }
 
     private void startNextRound(DuelSession session) {
@@ -353,6 +368,10 @@ public class DuelManager {
                 // respawn) teleportiert und bekommen dort ihr Kit.
                 prepareRoundPlayer(p1, session);
                 prepareRoundPlayer(p2, session);
+
+                // Timer pro Runde zurücksetzen (User-Wunsch: Timeout soll
+                // nur die aktuelle Runde beenden, nicht das ganze Match).
+                session.setTimeLeft(session.getInitialDuration());
 
                 runRoundCountdown(session, p1, p2);
             });
@@ -498,6 +517,10 @@ public class DuelManager {
         if (winner != null) {
             winner.sendMessage(plugin.getPrefix() + "§aYou won the duel §7by timeout!");
             loser.sendMessage(plugin.getPrefix() + "§cYou lost the duel §7by timeout.");
+            winner.sendTitle("§a§lVICTORY", "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)", 0, 60, 20);
+            loser.sendTitle("§c§lDEFEAT", "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)", 0, 60, 20);
+            winner.playSound(winner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+            loser.playSound(loser.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
 
             // Stats
             plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
@@ -540,10 +563,19 @@ public class DuelManager {
         clearFullInventory(p);
 
         plugin.getPlayerManager().forceLobbyState(p);
-        plugin.getPlayerManager().setupPlayerInventory(p);
-        plugin.getPlayerManager().refreshQueueSlotItem(p);
         plugin.getPlayerManager().applyLobbyFly(p);
         plugin.getScoreboardManager().updateScoreboard(p);
+        // 2-Tick-Delay: Cross-World-Teleport in den Lobby-Spawn (teleportToSpawnSafe)
+        // wirkt erst NACH dem Tick auf player.getWorld(). Wenn wir hier sofort
+        // setupPlayerInventory() aufrufen, denkt isInLobbyWorld() noch wir
+        // sind in der Arena-Welt und die Hotbar wird NICHT gesetzt — das
+        // war die "Hotbar funktioniert nicht mehr nach FFA/Duel"-Ursache.
+        final Player pl = p;
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!pl.isOnline()) return;
+            plugin.getPlayerManager().setupPlayerInventory(pl);
+            plugin.getPlayerManager().refreshQueueSlotItem(pl);
+        }, 2L);
     }
 
     /** Leert Hauptinventar, Armor-Slots und Offhand. */
@@ -611,16 +643,61 @@ public class DuelManager {
         for (DuelSession session : new HashSet<>(activeDuels.values())) {
             // -1 bedeutet "until-death" Mode: kein Timer, läuft bis einer stirbt.
             if (session.getTimeLeft() < 0) continue;
+            // Während einer Runden-Transition (Tod gerade verarbeitet) Timer
+            // pausieren, sonst doppelte Timeouts.
+            if (session.isRoundStarting()) continue;
+            if (session.isMatchEnded()) continue;
             if (session.getTimeLeft() > 0) {
                 session.setTimeLeft(session.getTimeLeft() - 1);
             } else {
                 Player p1 = Bukkit.getPlayer(session.getPlayer1());
                 Player p2 = Bukkit.getPlayer(session.getPlayer2());
                 if (p1 != null && p2 != null) {
-                    endDuelByTimeout(p1, p2);
+                    handleRoundTimeout(session, p1, p2);
                 }
             }
         }
+    }
+
+    /**
+     * Round-Timeout: Bei Bo1 (best-of=1) endet das Match. Sonst zählt die
+     * aktuelle Runde als unentschieden (kein Win für jemanden), wir
+     * advancen in die nächste Runde. Wenn nach allen geplanten Runden
+     * (round > bestOf) immer noch niemand requiredWins erreicht hat,
+     * gewinnt der mit den meisten Siegen (oder Draw).
+     */
+    private void handleRoundTimeout(DuelSession session, Player p1, Player p2) {
+        // Reentrancy-Schutz wie bei Tod-Verarbeitung.
+        if (session.isRoundStarting() || session.isMatchEnded()) return;
+        session.setRoundStarting(true);
+
+        int currentRound = session.getRound();
+        int bestOf = session.getBestOf();
+
+        // Single-Round Match oder letztmögliche Runde gespielt: Match-Ende.
+        if (bestOf <= 1 || currentRound >= bestOf) {
+            session.setMatchEnded(true);
+            endDuelByTimeout(p1, p2);
+            return;
+        }
+
+        // Sonst: aktuelle Runde als Timeout-Draw werten und nächste Runde.
+        String scoreFormat = "§7" + p1.getName() + " §8(§f" + session.getWinsP1()
+                + " §7- §f" + session.getWinsP2() + "§8) §7" + p2.getName();
+        p1.sendTitle("§e§lTime up!", "§7Round §f" + currentRound + " §7draw", 0, 40, 10);
+        p2.sendTitle("§e§lTime up!", "§7Round §f" + currentRound + " §7draw", 0, 40, 10);
+        p1.sendMessage(plugin.getPrefix() + "§eRound §f#" + currentRound + " §eended in a draw §7(time up) §8| " + scoreFormat);
+        p2.sendMessage(plugin.getPrefix() + "§eRound §f#" + currentRound + " §eended in a draw §7(time up) §8| " + scoreFormat);
+
+        // Spieler sind beide am Leben → direkt zur Arena re-prepare.
+        session.setRound(currentRound + 1);
+        Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
+        if (arena != null && arena.getSpawn1() != null && arena.getSpawn2() != null) {
+            pendingRoundRespawn.put(session.getPlayer1(), arena.getSpawn1());
+            pendingRoundRespawn.put(session.getPlayer2(), arena.getSpawn2());
+        }
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> startNextRound(session), 50L);
     }
 
     public void addDuelRequest(UUID target, DuelRequest request) {

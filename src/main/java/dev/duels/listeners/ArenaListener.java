@@ -26,74 +26,49 @@ public class ArenaListener implements Listener {
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
+        if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Creative immer erlauben
-        if (player.getGameMode() == GameMode.CREATIVE) {
+        // Nur im Duel: Arena-Tracking. Außerhalb Duels: NICHT canceln,
+        // damit Block-Break global erlaubt ist (User regelt Lobby-Schutz
+        // selbst über andere Plugins). BlockBreakListener entscheidet
+        // dann per Kit-Whitelist ob das Brechen durchkommt.
+        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+
+        Location blockLoc = event.getBlock().getLocation();
+        Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
+        if (arena == null || !arena.isInArena(blockLoc)) {
+            // Spieler im Duel, aber Block außerhalb der Arena-Bounds — z.B.
+            // er ist rausgeglitcht. Sicherer Stand: blocken.
+            event.setCancelled(true);
             return;
         }
-
-        // In Duel?
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            Location blockLoc = event.getBlock().getLocation();
-            Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
-
-            if (arena != null && arena.isInArena(blockLoc)) {
-                BlockVector vector = new BlockVector(
-                        blockLoc.getBlockX(),
-                        blockLoc.getBlockY(),
-                        blockLoc.getBlockZ()
-                );
-
-                // Nur player-placed blocks dürfen zerstört werden
-                if (arena.isPlayerPlacedBlock(vector)) {
-                    arena.removePlayerPlacedBlock(vector);
-                    return; // Erlaubt
-                } else {
-                    event.setCancelled(true);
-                    player.sendMessage(plugin.getPrefix() + "§cYou cannot destroy arena blocks!");
-                    return;
-                }
-            } else {
-                event.setCancelled(true);
-                return;
-            }
+        BlockVector vector = new BlockVector(
+                blockLoc.getBlockX(), blockLoc.getBlockY(), blockLoc.getBlockZ());
+        if (arena.isPlayerPlacedBlock(vector)) {
+            arena.removePlayerPlacedBlock(vector);
+            return;
         }
-
-        // Nicht im Duel + nicht Creative -> blockieren
-        event.setCancelled(true);
+        // Nicht player-placed: Kit-Whitelist entscheidet (BlockBreakListener).
+        // Wir lassen es hier durch, damit Crystal/Bett-Whitelists greifen.
     }
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
+        if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Creative immer erlauben
-        if (player.getGameMode() == GameMode.CREATIVE) {
+        // Nur im Duel: Arena-Tracking. Außerhalb: nicht canceln.
+        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+
+        Location blockLoc = event.getBlock().getLocation();
+        Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
+        if (arena == null || !arena.isInArena(blockLoc)) {
+            event.setCancelled(true);
             return;
         }
-
-        // In Duel?
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            Location blockLoc = event.getBlock().getLocation();
-            Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
-
-            if (arena != null && arena.isInArena(blockLoc)) {
-                // Block als player-placed markieren
-                BlockVector vector = new BlockVector(
-                        event.getBlock().getX(),
-                        event.getBlock().getY(),
-                        event.getBlock().getZ()
-                );
-                arena.addPlayerPlacedBlock(vector);
-                return; // Erlaubt
-            } else {
-                event.setCancelled(true);
-                return;
-            }
-        }
-
-        // Nicht im Duel + nicht Creative -> blockieren
-        event.setCancelled(true);
+        BlockVector vector = new BlockVector(
+                event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
+        arena.addPlayerPlacedBlock(vector);
     }
 
     @EventHandler

@@ -102,12 +102,28 @@ public class ScoreboardManager {
         int playerPing = player.getPing();
         int opponentPing = 0;
         int timeLeft = 0;
+        int yourWins = 0;
+        int oppWins = 0;
+        int round = 0;
+        int bestOf = 0;
+        int requiredWins = 0;
+        String scoreStr = "0-0";
 
         if (session != null) {
             opponentName = session.getOpponentName(uuid);
             mapName = session.getArenaName();
             timeLeft = session.getTimeLeft();
-
+            round = session.getRound();
+            bestOf = session.getBestOf();
+            requiredWins = session.requiredWins();
+            if (session.getPlayer1().equals(uuid)) {
+                yourWins = session.getWinsP1();
+                oppWins = session.getWinsP2();
+            } else {
+                yourWins = session.getWinsP2();
+                oppWins = session.getWinsP1();
+            }
+            scoreStr = yourWins + " - " + oppWins;
 
             UUID opponentId = session.getOpponent(uuid);
             if (opponentId != null) {
@@ -117,6 +133,9 @@ public class ScoreboardManager {
                 }
             }
         }
+
+        // %timeleft%: -1 = until-death (kein Timer) → Unendlich-Zeichen.
+        String timeLeftStr = (timeLeft < 0) ? "§5§l∞" : (timeLeft + "s");
 
         // Alle Platzhalter ersetzen
         return line
@@ -132,7 +151,13 @@ public class ScoreboardManager {
                 .replace("%map%", mapName)
                 .replace("%playerping%", playerPing + "ms")
                 .replace("%opponentping%", opponentPing + "ms")
-                .replace("%timeleft%", (timeLeft) + "s");
+                .replace("%timeleft%", timeLeftStr)
+                .replace("%round%", String.valueOf(round))
+                .replace("%bestof%", String.valueOf(bestOf))
+                .replace("%requiredwins%", String.valueOf(requiredWins))
+                .replace("%score%", scoreStr)
+                .replace("%yourwins%", String.valueOf(yourWins))
+                .replace("%opponentwins%", String.valueOf(oppWins));
     }
 
     private String getEmptyLineId(int index) {

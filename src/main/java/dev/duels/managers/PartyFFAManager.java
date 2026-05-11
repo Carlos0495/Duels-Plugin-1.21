@@ -217,31 +217,34 @@ public class PartyFFAManager {
             winner = Bukkit.getPlayer(winnerId);
             playerToSession.remove(winnerId);
         }
+        // Win-Title an alle. Winner getrennt, sonst Subtitle "X gewonnen".
         if (winner != null) {
             broadcastToSession(session, "§6§lWinner: §e" + winner.getName());
-            Location lobby = plugin.getArenaManager().getSpawnLocation();
-            if (lobby != null) {
-                winner.teleport(lobby);
-                DuelManager.clearFullInventory(winner);
-                plugin.getPlayerManager().setupPlayerInventory(winner);
-                plugin.getPlayerManager().forceLobbyState(winner);
-                plugin.getPlayerManager().applyLobbyFly(winner);
+            final Player win = winner;
+            win.sendTitle("§a§lFFA VICTORY", "§7You won the FFA!", 0, 60, 20);
+            for (UUID u : session.allParticipants) {
+                if (u.equals(win.getUniqueId())) continue;
+                Player p = Bukkit.getPlayer(u);
+                if (p != null && p.isOnline()) {
+                    p.sendTitle("§c§lDEFEAT", "§7" + win.getName() + " §7won the FFA", 0, 60, 20);
+                }
             }
             plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
         }
 
-        // Alle restlichen Teilnehmer (Tote im Spectator-Modus) zurück in Lobby
+        // Alle Tote-Spectator zurück in Lobby. SpectateManager.stop() macht
+        // teleport+setGameMode+setupPlayerInventory synchron.
         plugin.getSpectateManager().endMatch("ffa:" + session.leaderId);
 
-        // Sicherheits-Restore: jeder Teilnehmer (außer Sieger, der ist schon
-        // teleportiert) wird zwangsweise auf SURVIVAL + Lobby + Lobby-Inv
-        // zurückgesetzt. Falls SpectateManager einen Spieler verpasst (z.B.
-        // weil er disconnected war als er starb), fängt das den Bug ab.
-        UUID winnerId = winner != null ? winner.getUniqueId() : null;
+        // Sicherheits-Restore (für ALLE Teilnehmer, auch Winner): wir
+        // teleportieren in die Lobby, clearen das Inventar und schedulen
+        // den Hotbar-Setup auf den nächsten Tick — so ist der Spieler
+        // garantiert in der Lobby-Welt wenn setupPlayerInventory die
+        // isInLobbyWorld()-Prüfung macht (sonst kann die Hotbar leer
+        // bleiben weil der Cross-World-Teleport noch nicht durch ist).
         Location lobbySpawn = plugin.getArenaManager().getSpawnLocation();
         for (UUID u : session.allParticipants) {
             playerToSession.remove(u);
-            if (u.equals(winnerId)) continue;
             Player p = Bukkit.getPlayer(u);
             if (p == null || !p.isOnline()) continue;
             if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
@@ -250,8 +253,17 @@ public class PartyFFAManager {
             if (lobbySpawn != null) p.teleport(lobbySpawn);
             DuelManager.clearFullInventory(p);
             plugin.getPlayerManager().forceLobbyState(p);
-            plugin.getPlayerManager().setupPlayerInventory(p);
             plugin.getPlayerManager().applyLobbyFly(p);
+            // 1-Tick-Delay: Cross-World-Teleport wirkt erst nach diesem Tick
+            // garantiert auf player.getWorld(), und ein laufendes Spectator-
+            // Restore vom endMatch() oben hat dann auch fertig.
+            final Player pl = p;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!pl.isOnline()) return;
+                plugin.getPlayerManager().setupPlayerInventory(pl);
+                plugin.getPlayerManager().refreshQueueSlotItem(pl);
+                plugin.getScoreboardManager().updateScoreboard(pl);
+            }, 2L);
         }
         sessionsByLeader.remove(session.leaderId);
 
