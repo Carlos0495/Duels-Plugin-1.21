@@ -119,6 +119,7 @@ public final class DuelsPlugin extends JavaPlugin {
         getCommand("setdeaths").setExecutor(new SetStatsCommand(this));
         getCommand("setwins").setExecutor(new SetStatsCommand(this));
         getCommand("setlosses").setExecutor(new SetStatsCommand(this));
+        if (getCommand("setcoins") != null) getCommand("setcoins").setExecutor(new SetStatsCommand(this));
         getCommand("kit").setExecutor(new KitCommand(this));
         getCommand("ping").setExecutor(new PingCommand(this));
         getCommand("fly").setExecutor(new FlyCommand(this));

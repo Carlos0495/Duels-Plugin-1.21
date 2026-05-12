@@ -328,29 +328,47 @@ public class ArenaManager {
             if (onComplete != null) onComplete.run();
             return;
         }
-        // Wenn keine Bounds gesetzt sind, gibt's nichts zurückzusetzen.
-        if (!arena.hasSnapshotBounds()) {
-            if (onComplete != null) onComplete.run();
-            return;
-        }
 
-        org.bukkit.World world = Bukkit.getWorld(arena.getSnapshotWorld());
-        if (world == null) {
-            if (onComplete != null) onComplete.run();
-            return;
-        }
+        // Welt aus snapshot bevorzugen, sonst aus corners. So funktioniert der
+        // Reset auch für Arenen ohne Block-Snapshot (Sumo/NoDebuff/große Builds).
+        org.bukkit.World world = null;
+        if (arena.getSnapshotWorld() != null) world = Bukkit.getWorld(arena.getSnapshotWorld());
+        if (world == null && arena.getCorner1() != null) world = arena.getCorner1().getWorld();
+        if (world == null && arena.getSpawn1() != null) world = arena.getSpawn1().getWorld();
 
-        // Blocks setzen (falls Snapshot vorhanden) + Entities (Arrows,
-        // gedroppte Items, Crystals, Trides etc.) entfernen — alles sync,
-        // weil Bukkit-API main-thread-only.
+        final org.bukkit.World worldFinal = world;
         Bukkit.getScheduler().runTask(plugin, () -> {
-            if (arena.hasSnapshot()) {
-                for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
-                    BlockVector v = e.getKey();
-                    world.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+            try {
+                if (worldFinal != null) {
+                    // 1. Player-placed Blöcke entfernen (auch wenn kein Snapshot
+                    // existiert) — Crystal-Bases, Obsidian, etc. werden hier
+                    // aus der Welt geräumt.
+                    if (!arena.getPlayerPlacedBlocks().isEmpty()) {
+                        org.bukkit.block.data.BlockData air = Bukkit.createBlockData(org.bukkit.Material.AIR);
+                        for (BlockVector v : new java.util.ArrayList<>(arena.getPlayerPlacedBlocks())) {
+                            // Nur überschreiben wenn original nicht festlegt
+                            // (sonst übernimmt der Snapshot-Restore unten).
+                            if (!arena.getOriginalBlocks().containsKey(v)) {
+                                worldFinal.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(air, false);
+                            }
+                        }
+                        arena.clearPlayerPlacedBlocks();
+                    }
+
+                    // 2. Snapshot zurückspielen (falls erfasst)
+                    if (arena.hasSnapshot()) {
+                        for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
+                            BlockVector v = e.getKey();
+                            worldFinal.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+                        }
+                    }
+
+                    // 3. Entities (Pfeile, Drops, Crystals, Tridents) wegräumen
+                    cleanupArenaEntities(worldFinal, arena);
                 }
+            } catch (Throwable t) {
+                plugin.getLogger().warning("resetArena failed for '" + arena.getName() + "': " + t.getMessage());
             }
-            cleanupArenaEntities(world, arena);
             if (onComplete != null) onComplete.run();
         });
     }
@@ -359,14 +377,31 @@ public class ArenaManager {
      * Killt alle Nicht-Spieler-Entities (Arrows, gedroppte Items, EnderCrystals,
      * Tridents, ItemFrames-Drops etc.) in der Bounding-Box der Arena. Spieler
      * werden NIE entfernt — ein im Reset noch tp-mäßig drin steckender
-     * Spieler bleibt unangetastet.
+     * Spieler bleibt unangetastet. Falls Snapshot-Bounds fehlen, fallback auf
+     * Corner-Bounds.
      */
     private void cleanupArenaEntities(org.bukkit.World world, Arena arena) {
-        if (world == null || !arena.hasSnapshotBounds()) return;
-        int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
-        int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();
-        // Etwas Padding nach oben/außen, damit Arrows die im Snapshot-Rand
-        // stecken auch noch erwischt werden.
+        if (world == null) return;
+        int minX, minY, minZ, maxX, maxY, maxZ;
+        if (arena.hasSnapshotBounds()) {
+            minX = arena.getSnapshotMinX(); minY = arena.getSnapshotMinY(); minZ = arena.getSnapshotMinZ();
+            maxX = arena.getSnapshotMaxX(); maxY = arena.getSnapshotMaxY(); maxZ = arena.getSnapshotMaxZ();
+        } else if (arena.getCorner1() != null && arena.getCorner2() != null) {
+            Location c1 = arena.getCorner1(), c2 = arena.getCorner2();
+            minX = Math.min(c1.getBlockX(), c2.getBlockX()); maxX = Math.max(c1.getBlockX(), c2.getBlockX());
+            minY = Math.min(c1.getBlockY(), c2.getBlockY()); maxY = Math.max(c1.getBlockY(), c2.getBlockY());
+            minZ = Math.min(c1.getBlockZ(), c2.getBlockZ()); maxZ = Math.max(c1.getBlockZ(), c2.getBlockZ());
+        } else if (arena.getSpawn1() != null) {
+            // Letzter Fallback: kleine Box um spawn1
+            Location s = arena.getSpawn1();
+            int r = 50;
+            minX = s.getBlockX() - r; maxX = s.getBlockX() + r;
+            minY = Math.max(world.getMinHeight(), s.getBlockY() - r);
+            maxY = Math.min(world.getMaxHeight(), s.getBlockY() + r);
+            minZ = s.getBlockZ() - r; maxZ = s.getBlockZ() + r;
+        } else {
+            return;
+        }
         double pad = 2.0;
         for (org.bukkit.entity.Entity e : world.getNearbyEntities(
                 new org.bukkit.util.BoundingBox(

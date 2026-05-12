@@ -36,6 +36,7 @@ public class PlayerManager {
         data.setDeaths(plugin.getConfigManager().getPlayersConfig().getInt(key + ".deaths", 0));
         data.setWins(plugin.getConfigManager().getPlayersConfig().getInt(key + ".wins", 0));
         data.setLosses(plugin.getConfigManager().getPlayersConfig().getInt(key + ".losses", 0));
+        data.setCoins(plugin.getConfigManager().getPlayersConfig().getInt(key + ".coins", 0));
         data.setName(plugin.getConfigManager().getPlayersConfig().getString(key + ".name", "Unknown"));
 
         boolean af = plugin.getConfigManager().getPlayersConfig().getBoolean(key + ".autofly", true);
@@ -65,6 +66,7 @@ public class PlayerManager {
         plugin.getConfigManager().getPlayersConfig().set(key + ".deaths", data.getDeaths());
         plugin.getConfigManager().getPlayersConfig().set(key + ".wins", data.getWins());
         plugin.getConfigManager().getPlayersConfig().set(key + ".losses", data.getLosses());
+        plugin.getConfigManager().getPlayersConfig().set(key + ".coins", data.getCoins());
         plugin.getConfigManager().getPlayersConfig().set(key + ".name", data.getName());
         plugin.getConfigManager().getPlayersConfig().set(key + ".autofly", autoFly.getOrDefault(uuid, true));
 
@@ -105,6 +107,9 @@ public class PlayerManager {
             case "losses":
                 data.setLosses(data.getLosses() + amount);
                 break;
+            case "coins":
+                data.setCoins(data.getCoins() + amount);
+                break;
         }
         savePlayerData(uuid);
     }
@@ -123,6 +128,9 @@ public class PlayerManager {
                 break;
             case "losses":
                 data.setLosses(value);
+                break;
+            case "coins":
+                data.setCoins(value);
                 break;
         }
         savePlayerData(uuid);
@@ -164,11 +172,16 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         // automatisch Slot 0-8. Armor + Offhand sind in der Lobby grund-
         // sätzlich nicht vorgesehen — die werden nur hier (Lobby) geclearet.
         var inv = player.getInventory();
+        // Komplettes Lobby-Clear: Inventar + Rüstung + Offhand. Das wird
+        // sowohl von /spawn als auch nach Duel/FFA-Ende ausgeführt — User
+        // soll mit nackter Lobby-Hotbar starten, keine Duel-Items übrig.
+        inv.clear();
         inv.setHelmet(null);
         inv.setChestplate(null);
         inv.setLeggings(null);
         inv.setBoots(null);
         inv.setItemInOffHand(null);
+        player.setItemOnCursor(null);
 
         HotbarManager hotbar = plugin.getHotbarManager();
         if (hotbar == null) {
@@ -477,6 +490,7 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             case "deaths": return data.getDeaths();
             case "wins": return data.getWins();
             case "losses": return data.getLosses();
+            case "coins": return data.getCoins();
             default: return 0;
         }
     }

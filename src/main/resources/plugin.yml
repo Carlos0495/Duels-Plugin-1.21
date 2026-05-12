@@ -58,7 +58,11 @@ commands:
 
   setlosses:
     description: Set player losses
-    usage: /<command> <player> <amount>
+    usage: /<command> <player|all> <amount>
+
+  setcoins:
+    description: Set player coins
+    usage: /<command> <player|all> <amount>
 
   kit:
     description: Manage duel kits

@@ -230,6 +230,9 @@ public class PartyFFAManager {
                 }
             }
             plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
+            int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+            plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
+            win.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(FFA win reward)");
         }
 
         // Alle Tote-Spectator zurück in Lobby. SpectateManager.stop() macht

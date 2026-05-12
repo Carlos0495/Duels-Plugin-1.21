@@ -103,6 +103,7 @@ public class ConfigManager {
                     "",
                     "§a☻ §7ᴏɴʟɪɴᴇ §a%online%",
                     "§6🏹 §7ɪɴ ᴅᴜᴇʟѕ §6%playing%",
+                    "§e🪙 §7ᴄᴏɪɴѕ §e%coins%",
                     "",
                     "§2🗡 §7ᴋɪʟʟѕ §2%kills%",
                     "§c☠ §7ᴅᴇᴀᴛʜѕ §c%deaths%",
@@ -114,6 +115,22 @@ public class ConfigManager {
                     ""
             ));
             dirty = true;
+        } else {
+            // Migration: existierende Config kriegt %coins%-Zeile als 3. Eintrag
+            // (unter "in duels"), falls noch nicht vorhanden.
+            java.util.List<String> lines = new java.util.ArrayList<>(mainConfig.getStringList("scoreboard-lines"));
+            boolean hasCoins = false;
+            for (String l : lines) if (l != null && l.contains("%coins%")) { hasCoins = true; break; }
+            if (!hasCoins) {
+                int insertAt = -1;
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i) != null && lines.get(i).contains("%playing%")) { insertAt = i + 1; break; }
+                }
+                if (insertAt < 0) insertAt = Math.min(3, lines.size());
+                lines.add(insertAt, "§e🪙 §7ᴄᴏɪɴѕ §e%coins%");
+                mainConfig.set("scoreboard-lines", lines);
+                dirty = true;
+            }
         }
         if (!mainConfig.contains("duel-scoreboard-lines")) {
             mainConfig.set("duel-scoreboard-lines", java.util.Arrays.asList(
@@ -134,6 +151,24 @@ public class ConfigManager {
                     ""
             ));
             dirty = true;
+        } else {
+            // Migration: bestehende duel-scoreboard-lines bekommen Round +
+            // Score Zeilen falls noch nicht vorhanden (nach %map%).
+            java.util.List<String> lines = new java.util.ArrayList<>(mainConfig.getStringList("duel-scoreboard-lines"));
+            boolean hasRound = false;
+            for (String l : lines) if (l != null && (l.contains("%bestof%") || l.contains("%round%"))) { hasRound = true; break; }
+            if (!hasRound) {
+                int insertAt = -1;
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i) != null && lines.get(i).contains("%map%")) { insertAt = i + 1; break; }
+                }
+                if (insertAt < 0) insertAt = Math.min(5, lines.size());
+                lines.add(insertAt, "");
+                lines.add(insertAt + 1, "§d§l⚔ §7ʀᴏᴜɴᴅ §d%round%§7/§d%bestof%");
+                lines.add(insertAt + 2, "§d§l⚔ §7sᴄᴏʀᴇ §d%score% §8(ꜰɪʀsᴛ ᴛᴏ §f%requiredwins%§8)");
+                mainConfig.set("duel-scoreboard-lines", lines);
+                dirty = true;
+            }
         }
         if (!mainConfig.contains("duel-time")) { mainConfig.set("duel-time", 180); dirty = true; }
         if (!mainConfig.contains("request-timeout")) { mainConfig.set("request-timeout", 30); dirty = true; }
@@ -142,6 +177,7 @@ public class ConfigManager {
         if (!mainConfig.contains("bestof-options")) { mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10)); dirty = true; }
         if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
+        if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
         if (dirty) plugin.saveConfig();
     }
 

@@ -464,6 +464,12 @@ public class DuelManager {
         boolean matchOver = session.getWinsP1() >= session.requiredWins() || session.getWinsP2() >= session.requiredWins();
 
         if (matchOver) {
+            // Coins für Match-Sieg
+            if (winner != null) {
+                int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+                plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
+                winner.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+            }
             Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
 
             Runnable finish = () -> {
@@ -528,6 +534,11 @@ public class DuelManager {
 
             plugin.getPlayerManager().addStat(loser.getUniqueId(), "losses", 1);
             plugin.getPlayerManager().addStat(loser.getUniqueId(), "deaths", 1);
+
+            // Coins für Match-Sieg
+            int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+            plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
+            winner.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
         } else {
             // Draw
             p1.sendMessage(plugin.getPrefix() + "§eDuel ended in a draw §7(time ran out).");
@@ -881,6 +892,11 @@ public class DuelManager {
             plugin.getPlayerManager().addStat(opponentUUID, "wins", 1);
             plugin.getPlayerManager().addStat(opponentUUID, "kills", 1);
 
+            // Coins für Match-Sieg (Disconnect-Forfeit)
+            int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+            plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
+            opponent.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+
             // Stats für disconnected Spieler
             plugin.getPlayerManager().addStat(playerUUID, "losses", 1);
             plugin.getPlayerManager().addStat(playerUUID, "deaths", 1);
@@ -928,6 +944,9 @@ public class DuelManager {
         if (opponent != null) {
             plugin.getPlayerManager().addStat(opponentUUID, "wins", 1);
             plugin.getPlayerManager().addStat(opponentUUID, "kills", 1);
+            int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+            plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
+            if (opponent.isOnline()) opponent.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
         }
 
         // Arena zurücksetzen

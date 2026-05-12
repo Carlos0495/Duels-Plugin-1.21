@@ -98,6 +98,7 @@ public class Arena {
     public void addPlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.add(v); }
     public void removePlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.remove(v); }
     public boolean isPlayerPlacedBlock(BlockVector v) { return playerPlacedBlocks.contains(v); }
+    public java.util.Set<BlockVector> getPlayerPlacedBlocks() { return playerPlacedBlocks; }
     public void clearPlayerPlacedBlocks() { playerPlacedBlocks.clear(); }
 
     // Allowed kits management

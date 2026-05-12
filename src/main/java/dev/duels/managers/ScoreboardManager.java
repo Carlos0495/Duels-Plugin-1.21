@@ -88,6 +88,7 @@ public class ScoreboardManager {
         int deaths = plugin.getPlayerManager().getStat(uuid, "deaths");
         int wins = plugin.getPlayerManager().getStat(uuid, "wins");
         int losses = plugin.getPlayerManager().getStat(uuid, "losses");
+        int coins = plugin.getPlayerManager().getStat(uuid, "coins");
         double kd = deaths == 0 ? kills : (double) kills / deaths;
         String winrate = plugin.getPlayerManager().calculateWinrate(wins, losses);
 
@@ -143,6 +144,7 @@ public class ScoreboardManager {
                 .replace("%deaths%", String.valueOf(deaths))
                 .replace("%wins%", String.valueOf(wins))
                 .replace("%losses%", String.valueOf(losses))
+                .replace("%coins%", String.valueOf(coins))
                 .replace("%kd%", String.format("%.2f", kd))
                 .replace("%winrate%", winrate)
                 .replace("%online%", String.valueOf(online))

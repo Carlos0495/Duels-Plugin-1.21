@@ -10,6 +10,7 @@ public class PlayerData {
     private int deaths;
     private int wins;
     private int losses;
+    private int coins;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -17,19 +18,22 @@ public class PlayerData {
         this.deaths = 0;
         this.wins = 0;
         this.losses = 0;
+        this.coins = 0;
     }
 
     public UUID getUuid() { return uuid; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public int getKills() { return kills; }
-    public void setKills(int kills) { this.kills = kills; }
+    public void setKills(int kills) { this.kills = Math.max(0, kills); }
     public int getDeaths() { return deaths; }
-    public void setDeaths(int deaths) { this.deaths = deaths; }
+    public void setDeaths(int deaths) { this.deaths = Math.max(0, deaths); }
     public int getWins() { return wins; }
-    public void setWins(int wins) { this.wins = wins; }
+    public void setWins(int wins) { this.wins = Math.max(0, wins); }
     public int getLosses() { return losses; }
-    public void setLosses(int losses) { this.losses = losses; }
+    public void setLosses(int losses) { this.losses = Math.max(0, losses); }
+    public int getCoins() { return coins; }
+    public void setCoins(int coins) { this.coins = Math.max(0, coins); }
 
     public double getKD() {
         return deaths == 0 ? kills : (double) kills / deaths;
