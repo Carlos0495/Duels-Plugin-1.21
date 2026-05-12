@@ -73,7 +73,9 @@ public class DuelSession {
     }
 
     public int requiredWins() {
-        return (bestOf / 2) + 1;
+        // User-Wunsch: "best of N" = First-to-N. Wenn der Spieler 5 Runden
+        // einstellt, müssen 5 Runden gewonnen werden (NICHT die Hälfte+1).
+        return bestOf;
     }
 
     public String getScoreString() {

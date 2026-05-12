@@ -81,8 +81,25 @@ public class SpectateManager {
         info.matchKey = computeMatchKey(target);
         spectators.put(spectator.getUniqueId(), info);
 
-        spectator.setGameMode(GameMode.SPECTATOR);
+        // Teleport ZUERST in die Arena-Welt — Multiverse/Welt-Default kann
+        // beim Welt-Wechsel den Gamemode auf SURVIVAL forcen. Erst danach
+        // SPECTATOR setzen, mit einer Verzögerung damit alle Listener
+        // anderer Plugins durchgelaufen sind. Zusätzlich ein zweiter
+        // verzögerter Re-Set falls noch ein Plugin nachträglich Gamemode
+        // ändert.
         spectator.teleport(target.getLocation());
+        spectator.setGameMode(GameMode.SPECTATOR);
+        final UUID specId = spectator.getUniqueId();
+        for (long delay : new long[]{1L, 5L, 20L}) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Player pl = Bukkit.getPlayer(specId);
+                if (pl == null || !pl.isOnline()) return;
+                if (!isSpectating(specId)) return;
+                if (pl.getGameMode() != GameMode.SPECTATOR) {
+                    pl.setGameMode(GameMode.SPECTATOR);
+                }
+            }, delay);
+        }
         spectator.sendMessage(plugin.getPrefix() + "§7Spectating §e"
                 + target.getName() + "§7. Use §e/spectate stop §7or §e/spawn §7to leave.");
         return null;

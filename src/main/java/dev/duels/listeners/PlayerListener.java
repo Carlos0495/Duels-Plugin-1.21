@@ -122,9 +122,18 @@ public class PlayerListener implements Listener {
         plugin.getPlayerManager().setupPlayerInventory(player);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onGameModeChange(PlayerGameModeChangeEvent event) {
         Player player = event.getPlayer();
+
+        // Während Spectate KEINE externe Gamemode-Änderung erlauben
+        // (Multiverse force-gamemode etc. würde sonst SURVIVAL erzwingen).
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(player.getUniqueId())
+                && event.getNewGameMode() != GameMode.SPECTATOR) {
+            event.setCancelled(true);
+            return;
+        }
 
         if (event.getNewGameMode() == GameMode.SURVIVAL) {
             if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
@@ -151,6 +160,34 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         if (plugin.getDuelManager().isFrozen(player.getUniqueId())) {
             event.setTo(event.getFrom());
+            return;
+        }
+
+        // Spectator-Boundary: wenn der Spectator außerhalb der Arena-Bounds
+        // landet (Multiverse-Welt-Teleport, Eingabe oder Flug nach außen),
+        // ziehen wir ihn zurück zum aktuellen Target. Wir erlauben einen
+        // großzügigen 32-Block-Puffer um die Corner-Bounds.
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(player.getUniqueId())) {
+            dev.duels.managers.SpectateManager.SpectateInfo info =
+                    plugin.getSpectateManager().getInfo(player.getUniqueId());
+            if (info != null && info.targetId != null) {
+                Player target = Bukkit.getPlayer(info.targetId);
+                if (target != null && target.isOnline()) {
+                    // Wenn der Spectator nicht in der gleichen Welt wie das
+                    // Target ist, ziehen wir ihn sofort zurück.
+                    if (!target.getWorld().equals(player.getWorld())) {
+                        player.teleport(target.getLocation());
+                        return;
+                    }
+                    // Distance-Check: > 80 Blöcke vom Target → zurück. Das
+                    // verhindert "wegfliegen aus der Arena" ohne die Corners
+                    // zu benötigen.
+                    if (player.getLocation().distanceSquared(target.getLocation()) > 80 * 80) {
+                        player.teleport(target.getLocation());
+                    }
+                }
+            }
         }
     }
 

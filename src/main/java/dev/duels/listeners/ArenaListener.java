@@ -28,28 +28,21 @@ public class ArenaListener implements Listener {
         Player player = event.getPlayer();
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Nur im Duel: Arena-Tracking. Außerhalb Duels: NICHT canceln,
-        // damit Block-Break global erlaubt ist (User regelt Lobby-Schutz
-        // selbst über andere Plugins). BlockBreakListener entscheidet
-        // dann per Kit-Whitelist ob das Brechen durchkommt.
+        // Im Duel? Nur dann interessieren wir uns für Tracking.
+        // Block-Cancel entscheidet ALLEIN der BlockBreakListener
+        // (Kit-Whitelist). Wir NICHT — auch wenn der Spieler außerhalb
+        // der Corners ist (große/keine Corners-Arenen sonst broken).
         if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
 
         Location blockLoc = event.getBlock().getLocation();
-        Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
-        if (arena == null || !arena.isInArena(blockLoc)) {
-            // Spieler im Duel, aber Block außerhalb der Arena-Bounds — z.B.
-            // er ist rausgeglitcht. Sicherer Stand: blocken.
-            event.setCancelled(true);
-            return;
-        }
+        Arena arena = resolveArenaForPlayer(player, blockLoc);
+        if (arena == null) return;
+
         BlockVector vector = new BlockVector(
                 blockLoc.getBlockX(), blockLoc.getBlockY(), blockLoc.getBlockZ());
         if (arena.isPlayerPlacedBlock(vector)) {
             arena.removePlayerPlacedBlock(vector);
-            return;
         }
-        // Nicht player-placed: Kit-Whitelist entscheidet (BlockBreakListener).
-        // Wir lassen es hier durch, damit Crystal/Bett-Whitelists greifen.
     }
 
     @EventHandler
@@ -57,18 +50,32 @@ public class ArenaListener implements Listener {
         Player player = event.getPlayer();
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Nur im Duel: Arena-Tracking. Außerhalb: nicht canceln.
+        // Im Duel? Tracking, aber NIE canceln (Whitelist entscheidet im
+        // BlockBreakListener). Auch wenn keine Corners gesetzt sind, das
+        // Place ist erlaubt.
         if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
 
         Location blockLoc = event.getBlock().getLocation();
-        Arena arena = plugin.getArenaManager().getArenaAt(blockLoc);
-        if (arena == null || !arena.isInArena(blockLoc)) {
-            event.setCancelled(true);
-            return;
-        }
+        Arena arena = resolveArenaForPlayer(player, blockLoc);
+        if (arena == null) return;
+
         BlockVector vector = new BlockVector(
                 event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
         arena.addPlayerPlacedBlock(vector);
+    }
+
+    /**
+     * Resolve die Arena für einen Duel-Spieler. Bevorzugt:
+     * 1. Arena der aktiven Duel-Session (per Name) — funktioniert auch ohne Corners.
+     * 2. Fallback: räumlich per {@code getArenaAt}.
+     */
+    private Arena resolveArenaForPlayer(Player player, Location loc) {
+        var session = plugin.getDuelManager().getDuelSession(player.getUniqueId());
+        if (session != null && session.getArenaName() != null) {
+            Arena byName = plugin.getArenaManager().getArena(session.getArenaName());
+            if (byName != null) return byName;
+        }
+        return plugin.getArenaManager().getArenaAt(loc);
     }
 
     @EventHandler
