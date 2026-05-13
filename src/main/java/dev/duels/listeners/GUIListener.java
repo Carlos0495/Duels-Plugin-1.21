@@ -394,12 +394,17 @@ public class GUIListener implements Listener {
             return;
         }
 
-        // Zahlentasten / Offhand / Doubleclick / Middle blocken (Dupe/Weird)
+        // Zahlentasten / Offhand / Doubleclick / Middle blocken (Dupe/Weird).
+        // Außerdem Q-Drop / Strg+Q blocken — sonst legt der Spieler das Kit-
+        // Item per Q in seinem echten Inventar ab statt zu droppen (Bug-
+        // Report: "wenn man bei item sort dropped dann geht es ins inventar").
         switch (event.getClick()) {
             case NUMBER_KEY:
             case SWAP_OFFHAND:
             case DOUBLE_CLICK:
             case MIDDLE:
+            case DROP:
+            case CONTROL_DROP:
                 event.setCancelled(true);
                 return;
             default:
