@@ -131,6 +131,25 @@ public class KitManager {
             }
 
             kits.put(kitId, kit);
+
+            // Diagnose-Log: zeigt dem Admin, welche Materialien das Plugin
+            // tatsächlich für dieses Kit als placeable / breakable geladen
+            // hat (User-Wunsch: "ich glaube placeable blocks geht nicht").
+            // Hilft bei YAML-Typos: wenn die Liste leer ist, ist entweder
+            // der Key falsch geschrieben oder das Material ungültig.
+            StringBuilder pb = new StringBuilder();
+            for (Material m : kit.getPlaceableBlocks()) {
+                if (pb.length() > 0) pb.append(", ");
+                pb.append(m.name());
+            }
+            StringBuilder bb = new StringBuilder();
+            for (Material m : kit.getBreakableBlocks()) {
+                if (bb.length() > 0) bb.append(", ");
+                bb.append(m.name());
+            }
+            plugin.getLogger().info("Kit '" + kitId
+                    + "' placeable=[" + pb.toString()
+                    + "] breakable=[" + bb.toString() + "]");
         }
 
         plugin.getLogger().info("Loaded " + kits.size() + " kits");
