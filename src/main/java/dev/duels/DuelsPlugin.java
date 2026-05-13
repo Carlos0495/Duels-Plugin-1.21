@@ -162,6 +162,16 @@ public final class DuelsPlugin extends JavaPlugin {
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             guiManager.updateOpenGUIs();
         }, 0L, 20L);
+
+        // Lobby-Inventar permanent clear + Tab-Suffix Update (jede Sekunde)
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            for (org.bukkit.entity.Player pl : Bukkit.getOnlinePlayers()) {
+                try {
+                    playerManager.clearNonHotbarItems(pl);
+                    playerManager.updateTabName(pl);
+                } catch (Throwable ignored) {}
+            }
+        }, 20L, 20L);
     }
 
     public static DuelsPlugin getInstance() {

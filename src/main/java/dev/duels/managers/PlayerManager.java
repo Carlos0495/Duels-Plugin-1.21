@@ -201,6 +201,87 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     }
 
     /**
+     * Räumt alle Nicht-Hotbar-Items aus dem Inventar eines Spielers in der
+     * Lobby-Welt (Survival). Hotbar-Items (PDC-getaggt) in Slot 0–8 bleiben
+     * stehen, alle anderen Slots (inkl. Storage 9–35, Rüstung, Offhand,
+     * Cursor) werden geleert. Wird als Tick-Loop aufgerufen, damit Items
+     * die per Drag-and-Drop aus einer GUI ins Spieler-Inventar gelangen
+     * sind, sofort wieder verschwinden.
+     */
+    public void clearNonHotbarItems(Player player) {
+        if (player == null || !player.isOnline()) return;
+        if (player.getGameMode() != GameMode.SURVIVAL) return;
+        if (!isInLobbyWorld(player)) return;
+
+        HotbarManager hm = plugin.getHotbarManager();
+        if (hm == null) return;
+
+        var inv = player.getInventory();
+        // Slots 0-8 sind die Hotbar — nur Items OHNE Hotbar-Tag clearen.
+        for (int i = 0; i <= 8; i++) {
+            var item = inv.getItem(i);
+            if (item == null) continue;
+            String action = hm.readAction(item);
+            if (action == null || action.isEmpty()) {
+                inv.setItem(i, null);
+            }
+        }
+        // Storage 9-35 komplett clearen.
+        for (int i = 9; i <= 35; i++) {
+            inv.setItem(i, null);
+        }
+        // Rüstung + Offhand + Cursor clearen.
+        inv.setHelmet(null);
+        inv.setChestplate(null);
+        inv.setLeggings(null);
+        inv.setBoots(null);
+        var off = inv.getItemInOffHand();
+        if (off != null) {
+            String action = hm.readAction(off);
+            if (action == null || action.isEmpty()) {
+                inv.setItemInOffHand(null);
+            }
+        }
+        var cursor = player.getItemOnCursor();
+        if (cursor != null && cursor.getType() != Material.AIR) {
+            // Nicht räumen wenn der Spieler gerade ein GUI offen hat (sonst
+            // bricht jeder Klick im GUI ab). Nur wenn das Top-Inventar das
+            // Player-Inv selbst ist (= kein GUI offen).
+            if (player.getOpenInventory() != null
+                    && player.getOpenInventory().getTopInventory() != null
+                    && player.getOpenInventory().getTopInventory().equals(inv) == false
+                    && player.getOpenInventory().getType()
+                            == org.bukkit.event.inventory.InventoryType.CRAFTING) {
+                player.setItemOnCursor(null);
+            }
+        }
+    }
+
+    /**
+     * Setzt den Tab-Liste-Anzeigenamen eines Spielers mit Status-Suffix:
+     * "⚔" wenn im Duel/FFA, "👁" wenn spectating, sonst leer.
+     */
+    public void updateTabName(Player player) {
+        if (player == null || !player.isOnline()) return;
+        String suffix = "";
+        UUID uuid = player.getUniqueId();
+        boolean inDuel = plugin.getDuelManager() != null
+                && plugin.getDuelManager().isInDuel(uuid);
+        boolean inFFA = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid);
+        boolean spectating = plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(uuid);
+        if (spectating) {
+            suffix = " §7👁";
+        } else if (inDuel || inFFA) {
+            suffix = " §c⚔";
+        }
+        try {
+            player.setPlayerListName(player.getName() + suffix);
+        } catch (Throwable ignored) {}
+    }
+
+    /**
      * Entfernt alle PDC-getaggten Hotbar-Items aus dem Inventar. Andere
      * Items, Rüstung und Offhand bleiben unangetastet. Wird beim Verlassen
      * der Lobby-Welt aufgerufen.
