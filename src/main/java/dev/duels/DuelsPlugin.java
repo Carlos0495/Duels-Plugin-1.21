@@ -120,6 +120,11 @@ public final class DuelsPlugin extends JavaPlugin {
         getCommand("setwins").setExecutor(new SetStatsCommand(this));
         getCommand("setlosses").setExecutor(new SetStatsCommand(this));
         if (getCommand("setcoins") != null) getCommand("setcoins").setExecutor(new SetStatsCommand(this));
+        // Add-Varianten: addieren statt überschreiben (User-Wunsch: /coinsadd etc.)
+        AddStatsCommand addStats = new AddStatsCommand(this);
+        for (String c : new String[]{"killsadd", "deathsadd", "winsadd", "lossesadd", "coinsadd"}) {
+            if (getCommand(c) != null) getCommand(c).setExecutor(addStats);
+        }
         getCommand("kit").setExecutor(new KitCommand(this));
         getCommand("ping").setExecutor(new PingCommand(this));
         getCommand("fly").setExecutor(new FlyCommand(this));

@@ -64,6 +64,31 @@ commands:
     description: Set player coins
     usage: /<command> <player|all> <amount>
 
+  killsadd:
+    description: Add to player kills
+    usage: /<command> <player|all> <amount>
+    aliases: ["addkills"]
+
+  deathsadd:
+    description: Add to player deaths
+    usage: /<command> <player|all> <amount>
+    aliases: ["adddeaths"]
+
+  winsadd:
+    description: Add to player wins
+    usage: /<command> <player|all> <amount>
+    aliases: ["addwins"]
+
+  lossesadd:
+    description: Add to player losses
+    usage: /<command> <player|all> <amount>
+    aliases: ["addlosses"]
+
+  coinsadd:
+    description: Add to player coins
+    usage: /<command> <player|all> <amount>
+    aliases: ["addcoins"]
+
   kit:
     description: Manage duel kits
     usage: /kit <add|remove> ...

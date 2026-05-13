@@ -187,4 +187,125 @@ public class ArenaListener implements Listener {
             event.setCancelled(true);
         }
     }
+
+    /**
+     * Tracking für Blöcke, die durch Fluid-Interaktion entstehen
+     * (Wasser+Lava → Obsidian/Cobble/Stone). User-Wunsch: solche
+     * Block-Formationen sollen beim Arena-Reset auch wieder verschwinden.
+     */
+    @EventHandler
+    public void onBlockForm(BlockFormEvent event) {
+        Location loc = event.getBlock().getLocation();
+        Arena arena = findActiveArenaNear(loc);
+        if (arena == null) return;
+        BlockVector v = new BlockVector(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+        arena.addPlayerPlacedBlock(v);
+    }
+
+    @EventHandler
+    public void onBlockFromTo2(org.bukkit.event.block.BlockFromToEvent event) {
+        // BlockFromTo wird oben schon gehandelt (cancel cross-boundary).
+        // Hier nur tracken, falls Lava in einer aktiven Arena fließt und
+        // einen neuen Block bildet — wir markieren das Ziel als
+        // player-placed damit Reset es entfernt.
+        if (event.isCancelled()) return;
+        Location to = event.getToBlock().getLocation();
+        Arena arena = findActiveArenaNear(to);
+        if (arena == null) return;
+        // Nur tracken wenn der Ziel-Block leer war (sonst wird er gleich
+        // wieder als Snapshot oder original-Block restored).
+        org.bukkit.Material toMat = event.getToBlock().getType();
+        if (toMat.isAir()) {
+            BlockVector v = new BlockVector(to.getBlockX(), to.getBlockY(), to.getBlockZ());
+            arena.addPlayerPlacedBlock(v);
+        }
+    }
+
+    /**
+     * End-Crystals (und andere placeable Entities wie Armor Stands) werden
+     * über EntityPlaceEvent gespawnt — NICHT BlockPlaceEvent. Wir prüfen
+     * die Kit-Whitelist (placeable-blocks enthält das Item-Material?) und
+     * tracken die Entity für den Arena-Reset.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEntityPlace(org.bukkit.event.entity.EntityPlaceEvent event) {
+        org.bukkit.entity.Player player = event.getPlayer();
+        if (player == null) return;
+        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())
+                && !plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+
+        String kitId = currentKitId(player);
+        if (kitId == null) return;
+        dev.duels.managers.KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+        if (kit == null) { event.setCancelled(true); return; }
+
+        // EnderCrystal/Boat/ArmorStand etc.: Material des Items aus der Hand
+        // bestimmen und gegen Kit-Whitelist prüfen.
+        org.bukkit.Material handMat = null;
+        if (player.getInventory().getItemInMainHand() != null) {
+            handMat = player.getInventory().getItemInMainHand().getType();
+        }
+        if (handMat == null || handMat.isAir()) return;
+
+        if (kit.isPlaceable(handMat)) {
+            if (event.isCancelled()) event.setCancelled(false);
+            // Entity tracken: bei Arena-Reset entfernt cleanupArenaEntities()
+            // alles in der Bounding-Box. Falls Corners fehlen, brauchen wir
+            // die UUID — daher zusätzlich an die Arena hängen.
+            Arena arena = resolveArenaForPlayer(player);
+            if (arena != null && event.getEntity() != null) {
+                arena.addTrackedEntity(event.getEntity().getUniqueId());
+            }
+        } else {
+            event.setCancelled(true);
+        }
+    }
+
+    private String currentKitId(org.bukkit.entity.Player p) {
+        var ds = plugin.getDuelManager().getDuelSession(p.getUniqueId());
+        if (ds != null) return ds.getKitName();
+        var ffa = plugin.getPartyFFAManager().getSession(p.getUniqueId());
+        if (ffa != null) return ffa.kitName;
+        return null;
+    }
+
+    private Arena resolveArenaForPlayer(org.bukkit.entity.Player p) {
+        var ds = plugin.getDuelManager().getDuelSession(p.getUniqueId());
+        if (ds != null && ds.getArenaName() != null) {
+            Arena a = plugin.getArenaManager().getArena(ds.getArenaName());
+            if (a != null) return a;
+        }
+        var ffa = plugin.getPartyFFAManager().getSession(p.getUniqueId());
+        if (ffa != null && ffa.reservedArena != null) {
+            return ffa.reservedArena;
+        }
+        return plugin.getArenaManager().getArenaAt(p.getLocation());
+    }
+
+    /**
+     * Findet eine aktive Arena (inUse), in der die Location grob liegt —
+     * primär spatial via getArenaAt, mit Fallback auf die nächstgelegene
+     * aktive Arena in derselben Welt (für Form-Events nahe Spieler ohne
+     * Corner-Bounds-Match).
+     */
+    private Arena findActiveArenaNear(Location loc) {
+        Arena spatial = plugin.getArenaManager().getArenaAt(loc);
+        if (spatial != null && spatial.isInUse()) return spatial;
+        // Fallback: kürzeste Distanz zu spawn1 einer in-use Arena in der
+        // gleichen Welt.
+        Arena best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Arena a : plugin.getArenaManager().getAllArenas()) {
+            if (!a.isInUse()) continue;
+            if (a.getSpawn1() == null) continue;
+            if (a.getSpawn1().getWorld() == null) continue;
+            if (!a.getSpawn1().getWorld().equals(loc.getWorld())) continue;
+            double d = a.getSpawn1().distanceSquared(loc);
+            if (d < bestDist && d < 200 * 200) {
+                bestDist = d;
+                best = a;
+            }
+        }
+        return best;
+    }
 }

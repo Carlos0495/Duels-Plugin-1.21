@@ -36,7 +36,10 @@ public class BlockBreakListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    // ignoreCancelled = false + HIGHEST: läuft AUCH wenn ein Anti-Grief-
+    // Plugin den Event schon gecancelt hat. Wenn das Kit die Aktion erlaubt,
+    // UN-canceln wir das Event explizit (override des Anti-Grief).
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
         String kitId = currentKitId(player);
@@ -44,12 +47,16 @@ public class BlockBreakListener implements Listener {
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
         if (kit == null) { event.setCancelled(true); return; }
 
-        if (!kit.isBreakable(event.getBlock().getType())) {
+        if (kit.isBreakable(event.getBlock().getType())) {
+            // Erlaubt: cancel zurücknehmen falls ein Anti-Grief-Plugin
+            // gecancelt hat.
+            if (event.isCancelled()) event.setCancelled(false);
+        } else {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         String kitId = currentKitId(player);
@@ -57,7 +64,9 @@ public class BlockBreakListener implements Listener {
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
         if (kit == null) { event.setCancelled(true); return; }
 
-        if (!kit.isPlaceable(event.getBlockPlaced().getType())) {
+        if (kit.isPlaceable(event.getBlockPlaced().getType())) {
+            if (event.isCancelled()) event.setCancelled(false);
+        } else {
             event.setCancelled(true);
         }
     }

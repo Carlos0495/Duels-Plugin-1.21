@@ -365,6 +365,18 @@ public class ArenaManager {
 
                     // 3. Entities (Pfeile, Drops, Crystals, Tridents) wegräumen
                     cleanupArenaEntities(worldFinal, arena);
+
+                    // 4. Explizit getrackte Entities (End-Crystals) entfernen,
+                    // auch wenn Corner-Bounds das nicht abgedeckt haben.
+                    if (!arena.getTrackedEntities().isEmpty()) {
+                        for (java.util.UUID id : new java.util.ArrayList<>(arena.getTrackedEntities())) {
+                            org.bukkit.entity.Entity e = Bukkit.getEntity(id);
+                            if (e != null) {
+                                try { e.remove(); } catch (Throwable ignored) {}
+                            }
+                        }
+                        arena.clearTrackedEntities();
+                    }
                 }
             } catch (Throwable t) {
                 plugin.getLogger().warning("resetArena failed for '" + arena.getName() + "': " + t.getMessage());
@@ -414,6 +426,10 @@ public class ArenaManager {
 
     public Arena getArena(String name) {
         return arenas.get(name);
+    }
+
+    public java.util.Collection<Arena> getAllArenas() {
+        return arenas.values();
     }
 
     public Arena getArenaAt(Location loc) {

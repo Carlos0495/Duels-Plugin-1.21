@@ -29,6 +29,11 @@ public class Arena {
     private int snapshotMaxX, snapshotMaxY, snapshotMaxZ;
     private final Map<BlockVector, BlockData> originalBlocks = new HashMap<>();
     private final Set<BlockVector> playerPlacedBlocks = new HashSet<>();
+    // Entities die während des Duels gespawnt wurden (End-Crystals, etc.)
+    // damit der Arena-Reset sie sauber entfernen kann — auch wenn die
+    // Arena keine Corners hat (cleanupArenaEntities würde sie sonst nicht
+    // finden).
+    private final Set<java.util.UUID> trackedEntities = new HashSet<>();
 
     public Arena(String name) {
         this.name = name;
@@ -100,6 +105,12 @@ public class Arena {
     public boolean isPlayerPlacedBlock(BlockVector v) { return playerPlacedBlocks.contains(v); }
     public java.util.Set<BlockVector> getPlayerPlacedBlocks() { return playerPlacedBlocks; }
     public void clearPlayerPlacedBlocks() { playerPlacedBlocks.clear(); }
+
+    // Entity-Tracking (End-Crystals, gespawnte Items etc.)
+    public void addTrackedEntity(java.util.UUID id) { trackedEntities.add(id); }
+    public void removeTrackedEntity(java.util.UUID id) { trackedEntities.remove(id); }
+    public Set<java.util.UUID> getTrackedEntities() { return trackedEntities; }
+    public void clearTrackedEntities() { trackedEntities.clear(); }
 
     // Allowed kits management
     public Set<String> getAllowedKits() { return allowedKits; }
