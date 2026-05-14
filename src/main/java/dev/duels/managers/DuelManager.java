@@ -93,6 +93,42 @@ public class DuelManager {
 
     public DuelManager(DuelsPlugin plugin) {
         this.plugin = plugin;
+        // Periodischer Cleanup für abgelaufene Duel-Anfragen — sonst blockiert
+        // eine nie akzeptierte Anfrage die reservierte Arena dauerhaft.
+        // Timeout konfigurierbar via config.yml: duel-request-timeout-seconds
+        // (Default 30s). Läuft jede Sekunde.
+        Bukkit.getScheduler().runTaskTimer(plugin, this::expirePendingRequests, 20L, 20L);
+    }
+
+    private void expirePendingRequests() {
+        int timeoutSec = plugin.getConfigManager().getMainConfig()
+                .getInt("duel-request-timeout-seconds", 30);
+        if (timeoutSec <= 0) return;
+        Iterator<Map.Entry<UUID, DuelRequest>> it = duelRequests.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, DuelRequest> entry = it.next();
+            DuelRequest req = entry.getValue();
+            if (req == null) { it.remove(); continue; }
+            if (req.isExpired(timeoutSec)) {
+                // Arena freigeben (war reserviert während des Pending-State)
+                if (req.getArenaName() != null) {
+                    Arena a = plugin.getArenaManager().getArena(req.getArenaName());
+                    if (a != null) a.setInUse(false);
+                }
+                // Sender + Receiver informieren
+                Player sender = Bukkit.getPlayer(req.getSender());
+                Player target = Bukkit.getPlayer(entry.getKey());
+                if (sender != null && sender.isOnline()) {
+                    sender.sendMessage(plugin.getPrefix() + "§7Your duel request to §e"
+                            + (target != null ? target.getName() : "player") + " §7expired.");
+                }
+                if (target != null && target.isOnline()) {
+                    target.sendMessage(plugin.getPrefix() + "§7Duel request from §e"
+                            + (sender != null ? sender.getName() : "player") + " §7expired.");
+                }
+                it.remove();
+            }
+        }
     }
 
     public void startDuel(DuelRequest request) {
@@ -819,7 +855,9 @@ public class DuelManager {
             target.sendMessage(plugin.getPrefix() + "§cNo pending duel request.");
             return;
         }
-        if (request.isExpired(30)) { // z.B. 30 Sekunden
+        int timeoutSec = plugin.getConfigManager().getMainConfig()
+                .getInt("duel-request-timeout-seconds", 30);
+        if (timeoutSec > 0 && request.isExpired(timeoutSec)) {
             Arena a = plugin.getArenaManager().getArena(request.getArenaName());
             if (a != null) a.setInUse(false);
             target.sendMessage(plugin.getPrefix() + "§cDuel request expired.");

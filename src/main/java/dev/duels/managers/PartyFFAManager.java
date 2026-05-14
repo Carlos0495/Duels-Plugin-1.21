@@ -145,6 +145,121 @@ public class PartyFFAManager {
         return null;
     }
 
+    /**
+     * Startet ein Team-vs-Team-Match auf einer Arena. team1 und team2 sind
+     * Listen von Online-Spielern. Verhält sich wie FFA (Spectator nach Tod,
+     * letztes überlebendes Team gewinnt), aber Teammates können sich nicht
+     * gegenseitig angreifen (Friendly Fire blockiert).
+     *
+     * @return Fehlermeldung oder {@code null} bei Erfolg.
+     */
+    public String startTeams(Party party, String kitName, List<Player> team1, List<Player> team2) {
+        if (party == null) return "No party.";
+        if (kitName == null || kitName.isEmpty()) return "Invalid kit.";
+        if (team1 == null || team2 == null || team1.isEmpty() || team2.isEmpty()) {
+            return "Both teams need at least one player.";
+        }
+        if (!plugin.getKitManager().kitExists(kitName)) return "Kit no longer exists.";
+
+        dev.duels.objects.Arena reservedArena =
+                plugin.getArenaManager().getRandomFFAArenaForKit(kitName);
+        Location spawn;
+        if (reservedArena != null) {
+            spawn = reservedArena.getFfaSpawn();
+            reservedArena.setInUse(true);
+        } else {
+            spawn = plugin.getArenaManager().getPartyFFASpawn();
+            if (spawn == null) {
+                return "No team arena available for this kit. §7Admin: stand on the FFA spawn point and run §e/arena setffaspawn <arena>§7.";
+            }
+        }
+
+        // Check niemand schon im FFA/Duel
+        for (Player p : team1) {
+            if (p == null) continue;
+            if (playerToSession.containsKey(p.getUniqueId())
+                    || plugin.getDuelManager().isInDuel(p.getUniqueId())) {
+                if (reservedArena != null) reservedArena.setInUse(false);
+                return p.getName() + " is already in a duel/FFA.";
+            }
+        }
+        for (Player p : team2) {
+            if (p == null) continue;
+            if (playerToSession.containsKey(p.getUniqueId())
+                    || plugin.getDuelManager().isInDuel(p.getUniqueId())) {
+                if (reservedArena != null) reservedArena.setInUse(false);
+                return p.getName() + " is already in a duel/FFA.";
+            }
+        }
+
+        int graceSeconds = plugin.getConfigManager().getMainConfig()
+                .getInt("party.ffa-grace-seconds", 10);
+
+        FFASession session = new FFASession(party.getLeader(), kitName);
+        session.reservedArena = reservedArena;
+        session.graceTicksLeft = Math.max(0, graceSeconds) * 20;
+        for (Player p : team1) {
+            if (p == null || !p.isOnline()) continue;
+            session.alive.add(p.getUniqueId());
+            session.allParticipants.add(p.getUniqueId());
+            session.teams.put(p.getUniqueId(), 1);
+            playerToSession.put(p.getUniqueId(), session);
+        }
+        for (Player p : team2) {
+            if (p == null || !p.isOnline()) continue;
+            session.alive.add(p.getUniqueId());
+            session.allParticipants.add(p.getUniqueId());
+            session.teams.put(p.getUniqueId(), 2);
+            playerToSession.put(p.getUniqueId(), session);
+        }
+        sessionsByLeader.put(session.leaderId, session);
+
+        for (UUID u : session.alive) {
+            Player p = Bukkit.getPlayer(u);
+            if (p == null) continue;
+            p.teleport(spawn);
+            DuelManager.clearFullInventory(p);
+            plugin.getKitManager().giveKit(p, kitName);
+            p.setHealth(p.getMaxHealth());
+            p.setFoodLevel(20);
+            p.setSaturation(20f);
+            int t = session.getTeam(u);
+            String teamColor = t == 1 ? "§b" : "§c";
+            String teamName = t == 1 ? "Team 1" : "Team 2";
+            if (graceSeconds > 0) {
+                p.sendMessage(plugin.getPrefix() + teamColor + teamName
+                        + " §7vs §" + (t == 1 ? "c" : "b")
+                        + (t == 1 ? "Team 2" : "Team 1")
+                        + " §7started! §ePvP in " + graceSeconds + "s§7.");
+            } else {
+                p.sendMessage(plugin.getPrefix() + teamColor + teamName + " §7started!");
+            }
+        }
+
+        if (graceSeconds > 0) {
+            session.graceTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                if (session.graceTicksLeft <= 0) {
+                    if (session.graceTask != null) {
+                        session.graceTask.cancel();
+                        session.graceTask = null;
+                    }
+                    broadcastToSession(session, "§a§lGO! §7PvP is now enabled.");
+                    showTitleToSession(session, "§a§lGO!", "§7PvP enabled", 0, 30, 10);
+                    return;
+                }
+                int secLeft = (session.graceTicksLeft + 19) / 20;
+                if (session.graceTicksLeft % 20 == 0) {
+                    showTitleToSession(session, "§e§l" + secLeft, "§7PvP in §6" + secLeft + "s", 0, 25, 5);
+                    if (secLeft <= 5 || secLeft == 10) {
+                        broadcastToSession(session, "§ePvP in §6" + secLeft + "s§7...");
+                    }
+                }
+                session.graceTicksLeft -= 20;
+            }, 0L, 20L);
+        }
+        return null;
+    }
+
     /** True wenn die Session noch in der Grace-Period ist (kein PvP). */
     public boolean isInGrace(UUID uuid) {
         FFASession s = playerToSession.get(uuid);
@@ -165,18 +280,37 @@ public class PartyFFAManager {
         broadcastToSession(session,
                 "§c" + dead.getName() + " §7was eliminated. §f" + session.alive.size() + " §7alive.");
 
-        // Auto-Spectate auf einen noch lebenden Teammate (anchor-only,
-        // SpectatorMode lässt freies Fliegen sowieso zu).
-        UUID anchor = session.alive.isEmpty() ? null : session.alive.iterator().next();
+        // Auto-Spectate-Anchor: im Team-Modus auf einen lebenden Teammate
+        // anchorn, sonst auf irgendeinen Lebenden.
+        UUID anchor = null;
+        if (session.isTeamMode()) {
+            int myTeam = session.getTeam(dead.getUniqueId());
+            for (UUID u : session.alive) {
+                if (session.getTeam(u) == myTeam) { anchor = u; break; }
+            }
+        }
+        if (anchor == null && !session.alive.isEmpty()) {
+            anchor = session.alive.iterator().next();
+        }
+        final UUID anchorFinal = anchor;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!dead.isOnline()) return;
-            if (session.alive.size() <= 1) {
-                // Match endet sowieso gleich → ist okay, gleich endSession lassen
-            }
-            plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchor, session.leaderId);
+            plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchorFinal, session.leaderId);
         }, 3L);
 
-        if (session.alive.size() <= 1) {
+        // End-Check
+        if (session.isTeamMode()) {
+            // Team gewinnt wenn das andere Team komplett tot ist.
+            int aliveT1 = 0, aliveT2 = 0;
+            for (UUID u : session.alive) {
+                int t = session.getTeam(u);
+                if (t == 1) aliveT1++;
+                else if (t == 2) aliveT2++;
+            }
+            if (aliveT1 == 0 || aliveT2 == 0) {
+                endSession(session);
+            }
+        } else if (session.alive.size() <= 1) {
             endSession(session);
         }
     }
@@ -200,6 +334,13 @@ public class PartyFFAManager {
         FFASession b = playerToSession.get(targetId);
         if (a == null || a != b) return false;
         if (a.graceTicksLeft > 0) return false;
+        // Team-Modus: Teammates können sich nicht gegenseitig angreifen
+        // (Friendly Fire blockiert, User-Wunsch).
+        if (a.isTeamMode()) {
+            int ta = a.getTeam(attackerId);
+            int tb = a.getTeam(targetId);
+            if (ta > 0 && ta == tb) return false;
+        }
         return true;
     }
 
@@ -211,28 +352,60 @@ public class PartyFFAManager {
             session.graceTask = null;
         }
 
-        Player winner = null;
-        if (session.alive.size() == 1) {
-            UUID winnerId = session.alive.iterator().next();
-            winner = Bukkit.getPlayer(winnerId);
-            playerToSession.remove(winnerId);
-        }
-        // Win-Title an alle. Winner getrennt, sonst Subtitle "X gewonnen".
-        if (winner != null) {
-            broadcastToSession(session, "§6§lWinner: §e" + winner.getName());
-            final Player win = winner;
-            win.sendTitle("§a§lFFA VICTORY", "§7You won the FFA!", 0, 60, 20);
+        int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
+
+        if (session.isTeamMode()) {
+            // Team-Sieger ermitteln (das Team mit noch lebenden Spielern)
+            int winningTeam = 0;
+            for (UUID u : session.alive) {
+                int t = session.getTeam(u);
+                if (t > 0) { winningTeam = t; break; }
+            }
+            // Alle Mitglieder des Gewinnerteams (auch tote zählen für Stats —
+            // sie waren im Team, das gewonnen hat, daher Win + Coins)
+            String winningName = winningTeam == 1 ? "§bTeam 1" : "§cTeam 2";
+            broadcastToSession(session, "§6§lWinner: " + winningName);
             for (UUID u : session.allParticipants) {
-                if (u.equals(win.getUniqueId())) continue;
                 Player p = Bukkit.getPlayer(u);
-                if (p != null && p.isOnline()) {
-                    p.sendTitle("§c§lDEFEAT", "§7" + win.getName() + " §7won the FFA", 0, 60, 20);
+                int t = session.getTeam(u);
+                if (t == winningTeam && t > 0) {
+                    if (p != null && p.isOnline()) {
+                        p.sendTitle("§a§lTEAM VICTORY", "§7" + winningName + " §7wins!", 0, 60, 20);
+                    }
+                    plugin.getPlayerManager().addStat(u, "wins", 1);
+                    plugin.getPlayerManager().addStat(u, "coins", coinReward);
+                    if (p != null && p.isOnline()) {
+                        p.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(Team win reward)");
+                    }
+                } else if (t > 0) {
+                    if (p != null && p.isOnline()) {
+                        p.sendTitle("§c§lDEFEAT", "§7" + winningName + " §7won", 0, 60, 20);
+                    }
+                    plugin.getPlayerManager().addStat(u, "losses", 1);
                 }
             }
-            plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
-            int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
-            plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-            win.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(FFA win reward)");
+        } else {
+            Player winner = null;
+            if (session.alive.size() == 1) {
+                UUID winnerId = session.alive.iterator().next();
+                winner = Bukkit.getPlayer(winnerId);
+                playerToSession.remove(winnerId);
+            }
+            if (winner != null) {
+                broadcastToSession(session, "§6§lWinner: §e" + winner.getName());
+                final Player win = winner;
+                win.sendTitle("§a§lFFA VICTORY", "§7You won the FFA!", 0, 60, 20);
+                for (UUID u : session.allParticipants) {
+                    if (u.equals(win.getUniqueId())) continue;
+                    Player p = Bukkit.getPlayer(u);
+                    if (p != null && p.isOnline()) {
+                        p.sendTitle("§c§lDEFEAT", "§7" + win.getName() + " §7won the FFA", 0, 60, 20);
+                    }
+                }
+                plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
+                plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
+                win.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(FFA win reward)");
+            }
         }
 
         // Alle Tote-Spectator zurück in Lobby. SpectateManager.stop() macht
@@ -315,10 +488,22 @@ public class PartyFFAManager {
         public boolean ended;
         /** Reservierte Arena (Multi-Map FFA). {@code null} = Legacy-Pfad mit globalem Spawn. */
         public dev.duels.objects.Arena reservedArena;
+        /**
+         * Team-Zuordnung (player -> 1 oder 2). Wenn leer, ist es eine
+         * klassische FFA (alle gegen alle). Sonst Team-vs-Team-Modus mit
+         * Friendly-Fire-Block und Team-basiertem Sieg-Check.
+         */
+        public final Map<UUID, Integer> teams = new HashMap<>();
 
         public FFASession(UUID leaderId, String kitName) {
             this.leaderId = leaderId;
             this.kitName = kitName;
+        }
+
+        public boolean isTeamMode() { return !teams.isEmpty(); }
+        public int getTeam(UUID uuid) {
+            Integer t = teams.get(uuid);
+            return t == null ? 0 : t;
         }
     }
 }

@@ -868,9 +868,18 @@ public class GUIListener implements Listener {
                         player.sendMessage(plugin.getPrefix() + "§cBoth teams must have at least one player.");
                         return;
                     }
-                    int started = plugin.getDuelManager().startPartyTeams(t1, t2, kitId, bestOf);
-                    plugin.getPartyManager().broadcast(party,
-                            "§bTeam vs Team §7started §f" + started + " §7duels.");
+                    // Team-vs-Team läuft jetzt als EIN Match auf EINER Arena
+                    // (vorher: n parallele 1v1-Pairs = effektiv 1v1, User-Bug).
+                    // PartyFFAManager.startTeams blockt Friendly Fire und
+                    // entscheidet Sieg per Team-Elimination.
+                    String err = plugin.getPartyFFAManager()
+                            .startTeams(party, kitId, t1, t2);
+                    if (err != null) {
+                        player.sendMessage(plugin.getPrefix() + "§c" + err);
+                    } else {
+                        plugin.getPartyManager().broadcast(party,
+                                "§bTeam vs Team §7started §b" + t1.size() + "v" + t2.size() + "§7.");
+                    }
                     player.closeInventory();
                 }
             }

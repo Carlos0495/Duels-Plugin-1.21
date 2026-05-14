@@ -184,6 +184,7 @@ public class ConfigManager {
         if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
         if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
+        if (!mainConfig.contains("duel-request-timeout-seconds")) { mainConfig.set("duel-request-timeout-seconds", 30); dirty = true; }
         if (dirty) plugin.saveConfig();
     }
 

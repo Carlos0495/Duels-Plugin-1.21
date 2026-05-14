@@ -30,6 +30,15 @@ public class SpawnCommand implements CommandExecutor {
             return true;
         }
 
+        // Spectator: sauber beenden statt nur teleportieren — sonst bleibt
+        // der Spieler im SPECTATOR-Mode und der Gamemode-Change-Blocker
+        // verhindert den SURVIVAL-Switch in teleportToSpawn.
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(player.getUniqueId())) {
+            plugin.getSpectateManager().stop(player);
+            return true;
+        }
+
         // Normal spawn teleport
         plugin.getPlayerManager().teleportToSpawn(player);
         return true;
