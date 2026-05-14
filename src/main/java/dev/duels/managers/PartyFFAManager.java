@@ -36,6 +36,56 @@ public class PartyFFAManager {
         this.plugin = plugin;
     }
 
+    /** Scoreboard-Team-Namen (Bukkit Main-Scoreboard) für Team-Coloring. */
+    public static final String SB_TEAM_1 = "duels_t1";
+    public static final String SB_TEAM_2 = "duels_t2";
+
+    /**
+     * Erstellt (oder updated) die Bukkit-Scoreboard-Teams, die für die
+     * Team-Match-Color verwendet werden. Diese Teams haben Color-Prefix +
+     * keine Kollision mit Teammates und beeinflussen den Tab-Namen in
+     * vielen Tab-Plugin-Setups.
+     */
+    private void ensureScoreboardTeams() {
+        org.bukkit.scoreboard.Scoreboard main = Bukkit.getScoreboardManager().getMainScoreboard();
+        ensureTeam(main, SB_TEAM_1, org.bukkit.ChatColor.AQUA, "§b[T1] ");
+        ensureTeam(main, SB_TEAM_2, org.bukkit.ChatColor.RED,  "§c[T2] ");
+    }
+
+    private void ensureTeam(org.bukkit.scoreboard.Scoreboard sb, String name,
+                            org.bukkit.ChatColor color, String prefix) {
+        org.bukkit.scoreboard.Team t = sb.getTeam(name);
+        if (t == null) {
+            try { t = sb.registerNewTeam(name); }
+            catch (IllegalArgumentException ignored) { t = sb.getTeam(name); }
+        }
+        if (t == null) return;
+        try {
+            t.setColor(color);
+            t.prefix(net.kyori.adventure.text.Component.text(prefix));
+            t.setOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE,
+                    org.bukkit.scoreboard.Team.OptionStatus.NEVER);
+            t.setOption(org.bukkit.scoreboard.Team.Option.NAME_TAG_VISIBILITY,
+                    org.bukkit.scoreboard.Team.OptionStatus.ALWAYS);
+            t.setAllowFriendlyFire(false);
+        } catch (Throwable ignored) {}
+    }
+
+    /** Entfernt alle Session-Member aus den Scoreboard-Teams (Match-Ende). */
+    private void clearScoreboardTeamsFor(FFASession session) {
+        try {
+            org.bukkit.scoreboard.Scoreboard main = Bukkit.getScoreboardManager().getMainScoreboard();
+            org.bukkit.scoreboard.Team t1Team = main.getTeam(SB_TEAM_1);
+            org.bukkit.scoreboard.Team t2Team = main.getTeam(SB_TEAM_2);
+            for (UUID u : session.allParticipants) {
+                Player p = Bukkit.getPlayer(u);
+                if (p == null) continue;
+                if (t1Team != null) t1Team.removeEntry(p.getName());
+                if (t2Team != null) t2Team.removeEntry(p.getName());
+            }
+        } catch (Throwable ignored) {}
+    }
+
     public boolean isParticipant(UUID uuid) {
         return playerToSession.containsKey(uuid);
     }
@@ -161,25 +211,27 @@ public class PartyFFAManager {
         }
         if (!plugin.getKitManager().kitExists(kitName)) return "Kit no longer exists.";
 
+        // Team-Match nutzt EINE reguläre Duel-Arena (spawn1 + spawn2) statt
+        // FFA-Spawn — User-Wunsch: Team1 spawnt bei spawn1, Team2 bei spawn2,
+        // wie bei einem 1v1. Verhält sich beim Reset/Cleanup wie ein Duell.
         dev.duels.objects.Arena reservedArena =
-                plugin.getArenaManager().getRandomFFAArenaForKit(kitName);
-        Location spawn;
-        if (reservedArena != null) {
-            spawn = reservedArena.getFfaSpawn();
-            reservedArena.setInUse(true);
-        } else {
-            spawn = plugin.getArenaManager().getPartyFFASpawn();
-            if (spawn == null) {
-                return "No team arena available for this kit. §7Admin: stand on the FFA spawn point and run §e/arena setffaspawn <arena>§7.";
-            }
+                plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
+        if (reservedArena == null) {
+            return "No arena available for this kit.";
         }
+        Location spawn1 = reservedArena.getSpawn1();
+        Location spawn2 = reservedArena.getSpawn2();
+        if (spawn1 == null || spawn2 == null) {
+            return "Arena '" + reservedArena.getName() + "' has no spawn1/spawn2 set.";
+        }
+        reservedArena.setInUse(true);
 
         // Check niemand schon im FFA/Duel
         for (Player p : team1) {
             if (p == null) continue;
             if (playerToSession.containsKey(p.getUniqueId())
                     || plugin.getDuelManager().isInDuel(p.getUniqueId())) {
-                if (reservedArena != null) reservedArena.setInUse(false);
+                reservedArena.setInUse(false);
                 return p.getName() + " is already in a duel/FFA.";
             }
         }
@@ -187,7 +239,7 @@ public class PartyFFAManager {
             if (p == null) continue;
             if (playerToSession.containsKey(p.getUniqueId())
                     || plugin.getDuelManager().isInDuel(p.getUniqueId())) {
-                if (reservedArena != null) reservedArena.setInUse(false);
+                reservedArena.setInUse(false);
                 return p.getName() + " is already in a duel/FFA.";
             }
         }
@@ -214,25 +266,53 @@ public class PartyFFAManager {
         }
         sessionsByLeader.put(session.leaderId, session);
 
+        // Scoreboard-Teams für farbige Namen + Friendly-Fire-Anzeige.
+        // Diese werden im Bukkit-Main-Scoreboard registriert, sodass
+        // (a) Teammates ihre Namen in §b/§c sehen,
+        // (b) viele Tab-Plugins den Color-Prefix respektieren,
+        // (c) collide=NEVER → Spieler können nicht durch Teammates pushen.
+        ensureScoreboardTeams();
+        org.bukkit.scoreboard.Scoreboard main = Bukkit.getScoreboardManager().getMainScoreboard();
+        org.bukkit.scoreboard.Team t1Team = main.getTeam(SB_TEAM_1);
+        org.bukkit.scoreboard.Team t2Team = main.getTeam(SB_TEAM_2);
+
+        // Listen für Team-Member-Anzeige im Chat
+        StringBuilder t1Names = new StringBuilder();
+        StringBuilder t2Names = new StringBuilder();
         for (UUID u : session.alive) {
             Player p = Bukkit.getPlayer(u);
             if (p == null) continue;
-            p.teleport(spawn);
+            int t = session.getTeam(u);
+            if (t == 1) {
+                if (t1Names.length() > 0) t1Names.append("§7, ");
+                t1Names.append("§b").append(p.getName());
+                if (t1Team != null) t1Team.addEntry(p.getName());
+            } else if (t == 2) {
+                if (t2Names.length() > 0) t2Names.append("§7, ");
+                t2Names.append("§c").append(p.getName());
+                if (t2Team != null) t2Team.addEntry(p.getName());
+            }
+        }
+
+        // Teleport: Team1 → spawn1, Team2 → spawn2 (wie 1v1)
+        for (UUID u : session.alive) {
+            Player p = Bukkit.getPlayer(u);
+            if (p == null) continue;
+            int t = session.getTeam(u);
+            Location targetSpawn = (t == 1) ? spawn1 : spawn2;
+            p.teleport(targetSpawn);
             DuelManager.clearFullInventory(p);
             plugin.getKitManager().giveKit(p, kitName);
             p.setHealth(p.getMaxHealth());
             p.setFoodLevel(20);
             p.setSaturation(20f);
-            int t = session.getTeam(u);
             String teamColor = t == 1 ? "§b" : "§c";
             String teamName = t == 1 ? "Team 1" : "Team 2";
+            p.sendMessage(plugin.getPrefix() + teamColor + "§l" + teamName + " §7on " + reservedArena.getName());
+            p.sendMessage(plugin.getPrefix() + "§bTeam 1: §7" + t1Names);
+            p.sendMessage(plugin.getPrefix() + "§cTeam 2: §7" + t2Names);
             if (graceSeconds > 0) {
-                p.sendMessage(plugin.getPrefix() + teamColor + teamName
-                        + " §7vs §" + (t == 1 ? "c" : "b")
-                        + (t == 1 ? "Team 2" : "Team 1")
-                        + " §7started! §ePvP in " + graceSeconds + "s§7.");
-            } else {
-                p.sendMessage(plugin.getPrefix() + teamColor + teamName + " §7started!");
+                p.sendMessage(plugin.getPrefix() + "§ePvP starts in §6" + graceSeconds + "s§e.");
             }
         }
 
@@ -280,37 +360,41 @@ public class PartyFFAManager {
         broadcastToSession(session,
                 "§c" + dead.getName() + " §7was eliminated. §f" + session.alive.size() + " §7alive.");
 
-        // Auto-Spectate-Anchor: im Team-Modus auf einen lebenden Teammate
-        // anchorn, sonst auf irgendeinen Lebenden.
-        UUID anchor = null;
+        // End-Check ZUERST: wenn der Tod die Session beendet, KEIN
+        // Auto-Spectate scheduln — sonst race-condition: endSession
+        // teleportiert in die Lobby (SURVIVAL), und 3 Ticks später
+        // würde der scheduled Auto-Spectate-Task den Spieler zurück
+        // in die Arena (SPECTATOR) ziehen.
+        boolean willEnd;
         if (session.isTeamMode()) {
-            int myTeam = session.getTeam(dead.getUniqueId());
-            for (UUID u : session.alive) {
-                if (session.getTeam(u) == myTeam) { anchor = u; break; }
-            }
-        }
-        if (anchor == null && !session.alive.isEmpty()) {
-            anchor = session.alive.iterator().next();
-        }
-        final UUID anchorFinal = anchor;
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!dead.isOnline()) return;
-            plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchorFinal, session.leaderId);
-        }, 3L);
-
-        // End-Check
-        if (session.isTeamMode()) {
-            // Team gewinnt wenn das andere Team komplett tot ist.
             int aliveT1 = 0, aliveT2 = 0;
             for (UUID u : session.alive) {
                 int t = session.getTeam(u);
                 if (t == 1) aliveT1++;
                 else if (t == 2) aliveT2++;
             }
-            if (aliveT1 == 0 || aliveT2 == 0) {
-                endSession(session);
+            willEnd = (aliveT1 == 0 || aliveT2 == 0);
+        } else {
+            willEnd = session.alive.size() <= 1;
+        }
+
+        if (!willEnd) {
+            UUID anchor = null;
+            if (session.isTeamMode()) {
+                int myTeam = session.getTeam(dead.getUniqueId());
+                for (UUID u : session.alive) {
+                    if (session.getTeam(u) == myTeam) { anchor = u; break; }
+                }
             }
-        } else if (session.alive.size() <= 1) {
+            if (anchor == null && !session.alive.isEmpty()) {
+                anchor = session.alive.iterator().next();
+            }
+            final UUID anchorFinal = anchor;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!dead.isOnline()) return;
+                plugin.getSpectateManager().enterAutoSpectateForFFA(dead, anchorFinal, session.leaderId);
+            }, 3L);
+        } else {
             endSession(session);
         }
     }
@@ -319,7 +403,19 @@ public class PartyFFAManager {
         FFASession session = playerToSession.remove(uuid);
         if (session == null) return;
         session.alive.remove(uuid);
-        if (session.alive.size() <= 1) {
+        boolean shouldEnd;
+        if (session.isTeamMode()) {
+            int aliveT1 = 0, aliveT2 = 0;
+            for (UUID u : session.alive) {
+                int t = session.getTeam(u);
+                if (t == 1) aliveT1++;
+                else if (t == 2) aliveT2++;
+            }
+            shouldEnd = (aliveT1 == 0 || aliveT2 == 0);
+        } else {
+            shouldEnd = session.alive.size() <= 1;
+        }
+        if (shouldEnd) {
             endSession(session);
         }
     }
@@ -407,6 +503,10 @@ public class PartyFFAManager {
                 win.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(FFA win reward)");
             }
         }
+
+        // Team-Scoreboard-Color cleanup BEVOR Spectate-Restore — sonst
+        // bleiben die [T1]/[T2]-Prefixes nach Match-Ende stehen.
+        clearScoreboardTeamsFor(session);
 
         // Alle Tote-Spectator zurück in Lobby. SpectateManager.stop() macht
         // teleport+setGameMode+setupPlayerInventory synchron.
