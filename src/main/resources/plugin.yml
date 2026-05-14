@@ -4,6 +4,7 @@ main: dev.duels.DuelsPlugin
 api-version: 1.21
 description: A complete duels plugin with queues, kits and arenas
 author: Ryhox
+softdepend: [PlaceholderAPI]
 
 commands:
   duels:

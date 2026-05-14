@@ -160,6 +160,53 @@ public class DuelListener implements Listener {
         if (event.isCancelled()) event.setCancelled(false);
     }
 
+    // MONITOR-Override: wenn nach unserem HIGHEST-Un-Cancel ein noch
+    // späterer HIGHEST/MONITOR-Listener das Drop-Event wieder cancelt,
+    // legen wir das Item im nächsten Tick manuell ab (Anti-Grief-Bypass).
+    // User-Bug: "droppen geht immernoch nicht".
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onItemDropMonitor(PlayerDropItemEvent event) {
+        if (!event.isCancelled()) return;
+        final Player player = event.getPlayer();
+        if (player == null) return;
+        boolean inDuel = plugin.getDuelManager() != null
+                && plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
+        // Hotbar-Lock-Item nicht manuell droppen (defense-in-depth).
+        if (plugin.getHotbarManager() != null) {
+            String action = plugin.getHotbarManager()
+                    .readAction(event.getItemDrop().getItemStack());
+            if (action != null && !action.isEmpty()) return;
+        }
+        final org.bukkit.inventory.ItemStack stack =
+                event.getItemDrop().getItemStack().clone();
+        final org.bukkit.Location loc = player.getEyeLocation();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            // Slot leeren — bei Drop wurde das Item aus dem Inv genommen,
+            // bei Cancel zurückgegeben. Da wir manuell droppen, müssen wir
+            // den passenden Slot entfernen.
+            var inv = player.getInventory();
+            for (int i = 0; i < inv.getSize(); i++) {
+                var it = inv.getItem(i);
+                if (it != null && it.isSimilar(stack)) {
+                    if (it.getAmount() <= stack.getAmount()) {
+                        inv.setItem(i, null);
+                    } else {
+                        it.setAmount(it.getAmount() - stack.getAmount());
+                        inv.setItem(i, it);
+                    }
+                    break;
+                }
+            }
+            org.bukkit.entity.Item dropped = player.getWorld().dropItem(loc, stack);
+            dropped.setVelocity(player.getLocation().getDirection().multiply(0.3));
+            dropped.setPickupDelay(40);
+        });
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onEntityDropItem(EntityDropItemEvent event) {
         // Drop global erlaubt (User-Wunsch). Falls Anti-Grief gecancelt hat

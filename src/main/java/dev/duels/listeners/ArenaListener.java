@@ -118,24 +118,29 @@ public class ArenaListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    // Block-Drops sind in Arenen erlaubt (User-Wunsch: "wenn man es breakt
+    // dann dropped der block nicht" — alte Logik hat ALLE BlockDropItem-
+    // Events in aktiven Arenen gecancelt, was sowohl Block-Break-Drops als
+    // auch normale Drops gekillt hat). Wenn ein Anti-Grief-Plugin gecancelt
+    // hat und der Block player-placed war, un-canceln wir.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onBlockDrop(BlockDropItemEvent event) {
         Location loc = event.getBlock().getLocation();
         Arena arena = plugin.getArenaManager().getArenaAt(loc);
-
-        if (arena != null && arena.isInUse()) {
-            event.setCancelled(true);
-        }
+        if (arena == null || !arena.isInUse()) return;
+        if (event.isCancelled()) event.setCancelled(false);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    // Item-Drops in Arenen sind explizit erlaubt (User-Wunsch: "im duel kann
+    // man nicht droppen aber man soll es können"). Alte Logik cancelte
+    // jeden ItemSpawn in aktiven Arenen. Jetzt: NICHTS canceln — gedroppte
+    // Items werden beim Arena-Reset (cleanupArenaEntities) entfernt.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onItemSpawn(ItemSpawnEvent event) {
         Location loc = event.getLocation();
         Arena arena = plugin.getArenaManager().getArenaAt(loc);
-
-        if (arena != null && arena.isInUse()) {
-            event.setCancelled(true);
-        }
+        if (arena == null || !arena.isInUse()) return;
+        if (event.isCancelled()) event.setCancelled(false);
     }
 
     @EventHandler

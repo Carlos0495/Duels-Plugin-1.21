@@ -536,8 +536,28 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             meta.setLore(java.util.Arrays.asList("§7Change the Player visibility", "§a✓ Players are visible"));
         }
 
+        // PDC-Tag setzen, damit das Item vom Hotbar-Clear-Loop NICHT als
+        // "non-hotbar" erkannt und gelöscht wird (Bug-Report: nach Klick
+        // verschwand das Visibility-Item, weil der neu gebaute ItemStack
+        // den Action-Tag nicht hatte und der 4-Tick-Clear-Loop es danach
+        // entfernt hat).
+        if (plugin.getHotbarManager() != null && meta != null) {
+            meta.getPersistentDataContainer().set(
+                    plugin.getHotbarManager().getActionKey(),
+                    org.bukkit.persistence.PersistentDataType.STRING,
+                    HotbarManager.ACTION_VISIBILITY);
+        }
+
         visibilityItem.setItemMeta(meta);
-        player.getInventory().setItem(7, visibilityItem);
+
+        // Slot aus Config lesen (falls User den Visibility-Slot umkonfiguriert hat).
+        int visibilitySlot = 7;
+        String configuredSlotPath = "hotbar.lobby.visibility.slot";
+        if (plugin.getConfigManager() != null
+                && plugin.getConfigManager().getMainConfig().contains(configuredSlotPath)) {
+            visibilitySlot = plugin.getConfigManager().getMainConfig().getInt(configuredSlotPath, 7);
+        }
+        player.getInventory().setItem(visibilitySlot, visibilityItem);
         player.updateInventory();
     }
 

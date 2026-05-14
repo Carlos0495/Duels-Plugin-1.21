@@ -67,6 +67,17 @@ public final class DuelsPlugin extends JavaPlugin {
         // Tasks starten
         startTasks();
 
+        // PlaceholderAPI optional einhaken (für TAB-Plugin etc. — User-Bug:
+        // "Zeichen hinter dem namen werden von dem TAB plugin überschrieben").
+        try {
+            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                new dev.duels.placeholders.DuelsPlaceholders(this).register();
+                getLogger().info("Registered PlaceholderAPI expansion '%duels_status%'");
+            }
+        } catch (Throwable t) {
+            getLogger().warning("Could not register PlaceholderAPI expansion: " + t.getMessage());
+        }
+
 
 
         String CYAN = "\u001B[36m";
@@ -194,8 +205,12 @@ public final class DuelsPlugin extends JavaPlugin {
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
     public SpectateManager getSpectateManager() { return spectateManager; }
 
-    // Konstanten
+    // Prefix konfigurierbar via config.yml -> prefix: "..." (mit & für Farben)
     public String getPrefix() {
-        return "§9§lᴅᴜᴇʟѕ §8| §7";
+        if (configManager == null || configManager.getMainConfig() == null) {
+            return "§9§lᴅᴜᴇʟѕ §8| §7";
+        }
+        String raw = configManager.getMainConfig().getString("prefix", "&9&lᴅᴜᴇʟѕ &8| &7");
+        return raw.replace('&', '§');
     }
 }

@@ -94,6 +94,12 @@ public class ConfigManager {
      */
     private void setDefaults() {
         boolean dirty = false;
+        if (!mainConfig.contains("prefix")) {
+            // Konfigurierbares Plugin-Prefix (vorne bei jedem Plugin-Befehl).
+            // Verwende '&' für Farbcodes. User kann ihn in config.yml anpassen.
+            mainConfig.set("prefix", "&9&lᴅᴜᴇʟѕ &8| &7");
+            dirty = true;
+        }
         if (!mainConfig.contains("scoreboard-title")) {
             mainConfig.set("scoreboard-title", "§3§l🪓 Duels");
             dirty = true;
