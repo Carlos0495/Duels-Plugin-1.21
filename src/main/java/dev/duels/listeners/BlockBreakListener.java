@@ -49,8 +49,12 @@ public class BlockBreakListener implements Listener {
 
         if (kit.isBreakable(event.getBlock().getType())) {
             // Erlaubt: cancel zurücknehmen falls ein Anti-Grief-Plugin
-            // gecancelt hat.
+            // gecancelt hat. Zusätzlich erzwingen dass der Block-Drop
+            // generiert wird — Anti-Grief setzt manchmal setDropItems(false)
+            // (User-Bug: "wenn man es breakt dann dropped der block nicht").
             if (event.isCancelled()) event.setCancelled(false);
+            try { event.setDropItems(true); } catch (Throwable ignored) {}
+            try { event.setExpToDrop(event.getExpToDrop()); } catch (Throwable ignored) {}
         } else {
             event.setCancelled(true);
         }

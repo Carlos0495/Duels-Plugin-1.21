@@ -163,7 +163,9 @@ public final class DuelsPlugin extends JavaPlugin {
             guiManager.updateOpenGUIs();
         }, 0L, 20L);
 
-        // Lobby-Inventar permanent clear + Tab-Suffix Update (jede Sekunde)
+        // Lobby-Inventar permanent clear + Tab-Suffix Update (5x pro Sekunde,
+        // User-Wunsch "öfter clearen" — verhindert dass per Drag-and-Drop oder
+        // /give erhaltene Items in der Lobby liegen bleiben).
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (org.bukkit.entity.Player pl : Bukkit.getOnlinePlayers()) {
                 try {
@@ -171,7 +173,7 @@ public final class DuelsPlugin extends JavaPlugin {
                     playerManager.updateTabName(pl);
                 } catch (Throwable ignored) {}
             }
-        }, 20L, 20L);
+        }, 4L, 4L);
     }
 
     public static DuelsPlugin getInstance() {

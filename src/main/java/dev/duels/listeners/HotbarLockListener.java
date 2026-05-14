@@ -13,6 +13,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -108,6 +110,30 @@ public class HotbarLockListener implements Listener {
             if (isHotbarItem(current)) {
                 event.setCancelled(true);
             }
+        }
+
+        // SWAP_OFFHAND (F-Drücken auf ein Item im Inventar-GUI) — würde das
+        // Item in die Offhand verschieben. Hotbar-Items dürfen weder rein
+        // noch raus aus der Offhand.
+        if (event.getClick() == ClickType.SWAP_OFFHAND) {
+            ItemStack offhand = player.getInventory().getItemInOffHand();
+            if (isHotbarItem(current) || isHotbarItem(offhand)) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Blockt das Drücken der F-Taste (Swap Main-Offhand) wenn entweder das
+     * aktuelle Hauptitem oder das Offhand-Item ein Hotbar-Lock-Item ist.
+     * Damit kann der Spieler die Hotbar-Items nicht in die Offhand legen.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onSwapHand(PlayerSwapHandItemsEvent event) {
+        Player player = event.getPlayer();
+        if (!lockActive(player)) return;
+        if (isHotbarItem(event.getMainHandItem()) || isHotbarItem(event.getOffHandItem())) {
+            event.setCancelled(true);
         }
     }
 

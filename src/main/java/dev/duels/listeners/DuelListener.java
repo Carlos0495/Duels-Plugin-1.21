@@ -134,15 +134,43 @@ public class DuelListener implements Listener {
         // Diamond-Sword-Shortcut über andere Plugins). Standard-Vanilla.
     }
 
-    @EventHandler
+    // Drop ist global erlaubt. Wenn ein Anti-Grief-Plugin das Event cancelt
+    // (User-Bug: "im duel kann man nicht droppen") un-canceln wir es für
+    // Spieler im Duel/FFA. Außerhalb Duel/FFA bleibt der Event-Status wie
+    // die anderen Plugins ihn gesetzt haben.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onItemDrop(PlayerDropItemEvent event) {
-        // Drop ist global erlaubt (User-Wunsch). Nur Lobby-Hotbar-Items
-        // (PDC-Tag) werden im HotbarLockListener separat geblockt.
+        Player player = event.getPlayer();
+        if (player == null) return;
+        boolean inDuel = plugin.getDuelManager() != null
+                && plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
+        // Hotbar-Lock-Item? Dann NICHT erlauben (theoretisch nie der Fall im
+        // Duel, aber sicher ist sicher).
+        if (plugin.getHotbarManager() != null) {
+            String action = plugin.getHotbarManager()
+                    .readAction(event.getItemDrop().getItemStack());
+            if (action != null && !action.isEmpty()) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+        if (event.isCancelled()) event.setCancelled(false);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onEntityDropItem(EntityDropItemEvent event) {
-        // Drop global erlaubt (User-Wunsch).
+        // Drop global erlaubt (User-Wunsch). Falls Anti-Grief gecancelt hat
+        // und der Spieler im Duel/FFA ist, un-canceln.
+        if (event.getEntity() instanceof Player player) {
+            boolean inDuel = plugin.getDuelManager().isInDuel(player.getUniqueId());
+            boolean inFFA = plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+            if ((inDuel || inFFA) && event.isCancelled()) {
+                event.setCancelled(false);
+            }
+        }
     }
 
     @EventHandler
