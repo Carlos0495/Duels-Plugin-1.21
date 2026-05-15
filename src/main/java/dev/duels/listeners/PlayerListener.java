@@ -162,6 +162,12 @@ public class PlayerListener implements Listener {
             event.setTo(event.getFrom());
             return;
         }
+        // FFA-/Team-Match Pre-Match-Freeze (3s Countdown, wie Duel)
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isFrozen(player.getUniqueId())) {
+            event.setTo(event.getFrom());
+            return;
+        }
 
         // Spectator-Boundary: wenn der Spectator außerhalb der Arena-Bounds
         // landet (Multiverse-Welt-Teleport, Eingabe oder Flug nach außen),

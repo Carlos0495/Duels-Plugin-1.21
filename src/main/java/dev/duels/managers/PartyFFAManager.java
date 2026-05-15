@@ -31,6 +31,15 @@ public class PartyFFAManager {
     private final Map<UUID, FFASession> playerToSession = new HashMap<>();
     /** Aktive Sessions (key = leaderId zum Zeitpunkt des Starts). */
     private final Map<UUID, FFASession> sessionsByLeader = new HashMap<>();
+    /**
+     * Spieler die während eines FFA-/Team-Countdowns frozen sind (3s
+     * Duel-Style). PlayerListener#onMove cancelt PlayerMove für diese UUIDs.
+     */
+    private final Set<UUID> frozenFFAPlayers = new HashSet<>();
+
+    public boolean isFrozen(UUID uuid) {
+        return frozenFFAPlayers.contains(uuid);
+    }
 
     public PartyFFAManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -62,7 +71,10 @@ public class PartyFFAManager {
         if (t == null) return;
         try {
             t.setColor(color);
-            t.prefix(net.kyori.adventure.text.Component.text(prefix));
+            // §-Codes via LegacyComponentSerializer parsen, sonst landet
+            // der Raw-String "§b[T1] " im Tab und wird nicht farbig gerendert.
+            t.prefix(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                    .legacySection().deserialize(prefix));
             t.setOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE,
                     org.bukkit.scoreboard.Team.OptionStatus.NEVER);
             t.setOption(org.bukkit.scoreboard.Team.Option.NAME_TAG_VISIBILITY,
@@ -311,32 +323,48 @@ public class PartyFFAManager {
             p.sendMessage(plugin.getPrefix() + teamColor + "§l" + teamName + " §7on " + reservedArena.getName());
             p.sendMessage(plugin.getPrefix() + "§bTeam 1: §7" + t1Names);
             p.sendMessage(plugin.getPrefix() + "§cTeam 2: §7" + t2Names);
-            if (graceSeconds > 0) {
-                p.sendMessage(plugin.getPrefix() + "§ePvP starts in §6" + graceSeconds + "s§e.");
-            }
+            // Blindness während Countdown (wie Duel)
+            p.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                    org.bukkit.potion.PotionEffectType.BLINDNESS, 60, 1, false, false));
+            // Freeze für die Countdown-Dauer
+            frozenFFAPlayers.add(u);
         }
 
-        if (graceSeconds > 0) {
-            session.graceTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-                if (session.graceTicksLeft <= 0) {
-                    if (session.graceTask != null) {
-                        session.graceTask.cancel();
-                        session.graceTask = null;
+        // 3-Sekunden Duel-Style Countdown (statt 10s FFA-Grace).
+        // Spieler sind frozen via frozenFFAPlayers — PlayerListener#onMove
+        // ruft isFrozen() ab und cancelt die Bewegung.
+        session.graceTicksLeft = 3 * 20;
+        session.graceTask = new org.bukkit.scheduler.BukkitRunnable() {
+            int time = 3;
+            @Override
+            public void run() {
+                if (time > 0) {
+                    showTitleToSession(session, "§c" + time, "§7Get ready", 0, 20, 0);
+                    for (UUID u : session.allParticipants) {
+                        Player p = Bukkit.getPlayer(u);
+                        if (p != null) {
+                            float pitch = time == 3 ? 0.5f : (time == 2 ? 0.8f : 1.2f);
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1f, pitch);
+                        }
                     }
-                    broadcastToSession(session, "§a§lGO! §7PvP is now enabled.");
-                    showTitleToSession(session, "§a§lGO!", "§7PvP enabled", 0, 30, 10);
-                    return;
-                }
-                int secLeft = (session.graceTicksLeft + 19) / 20;
-                if (session.graceTicksLeft % 20 == 0) {
-                    showTitleToSession(session, "§e§l" + secLeft, "§7PvP in §6" + secLeft + "s", 0, 25, 5);
-                    if (secLeft <= 5 || secLeft == 10) {
-                        broadcastToSession(session, "§ePvP in §6" + secLeft + "s§7...");
+                    time--;
+                } else {
+                    showTitleToSession(session, "§a§lFIGHT!",
+                            "§7Team vs Team", 0, 20, 10);
+                    for (UUID u : session.allParticipants) {
+                        Player p = Bukkit.getPlayer(u);
+                        if (p != null) {
+                            p.playSound(p.getLocation(),
+                                    org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL, 0.5f, 1.5f);
+                            frozenFFAPlayers.remove(u);
+                        }
                     }
+                    session.graceTicksLeft = 0;
+                    cancel();
+                    session.graceTask = null;
                 }
-                session.graceTicksLeft -= 20;
-            }, 0L, 20L);
-        }
+            }
+        }.runTaskTimer(plugin, 0L, 20L);
         return null;
     }
 
@@ -521,19 +549,40 @@ public class PartyFFAManager {
         Location lobbySpawn = plugin.getArenaManager().getSpawnLocation();
         for (UUID u : session.allParticipants) {
             playerToSession.remove(u);
+            frozenFFAPlayers.remove(u);
             Player p = Bukkit.getPlayer(u);
             if (p == null || !p.isOnline()) continue;
-            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
-                p.setGameMode(org.bukkit.GameMode.SURVIVAL);
-            }
-            if (lobbySpawn != null) p.teleport(lobbySpawn);
-            DuelManager.clearFullInventory(p);
-            plugin.getPlayerManager().forceLobbyState(p);
-            plugin.getPlayerManager().applyLobbyFly(p);
-            // 1-Tick-Delay: Cross-World-Teleport wirkt erst nach diesem Tick
-            // garantiert auf player.getWorld(), und ein laufendes Spectator-
-            // Restore vom endMatch() oben hat dann auch fertig.
             final Player pl = p;
+            // Tote Spieler stehen auf dem Death-/Respawn-Screen. teleport()
+            // greift bei toten Spielern NICHT — sie bleiben in der Arena.
+            // Daher: erst respawn() erzwingen, dann teleport im nächsten Tick.
+            if (pl.isDead()) {
+                try { pl.spigot().respawn(); } catch (Throwable ignored) {}
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!pl.isOnline()) return;
+                    if (pl.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
+                        pl.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                    }
+                    if (lobbySpawn != null) pl.teleport(lobbySpawn);
+                    DuelManager.clearFullInventory(pl);
+                    plugin.getPlayerManager().forceLobbyState(pl);
+                    plugin.getPlayerManager().applyLobbyFly(pl);
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!pl.isOnline()) return;
+                        plugin.getPlayerManager().setupPlayerInventory(pl);
+                        plugin.getPlayerManager().refreshQueueSlotItem(pl);
+                        plugin.getScoreboardManager().updateScoreboard(pl);
+                    }, 2L);
+                });
+                continue;
+            }
+            if (pl.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
+                pl.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            }
+            if (lobbySpawn != null) pl.teleport(lobbySpawn);
+            DuelManager.clearFullInventory(pl);
+            plugin.getPlayerManager().forceLobbyState(pl);
+            plugin.getPlayerManager().applyLobbyFly(pl);
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (!pl.isOnline()) return;
                 plugin.getPlayerManager().setupPlayerInventory(pl);
