@@ -105,10 +105,13 @@ public class BlockBreakListener implements Listener {
         java.util.Set<Material> union = collectBreakableAt(event.getLocation());
         if (union == null) return; // nicht in Duel/FFA-Arena
         if (event.isCancelled()) event.setCancelled(false);
-        // Vanilla-Physik: blockList enthält alles was die Explosion ZERSTÖREN
-        // KANN. Filter behält nur Whitelist-Materialien. KEIN Force-Break /
-        // Sphere-Augment — bewusst Vanilla-konform.
         event.blockList().removeIf(b -> !union.contains(b.getType()));
+        // Pre-record für Arena-Reset: jeder Block der durch die Explosion
+        // VERSCHWINDET muss als Original getrackt sein, damit resetArena()
+        // ihn wiederherstellt. Auch wenn der Snapshot die Stelle nicht
+        // abdeckt (zB Arena ohne Corners), funktioniert der Reset jetzt.
+        dev.duels.objects.Arena arena = findArenaAt(event.getLocation());
+        recordOriginals(arena, event.blockList());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -117,6 +120,34 @@ public class BlockBreakListener implements Listener {
         if (union == null) return;
         if (event.isCancelled()) event.setCancelled(false);
         event.blockList().removeIf(b -> !union.contains(b.getType()));
+        dev.duels.objects.Arena arena = findArenaAt(event.getBlock().getLocation());
+        recordOriginals(arena, event.blockList());
+    }
+
+    private dev.duels.objects.Arena findArenaAt(org.bukkit.Location loc) {
+        for (DuelSession s : plugin.getDuelManager().getAllSessions()) {
+            dev.duels.objects.Arena a = plugin.getArenaManager().getArena(s.getArenaName());
+            if (isLocationInArena(a, loc)) return a;
+        }
+        if (plugin.getPartyFFAManager() != null) {
+            for (dev.duels.managers.PartyFFAManager.FFASession s :
+                    plugin.getPartyFFAManager().getAllSessions()) {
+                if (isLocationInArena(s.reservedArena, loc)) return s.reservedArena;
+            }
+        }
+        return null;
+    }
+
+    private void recordOriginals(dev.duels.objects.Arena arena, java.util.List<org.bukkit.block.Block> blocks) {
+        if (arena == null || blocks == null) return;
+        for (org.bukkit.block.Block b : blocks) {
+            dev.duels.objects.BlockVector v =
+                    new dev.duels.objects.BlockVector(b.getX(), b.getY(), b.getZ());
+            if (!arena.getOriginalBlocks().containsKey(v)) {
+                try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
+                catch (Throwable ignored) {}
+            }
+        }
     }
 
     /**

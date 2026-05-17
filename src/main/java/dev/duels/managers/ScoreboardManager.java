@@ -223,10 +223,16 @@ public class ScoreboardManager {
             catch (IllegalArgumentException ignored) { t = board.getTeam(name); }
         }
         if (t == null) return;
+        try { t.setColor(color); } catch (Throwable ignored) {}
+        // Prefix sowohl per Adventure-API (Paper 1.21+) als auch per Legacy-
+        // setPrefix (Spigot kompatibel) setzen. Manche TAB/Plugins
+        // respektieren nur eine der beiden Methoden.
         try {
-            t.setColor(color);
             t.prefix(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
                     .legacySection().deserialize(prefix));
+        } catch (Throwable ignored) {}
+        try { t.setPrefix(prefix); } catch (Throwable ignored) {}
+        try {
             t.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.ALWAYS);
             t.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
             t.setAllowFriendlyFire(true);

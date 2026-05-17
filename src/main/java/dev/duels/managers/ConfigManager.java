@@ -26,8 +26,12 @@ public class ConfigManager {
     }
 
     public void loadAllConfigs() {
-        // Main config
+        // Main config — IMMER frisch von Disk laden, damit Hand-Edits
+        // durch /duels reload auch wirklich übernommen werden. Ohne
+        // reloadConfig() liefert plugin.getConfig() die in-memory-cached
+        // Version → User-Edits wären ignoriert.
         plugin.saveDefaultConfig();
+        plugin.reloadConfig();
         mainConfig = plugin.getConfig();
 
         // Players config
@@ -37,14 +41,14 @@ public class ConfigManager {
         }
         playersConfig = YamlConfiguration.loadConfiguration(playersFile);
 
-        // Kits config
+        // Kits config — frisch von Disk
         kitsFile = new File(plugin.getDataFolder(), "kits.yml");
         if (!kitsFile.exists()) {
             createDefaultFile(kitsFile, "kits.yml");
         }
         kitsConfig = YamlConfiguration.loadConfiguration(kitsFile);
 
-        // Arena config
+        // Arena config — frisch von Disk
         arenaFile = new File(plugin.getDataFolder(), "arena.yml");
         if (!arenaFile.exists()) {
             createDefaultFile(arenaFile, "arena.yml");
