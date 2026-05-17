@@ -194,6 +194,26 @@ public class ScoreboardManager {
             String target = computeStatusTeam(p);
             applyEntry(board, p.getName(), target);
         }
+        // Auch auf das Main-Scoreboard pushen — TAB-Plugins (NEZNAMY-TAB
+        // etc.) ersetzen die Scoreboard-Teams pro Spieler, aber respektieren
+        // typischerweise das Main-Scoreboard. Damit erscheint [T1]/[T2]
+        // überm Kopf auch wenn TAB unsere per-Player-Boards überschreibt.
+        try {
+            Scoreboard main = Bukkit.getScoreboardManager() == null
+                    ? null : Bukkit.getScoreboardManager().getMainScoreboard();
+            if (main != null && main != board) {
+                ensureNametagTeam(main, NT_T1, ChatColor.AQUA, t1Sym);
+                ensureNametagTeam(main, NT_T2, ChatColor.RED,  t2Sym);
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    String target = computeStatusTeam(p);
+                    // Auf Main nur T1/T2 (DUEL/SPEC sollen NICHT überm Kopf).
+                    String mainTarget = (target != null
+                            && (target.equals(NT_T1) || target.equals(NT_T2)))
+                            ? target : null;
+                    applyEntry(main, p.getName(), mainTarget);
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void ensureNametagTeam(Scoreboard board, String name, ChatColor color, String prefix) {

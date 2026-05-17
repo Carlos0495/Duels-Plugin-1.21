@@ -105,14 +105,10 @@ public class BlockBreakListener implements Listener {
         java.util.Set<Material> union = collectBreakableAt(event.getLocation());
         if (union == null) return; // nicht in Duel/FFA-Arena
         if (event.isCancelled()) event.setCancelled(false);
-        dev.duels.objects.Arena arena = findArenaAt(event.getLocation());
-        // Pre-record für Arena-Reset: jeden Block der durch die Explosion
-        // verschwindet (vanilla blockList) als Original tracken — sonst kommt
-        // er beim Reset nicht zurück, falls die Arena keinen Snapshot hat.
-        recordOriginals(arena, event.blockList());
+        // Vanilla-Physik: blockList enthält alles was die Explosion ZERSTÖREN
+        // KANN. Filter behält nur Whitelist-Materialien. KEIN Force-Break /
+        // Sphere-Augment — bewusst Vanilla-konform.
         event.blockList().removeIf(b -> !union.contains(b.getType()));
-        int radius = explosionRadiusFor(event.getEntityType());
-        scheduleForceBreak(event.getLocation(), union, radius, arena);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -120,103 +116,7 @@ public class BlockBreakListener implements Listener {
         java.util.Set<Material> union = collectBreakableAt(event.getBlock().getLocation());
         if (union == null) return;
         if (event.isCancelled()) event.setCancelled(false);
-        dev.duels.objects.Arena arena = findArenaAt(event.getBlock().getLocation());
-        recordOriginals(arena, event.blockList());
         event.blockList().removeIf(b -> !union.contains(b.getType()));
-        int radius = 6;
-        scheduleForceBreak(event.getBlock().getLocation(), union, radius, arena);
-    }
-
-    /**
-     * Sucht das aktive Arena-Objekt für eine Location (Duel oder FFA).
-     */
-    private dev.duels.objects.Arena findArenaAt(org.bukkit.Location loc) {
-        for (DuelSession s : plugin.getDuelManager().getAllSessions()) {
-            dev.duels.objects.Arena a = plugin.getArenaManager().getArena(s.getArenaName());
-            if (isLocationInArena(a, loc)) return a;
-        }
-        if (plugin.getPartyFFAManager() != null) {
-            for (dev.duels.managers.PartyFFAManager.FFASession s :
-                    plugin.getPartyFFAManager().getAllSessions()) {
-                if (isLocationInArena(s.reservedArena, loc)) return s.reservedArena;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Trackt den BlockData jedes übergebenen Blocks im Arena-Snapshot, falls
-     * noch nicht vorhanden. So restored {@link dev.duels.managers.ArenaManager#resetArena}
-     * jedes per Explosion zerstörte Stück Obsidian/etc. wieder.
-     */
-    private void recordOriginals(dev.duels.objects.Arena arena, java.util.List<org.bukkit.block.Block> blocks) {
-        if (arena == null || blocks == null) return;
-        for (org.bukkit.block.Block b : blocks) {
-            dev.duels.objects.BlockVector v = new dev.duels.objects.BlockVector(b.getX(), b.getY(), b.getZ());
-            if (!arena.getOriginalBlocks().containsKey(v)) {
-                try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
-                catch (Throwable ignored) {}
-            }
-        }
-    }
-
-    private int explosionRadiusFor(org.bukkit.entity.EntityType type) {
-        if (type == null) return 6;
-        String n = type.name();
-        if (n.equals("END_CRYSTAL")) return 7;       // Crystal-Schaden bis ~6-7 Blöcke
-        if (n.equals("WIND_CHARGE") || n.contains("BREEZE")) return 3;
-        if (n.contains("WITHER")) return 8;
-        return 6; // TNT, Ghast Fireball, etc.
-    }
-
-    /**
-     * Zerstört im nächsten Tick alle Blöcke vom Typ in {@code union} in einer
-     * Sphäre um {@code center} mit Radius {@code radius}. Anti-Grief kann das
-     * nicht verhindern, weil wir {@link org.bukkit.block.Block#setType(Material)}
-     * direkt aufrufen (kein BlockBreakEvent). Items werden vorher manuell
-     * gedroppt (BlockData.getDrops nutzen wir nicht, weil Anti-Grief
-     * BlockDropItemEvent kapert — wir dropen per world.dropItemNaturally).
-     */
-    private void scheduleForceBreak(org.bukkit.Location center,
-                                    java.util.Set<Material> union,
-                                    int radius,
-                                    dev.duels.objects.Arena arena) {
-        if (center == null || center.getWorld() == null || union == null || union.isEmpty()) return;
-        final org.bukkit.World w = center.getWorld();
-        final int cx = center.getBlockX();
-        final int cy = center.getBlockY();
-        final int cz = center.getBlockZ();
-        final int r2 = radius * radius;
-        org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dy = -radius; dy <= radius; dy++) {
-                    for (int dz = -radius; dz <= radius; dz++) {
-                        if (dx*dx + dy*dy + dz*dz > r2) continue;
-                        int x = cx + dx, y = cy + dy, z = cz + dz;
-                        org.bukkit.block.Block b = w.getBlockAt(x, y, z);
-                        if (b.getType().isAir()) continue;
-                        if (!union.contains(b.getType())) continue;
-                        org.bukkit.Material drop = b.getType();
-                        // VOR setType(AIR): den Original-BlockData für den
-                        // Arena-Reset tracken, damit das Loch beim Match-Ende
-                        // wieder geschlossen wird.
-                        if (arena != null) {
-                            dev.duels.objects.BlockVector v =
-                                    new dev.duels.objects.BlockVector(x, y, z);
-                            if (!arena.getOriginalBlocks().containsKey(v)) {
-                                try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
-                                catch (Throwable ignored) {}
-                            }
-                        }
-                        try {
-                            b.setType(org.bukkit.Material.AIR, false);
-                            w.dropItemNaturally(b.getLocation().add(0.5, 0.5, 0.5),
-                                    new org.bukkit.inventory.ItemStack(drop));
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-        });
     }
 
     /**

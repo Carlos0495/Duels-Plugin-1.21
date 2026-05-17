@@ -12,7 +12,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.*;
-import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
 
 public class ArenaListener implements Listener {
@@ -28,11 +27,12 @@ public class ArenaListener implements Listener {
         Player player = event.getPlayer();
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Im Duel? Nur dann interessieren wir uns für Tracking.
-        // Block-Cancel entscheidet ALLEIN der BlockBreakListener
-        // (Kit-Whitelist). Wir NICHT — auch wenn der Spieler außerhalb
-        // der Corners ist (große/keine Corners-Arenen sonst broken).
-        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        // Tracking für Duel UND FFA/Team-Match (sonst bleibt placed-Tracking
+        // bei Team-Match unvollständig).
+        boolean inDuel = plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA  = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
 
         Location blockLoc = event.getBlock().getLocation();
         Arena arena = resolveArenaForPlayer(player, blockLoc);
@@ -50,10 +50,12 @@ public class ArenaListener implements Listener {
         Player player = event.getPlayer();
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Im Duel? Tracking, aber NIE canceln (Whitelist entscheidet im
-        // BlockBreakListener). Auch wenn keine Corners gesetzt sind, das
-        // Place ist erlaubt.
-        if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        // Tracking für Duel UND FFA/Team-Match (sonst bleiben Blöcke von
+        // Team-Spielern beim Reset stehen).
+        boolean inDuel = plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA  = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
 
         Location blockLoc = event.getBlock().getLocation();
         Arena arena = resolveArenaForPlayer(player, blockLoc);
@@ -75,48 +77,19 @@ public class ArenaListener implements Listener {
             Arena byName = plugin.getArenaManager().getArena(session.getArenaName());
             if (byName != null) return byName;
         }
+        if (plugin.getPartyFFAManager() != null) {
+            var ffa = plugin.getPartyFFAManager().getSession(player.getUniqueId());
+            if (ffa != null && ffa.reservedArena != null) return ffa.reservedArena;
+        }
         return plugin.getArenaManager().getArenaAt(loc);
     }
 
-    @EventHandler
-    public void onBlockExplode(BlockExplodeEvent event) {
-        Location loc = event.getBlock().getLocation();
-        Arena arena = plugin.getArenaManager().getArenaAt(loc);
-
-        if (arena != null && arena.isInUse()) {
-            // Nur player-placed blocks explodieren lassen
-            event.blockList().removeIf(block -> {
-                BlockVector v = new BlockVector(block.getX(), block.getY(), block.getZ());
-                return !arena.isPlayerPlacedBlock(v);
-            });
-
-            // Player-placed blocks aus Tracking entfernen
-            for (Block block : event.blockList()) {
-                BlockVector v = new BlockVector(block.getX(), block.getY(), block.getZ());
-                arena.removePlayerPlacedBlock(v);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onEntityExplode(EntityExplodeEvent event) {
-        Location loc = event.getLocation();
-        Arena arena = plugin.getArenaManager().getArenaAt(loc);
-
-        if (arena != null && arena.isInUse()) {
-            // Nur player-placed blocks explodieren lassen
-            event.blockList().removeIf(block -> {
-                BlockVector v = new BlockVector(block.getX(), block.getY(), block.getZ());
-                return !arena.isPlayerPlacedBlock(v);
-            });
-
-            // Player-placed blocks aus Tracking entfernen
-            for (Block block : event.blockList()) {
-                BlockVector v = new BlockVector(block.getX(), block.getY(), block.getZ());
-                arena.removePlayerPlacedBlock(v);
-            }
-        }
-    }
+    // Explosionen werden komplett von BlockBreakListener.onEntityExplode /
+    // onBlockExplode (HIGHEST + Kit-Whitelist-Filter) gehandhabt. Die alten
+    // Handler hier filterten zu "nur player-placed Blöcke" UND liefen vor
+    // dem Whitelist-Listener — dadurch konnten Crystals selbst dann keine
+    // Whitelist-Blöcke zerstören, wenn der Admin sie in breakable-blocks
+    // freigegeben hatte. Daher entfernt.
 
     // Block-Drops sind in Arenen erlaubt (User-Wunsch: "wenn man es breakt
     // dann dropped der block nicht" — alte Logik hat ALLE BlockDropItem-
