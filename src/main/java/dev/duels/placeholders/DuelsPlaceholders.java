@@ -94,7 +94,10 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                         cfg.getString("status.spec-symbol", "&7 👁"));
                 if (inDuel || inFFA) return org.bukkit.ChatColor.translateAlternateColorCodes('&',
                         cfg.getString("status.duel-symbol", "&c ⚔"));
-                return "";
+                boolean inLobby = plugin.getPlayerManager() != null
+                        && plugin.getPlayerManager().isInLobbyWorld(on);
+                String key = inLobby ? "status.lobby-symbol" : "status.world-symbol";
+                return org.bukkit.ChatColor.translateAlternateColorCodes('&', cfg.getString(key, ""));
             }
             case "status_icon": {
                 Player on = player.getPlayer();

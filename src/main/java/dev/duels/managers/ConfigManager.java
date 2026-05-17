@@ -208,8 +208,17 @@ public class ConfigManager {
         if (!mainConfig.contains("messages.ffa.lose-subtitle"))   { mainConfig.set("messages.ffa.lose-subtitle", "&7{winner} &7won the FFA"); dirty = true; }
 
         // Symbole für Status-Suffix (PlaceholderAPI %duels_status% + Nametag).
+        // Reihenfolge der Priorität (wenn mehrere Bedingungen zutreffen):
+        //   spec  > duel  > lobby > world
+        // - duel-symbol:  Spieler ist im Duel/FFA/Team
+        // - spec-symbol:  Spieler spectatet
+        // - lobby-symbol: Spieler ist in der Lobby-Welt (nicht im Duel/Spec)
+        // - world-symbol: Spieler ist in irgendeiner anderen Welt
+        // - team1/team2:  nur für Nametag (überm Kopf) in Team-Match
         if (!mainConfig.contains("status.duel-symbol"))    { mainConfig.set("status.duel-symbol", "&c ⚔"); dirty = true; }
         if (!mainConfig.contains("status.spec-symbol"))    { mainConfig.set("status.spec-symbol", "&7 👁"); dirty = true; }
+        if (!mainConfig.contains("status.lobby-symbol"))   { mainConfig.set("status.lobby-symbol", ""); dirty = true; }
+        if (!mainConfig.contains("status.world-symbol"))   { mainConfig.set("status.world-symbol", ""); dirty = true; }
         if (!mainConfig.contains("status.team1-symbol"))   { mainConfig.set("status.team1-symbol", "&b[T1] "); dirty = true; }
         if (!mainConfig.contains("status.team2-symbol"))   { mainConfig.set("status.team2-symbol", "&c[T2] "); dirty = true; }
 

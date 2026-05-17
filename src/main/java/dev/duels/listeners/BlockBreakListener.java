@@ -89,14 +89,30 @@ public class BlockBreakListener implements Listener {
     }
 
     // HIGHEST + ignoreCancelled=false: läuft auch wenn Anti-Grief gecancelt
-    // hat. Wenn die Explosion in einem aktiven Duel/FFA passiert, un-canceln
-    // wir und filtern blockList nach der Kit-Whitelist.
+    // hat. Wenn die Explosion in einem aktiven Duel/FFA passiert:
+    //   1. Un-canceln (Anti-Grief override).
+    //   2. blockList nach Kit-Whitelist filtern.
+    //   3. Sphere-Augmentation: vanilla packt blast-resistente Blöcke wie
+    //      OBSIDIAN / CRYING_OBSIDIAN nicht in blockList — Crystal-Damage
+    //      reicht physikalisch nicht. Wenn der Admin OBSIDIAN aber
+    //      explizit in breakable-blocks gesetzt hat, sollen Crystals/
+    //      Anchors sie zerstören. Deshalb scannen wir eine kleine Sphäre
+    //      um die Explosion und force-destroyen alle Whitelist-Blöcke
+    //      darin im nächsten Tick (auch wenn Anti-Grief noch was kapern
+    //      will — wir nutzen Block.setType, kein Event).
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onEntityExplode(EntityExplodeEvent event) {
         java.util.Set<Material> union = collectBreakableAt(event.getLocation());
         if (union == null) return; // nicht in Duel/FFA-Arena
         if (event.isCancelled()) event.setCancelled(false);
+        dev.duels.objects.Arena arena = findArenaAt(event.getLocation());
+        // Pre-record für Arena-Reset: jeden Block der durch die Explosion
+        // verschwindet (vanilla blockList) als Original tracken — sonst kommt
+        // er beim Reset nicht zurück, falls die Arena keinen Snapshot hat.
+        recordOriginals(arena, event.blockList());
         event.blockList().removeIf(b -> !union.contains(b.getType()));
+        int radius = explosionRadiusFor(event.getEntityType());
+        scheduleForceBreak(event.getLocation(), union, radius, arena);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -104,7 +120,103 @@ public class BlockBreakListener implements Listener {
         java.util.Set<Material> union = collectBreakableAt(event.getBlock().getLocation());
         if (union == null) return;
         if (event.isCancelled()) event.setCancelled(false);
+        dev.duels.objects.Arena arena = findArenaAt(event.getBlock().getLocation());
+        recordOriginals(arena, event.blockList());
         event.blockList().removeIf(b -> !union.contains(b.getType()));
+        int radius = 6;
+        scheduleForceBreak(event.getBlock().getLocation(), union, radius, arena);
+    }
+
+    /**
+     * Sucht das aktive Arena-Objekt für eine Location (Duel oder FFA).
+     */
+    private dev.duels.objects.Arena findArenaAt(org.bukkit.Location loc) {
+        for (DuelSession s : plugin.getDuelManager().getAllSessions()) {
+            dev.duels.objects.Arena a = plugin.getArenaManager().getArena(s.getArenaName());
+            if (isLocationInArena(a, loc)) return a;
+        }
+        if (plugin.getPartyFFAManager() != null) {
+            for (dev.duels.managers.PartyFFAManager.FFASession s :
+                    plugin.getPartyFFAManager().getAllSessions()) {
+                if (isLocationInArena(s.reservedArena, loc)) return s.reservedArena;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Trackt den BlockData jedes übergebenen Blocks im Arena-Snapshot, falls
+     * noch nicht vorhanden. So restored {@link dev.duels.managers.ArenaManager#resetArena}
+     * jedes per Explosion zerstörte Stück Obsidian/etc. wieder.
+     */
+    private void recordOriginals(dev.duels.objects.Arena arena, java.util.List<org.bukkit.block.Block> blocks) {
+        if (arena == null || blocks == null) return;
+        for (org.bukkit.block.Block b : blocks) {
+            dev.duels.objects.BlockVector v = new dev.duels.objects.BlockVector(b.getX(), b.getY(), b.getZ());
+            if (!arena.getOriginalBlocks().containsKey(v)) {
+                try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
+                catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    private int explosionRadiusFor(org.bukkit.entity.EntityType type) {
+        if (type == null) return 6;
+        String n = type.name();
+        if (n.equals("END_CRYSTAL")) return 7;       // Crystal-Schaden bis ~6-7 Blöcke
+        if (n.equals("WIND_CHARGE") || n.contains("BREEZE")) return 3;
+        if (n.contains("WITHER")) return 8;
+        return 6; // TNT, Ghast Fireball, etc.
+    }
+
+    /**
+     * Zerstört im nächsten Tick alle Blöcke vom Typ in {@code union} in einer
+     * Sphäre um {@code center} mit Radius {@code radius}. Anti-Grief kann das
+     * nicht verhindern, weil wir {@link org.bukkit.block.Block#setType(Material)}
+     * direkt aufrufen (kein BlockBreakEvent). Items werden vorher manuell
+     * gedroppt (BlockData.getDrops nutzen wir nicht, weil Anti-Grief
+     * BlockDropItemEvent kapert — wir dropen per world.dropItemNaturally).
+     */
+    private void scheduleForceBreak(org.bukkit.Location center,
+                                    java.util.Set<Material> union,
+                                    int radius,
+                                    dev.duels.objects.Arena arena) {
+        if (center == null || center.getWorld() == null || union == null || union.isEmpty()) return;
+        final org.bukkit.World w = center.getWorld();
+        final int cx = center.getBlockX();
+        final int cy = center.getBlockY();
+        final int cz = center.getBlockZ();
+        final int r2 = radius * radius;
+        org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        if (dx*dx + dy*dy + dz*dz > r2) continue;
+                        int x = cx + dx, y = cy + dy, z = cz + dz;
+                        org.bukkit.block.Block b = w.getBlockAt(x, y, z);
+                        if (b.getType().isAir()) continue;
+                        if (!union.contains(b.getType())) continue;
+                        org.bukkit.Material drop = b.getType();
+                        // VOR setType(AIR): den Original-BlockData für den
+                        // Arena-Reset tracken, damit das Loch beim Match-Ende
+                        // wieder geschlossen wird.
+                        if (arena != null) {
+                            dev.duels.objects.BlockVector v =
+                                    new dev.duels.objects.BlockVector(x, y, z);
+                            if (!arena.getOriginalBlocks().containsKey(v)) {
+                                try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
+                                catch (Throwable ignored) {}
+                            }
+                        }
+                        try {
+                            b.setType(org.bukkit.Material.AIR, false);
+                            w.dropItemNaturally(b.getLocation().add(0.5, 0.5, 0.5),
+                                    new org.bukkit.inventory.ItemStack(drop));
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -119,9 +231,7 @@ public class BlockBreakListener implements Listener {
         boolean matched = false;
         for (DuelSession s : plugin.getDuelManager().getAllSessions()) {
             dev.duels.objects.Arena a = plugin.getArenaManager().getArena(s.getArenaName());
-            if (a == null) continue;
-            if (a.getSpawn1() == null || a.getSpawn1().getWorld() == null) continue;
-            if (!a.getSpawn1().getWorld().equals(loc.getWorld())) continue;
+            if (!isLocationInArena(a, loc)) continue;
             matched = true;
             KitManager.Kit kit = plugin.getKitManager().getKit(s.getKitName());
             if (kit != null) union.addAll(kit.getBreakableBlocks());
@@ -129,16 +239,50 @@ public class BlockBreakListener implements Listener {
         if (plugin.getPartyFFAManager() != null) {
             for (dev.duels.managers.PartyFFAManager.FFASession s :
                     plugin.getPartyFFAManager().getAllSessions()) {
-                if (s.reservedArena == null) continue;
-                if (s.reservedArena.getSpawn1() == null
-                        || s.reservedArena.getSpawn1().getWorld() == null) continue;
-                if (!s.reservedArena.getSpawn1().getWorld().equals(loc.getWorld())) continue;
+                if (!isLocationInArena(s.reservedArena, loc)) continue;
                 matched = true;
                 KitManager.Kit kit = plugin.getKitManager().getKit(s.kitName);
                 if (kit != null) union.addAll(kit.getBreakableBlocks());
             }
         }
         return matched ? union : null;
+    }
+
+    /**
+     * True wenn die Location plausibel zur Arena gehört. Strategie:
+     *   1. Welt muss übereinstimmen.
+     *   2. Wenn Corners gesetzt sind: AABB-Check (mit etwas Puffer).
+     *   3. Sonst: Distanz zu spawn1/spawn2 muss &lt; 150 sein (großzügig).
+     * Damit greift der Listener NICHT in der Lobby, auch wenn Lobby
+     * + Arena in der gleichen Welt liegen.
+     */
+    private boolean isLocationInArena(dev.duels.objects.Arena a, org.bukkit.Location loc) {
+        if (a == null || loc == null) return false;
+        org.bukkit.Location s1 = a.getSpawn1();
+        if (s1 == null || s1.getWorld() == null) return false;
+        if (!s1.getWorld().equals(loc.getWorld())) return false;
+        org.bukkit.Location c1 = a.getCorner1();
+        org.bukkit.Location c2 = a.getCorner2();
+        if (c1 != null && c2 != null && c1.getWorld() != null && c2.getWorld() != null
+                && c1.getWorld().equals(loc.getWorld())) {
+            double minX = Math.min(c1.getX(), c2.getX()) - 8;
+            double maxX = Math.max(c1.getX(), c2.getX()) + 8;
+            double minY = Math.min(c1.getY(), c2.getY()) - 8;
+            double maxY = Math.max(c1.getY(), c2.getY()) + 8;
+            double minZ = Math.min(c1.getZ(), c2.getZ()) - 8;
+            double maxZ = Math.max(c1.getZ(), c2.getZ()) + 8;
+            return loc.getX() >= minX && loc.getX() <= maxX
+                && loc.getY() >= minY && loc.getY() <= maxY
+                && loc.getZ() >= minZ && loc.getZ() <= maxZ;
+        }
+        // Fallback: Distanz zu spawn1/spawn2
+        double d1 = loc.distanceSquared(s1);
+        if (d1 < 150 * 150) return true;
+        org.bukkit.Location s2 = a.getSpawn2();
+        if (s2 != null && s2.getWorld() != null && s2.getWorld().equals(loc.getWorld())) {
+            return loc.distanceSquared(s2) < 150 * 150;
+        }
+        return false;
     }
 
     private boolean isAllowed(DuelSession session, Material mat) {

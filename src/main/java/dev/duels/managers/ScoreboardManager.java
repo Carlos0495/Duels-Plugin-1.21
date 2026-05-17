@@ -224,17 +224,10 @@ public class ScoreboardManager {
                 if (t == 2) return NT_T2;
             }
         }
-        if (plugin.getSpectateManager() != null
-                && plugin.getSpectateManager().isSpectating(uuid)) {
-            return NT_SPEC;
-        }
-        if (plugin.getDuelManager().isInDuel(uuid)) {
-            return NT_DUEL;
-        }
-        if (plugin.getPartyFFAManager() != null
-                && plugin.getPartyFFAManager().isParticipant(uuid)) {
-            return NT_DUEL;
-        }
+        // ⚔/👁 sind NUR via TAB-Plugin + %duels_status% gewünscht — NICHT
+        // über dem Kopf. Daher keine Zuordnung zu NT_DUEL/NT_SPEC mehr
+        // (sonst würde der Prefix auch im Nametag erscheinen). Nur T1/T2
+        // (Team-Match Color-Coding) bleibt sichtbar überm Kopf.
         return null;
     }
 

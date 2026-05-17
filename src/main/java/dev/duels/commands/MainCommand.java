@@ -74,9 +74,25 @@ public class MainCommand implements CommandExecutor {
         plugin.getArenaManager().loadArenas();
         plugin.getKitManager().loadKits();
         plugin.getPlayerManager().loadPlayerData();
+        // Hotbar-Config muss ebenfalls neu eingelesen werden, sonst greifen
+        // Config-Änderungen (Material/Slot/Action) NIE ohne Server-Restart.
+        plugin.getHotbarManager().loadHotbarConfig();
 
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
             plugin.getScoreboardManager().updateScoreboard(player);
+            // Re-apply Lobby-Hotbar an alle Lobby-Spieler, damit gelöschte
+            // Hotbar-Items sofort weg sind und neue erscheinen.
+            try {
+                if (plugin.getPlayerManager().isInLobbyWorld(player)
+                        && !plugin.getDuelManager().isInDuel(player.getUniqueId())) {
+                    String mode = plugin.getPartyManager().isLeader(player.getUniqueId())
+                            ? dev.duels.managers.HotbarManager.MODE_PARTY_LEADER
+                            : plugin.getPartyManager().isInParty(player.getUniqueId())
+                                ? dev.duels.managers.HotbarManager.MODE_PARTY_MEMBER
+                                : dev.duels.managers.HotbarManager.MODE_LOBBY;
+                    plugin.getHotbarManager().applyMode(player, mode);
+                }
+            } catch (Throwable ignored) {}
         }
 
         sender.sendMessage(plugin.getPrefix() + "§7Plugin configuration §a§lreloaded!");
