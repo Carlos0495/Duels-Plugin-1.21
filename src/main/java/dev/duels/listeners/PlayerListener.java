@@ -343,6 +343,19 @@ public class PlayerListener implements Listener {
                 }
             }
             default -> {
+                // Custom-Command-Action: `action: "COMMAND:<cmd>"` in der
+                // hotbar-Config führt <cmd> als Spieler-Command aus. Damit
+                // kann der Admin eigene Hotbar-Slots mit beliebigen Commands
+                // hinzufügen (z.B. `/spawn`, `/shop`, `/warp pvp`).
+                if (action != null && action.startsWith("COMMAND:")) {
+                    String cmd = action.substring("COMMAND:".length()).trim();
+                    if (cmd.startsWith("/")) cmd = cmd.substring(1);
+                    if (!cmd.isEmpty()) {
+                        player.performCommand(cmd);
+                        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                    }
+                    return;
+                }
                 // Unbekannte Action — Fallback auf Display-Name
                 String dn = event.getItem().getItemMeta().getDisplayName();
                 if (dn != null) handleLegacyDisplayName(event, player, dn);

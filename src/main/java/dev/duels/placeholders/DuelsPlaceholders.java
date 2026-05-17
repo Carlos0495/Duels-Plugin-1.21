@@ -52,7 +52,34 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
     public String onRequest(OfflinePlayer player, @NotNull String params) {
         if (player == null) return "";
 
-        switch (params.toLowerCase()) {
+        String lower = params.toLowerCase();
+        // Kit-bezogene Counter:
+        //   %duels_playing_<kit>%  -> Anzahl Spieler gerade IM Duel mit dem Kit
+        //                            (inkl. Party-FFA-Teilnehmer mit dem Kit)
+        //   %duels_queue_<kit>%    -> Anzahl Spieler in der Warteschlange für das Kit
+        if (lower.startsWith("playing_")) {
+            String kit = lower.substring("playing_".length());
+            int count = 0;
+            if (plugin.getDuelManager() != null) {
+                for (dev.duels.objects.DuelSession s : plugin.getDuelManager().getAllSessions()) {
+                    if (kit.equalsIgnoreCase(s.getKitName())) count += 2;
+                }
+            }
+            if (plugin.getPartyFFAManager() != null) {
+                for (dev.duels.managers.PartyFFAManager.FFASession s
+                        : plugin.getPartyFFAManager().getAllSessions()) {
+                    if (kit.equalsIgnoreCase(s.kitName)) count += s.alive.size();
+                }
+            }
+            return String.valueOf(count);
+        }
+        if (lower.startsWith("queue_")) {
+            String kit = lower.substring("queue_".length());
+            return String.valueOf(plugin.getQueueManager() == null
+                    ? 0 : plugin.getQueueManager().getQueueSize(kit));
+        }
+
+        switch (lower) {
             case "status": {
                 Player on = player.getPlayer();
                 if (on == null) return "";
@@ -62,8 +89,11 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                         && plugin.getPartyFFAManager().isParticipant(on.getUniqueId());
                 boolean spec = plugin.getSpectateManager() != null
                         && plugin.getSpectateManager().isSpectating(on.getUniqueId());
-                if (spec) return " §7👁";
-                if (inDuel || inFFA) return " §c⚔";
+                org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
+                if (spec) return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                        cfg.getString("status.spec-symbol", "&7 👁"));
+                if (inDuel || inFFA) return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                        cfg.getString("status.duel-symbol", "&c ⚔"));
                 return "";
             }
             case "status_icon": {
@@ -72,8 +102,13 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                 boolean inDuel = plugin.getDuelManager().isInDuel(on.getUniqueId());
                 boolean inFFA = plugin.getPartyFFAManager().isParticipant(on.getUniqueId());
                 boolean spec = plugin.getSpectateManager().isSpectating(on.getUniqueId());
-                if (spec) return "👁";
-                if (inDuel || inFFA) return "⚔";
+                org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
+                String specSym = cfg.getString("status.spec-symbol", "&7 👁");
+                String duelSym = cfg.getString("status.duel-symbol", "&c ⚔");
+                if (spec) return org.bukkit.ChatColor.stripColor(
+                        org.bukkit.ChatColor.translateAlternateColorCodes('&', specSym)).trim();
+                if (inDuel || inFFA) return org.bukkit.ChatColor.stripColor(
+                        org.bukkit.ChatColor.translateAlternateColorCodes('&', duelSym)).trim();
                 return "";
             }
             case "coins":  return String.valueOf(plugin.getPlayerManager().getStat(player.getUniqueId(), "coins"));

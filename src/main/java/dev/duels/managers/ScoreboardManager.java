@@ -52,6 +52,13 @@ public class ScoreboardManager {
             }
         }
 
+        // Nametag-Sync: registriere Status-Teams auf diesem Observer-Board
+        // und ordne JEDEN Online-Spieler dem passenden Team zu. Damit
+        // erscheint der ⚔/👁-Prefix (Solo-Duel/Spectate) und [T1]/[T2]
+        // (Team-Match) überm Spielerkopf — die Nametag-Sichtbarkeit hängt
+        // vom Scoreboard des BEOBACHTERS ab, nicht vom Main-Scoreboard.
+        syncNametagTeams(board);
+
         // Linien holen
         java.util.List<String> lines;
         if (inDuel) {
@@ -164,6 +171,88 @@ public class ScoreboardManager {
 
     private String getEmptyLineId(int index) {
         return ChatColor.values()[index % ChatColor.values().length].toString() + ChatColor.RESET;
+    }
+
+    /** Status-Team-Namen für Nametag-Prefix (Observer-Scoreboard). */
+    private static final String NT_DUEL = "duels_duel";
+    private static final String NT_SPEC = "duels_spec";
+    private static final String NT_T1   = "duels_t1";
+    private static final String NT_T2   = "duels_t2";
+    private static final String[] NT_TEAMS = { NT_DUEL, NT_SPEC, NT_T1, NT_T2 };
+
+    private void syncNametagTeams(Scoreboard board) {
+        org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
+        String duelSym = cfg.getString("status.duel-symbol", "&c ⚔").replace("&", "§").trim() + " ";
+        String specSym = cfg.getString("status.spec-symbol", "&7 👁").replace("&", "§").trim() + " ";
+        String t1Sym   = cfg.getString("status.team1-symbol", "&b[T1] ").replace("&", "§");
+        String t2Sym   = cfg.getString("status.team2-symbol", "&c[T2] ").replace("&", "§");
+        ensureNametagTeam(board, NT_DUEL, ChatColor.RED,  duelSym);
+        ensureNametagTeam(board, NT_SPEC, ChatColor.GRAY, specSym);
+        ensureNametagTeam(board, NT_T1,   ChatColor.AQUA, t1Sym);
+        ensureNametagTeam(board, NT_T2,   ChatColor.RED,  t2Sym);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            String target = computeStatusTeam(p);
+            applyEntry(board, p.getName(), target);
+        }
+    }
+
+    private void ensureNametagTeam(Scoreboard board, String name, ChatColor color, String prefix) {
+        Team t = board.getTeam(name);
+        if (t == null) {
+            try { t = board.registerNewTeam(name); }
+            catch (IllegalArgumentException ignored) { t = board.getTeam(name); }
+        }
+        if (t == null) return;
+        try {
+            t.setColor(color);
+            t.prefix(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                    .legacySection().deserialize(prefix));
+            t.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.ALWAYS);
+            t.setOption(Team.Option.COLLISION_RULE, Team.OptionStatus.NEVER);
+            t.setAllowFriendlyFire(true);
+        } catch (Throwable ignored) {}
+    }
+
+    private String computeStatusTeam(Player p) {
+        UUID uuid = p.getUniqueId();
+        if (plugin.getPartyFFAManager() != null) {
+            dev.duels.managers.PartyFFAManager.FFASession s =
+                    plugin.getPartyFFAManager().getSession(uuid);
+            if (s != null && s.isTeamMode()) {
+                int t = s.getTeam(uuid);
+                if (t == 1) return NT_T1;
+                if (t == 2) return NT_T2;
+            }
+        }
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(uuid)) {
+            return NT_SPEC;
+        }
+        if (plugin.getDuelManager().isInDuel(uuid)) {
+            return NT_DUEL;
+        }
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) {
+            return NT_DUEL;
+        }
+        return null;
+    }
+
+    private void applyEntry(Scoreboard board, String name, String targetTeam) {
+        for (String key : NT_TEAMS) {
+            Team t = board.getTeam(key);
+            if (t == null) continue;
+            if (t.hasEntry(name)) {
+                if (key.equals(targetTeam)) return;
+                try { t.removeEntry(name); } catch (Throwable ignored) {}
+            }
+        }
+        if (targetTeam != null) {
+            Team t = board.getTeam(targetTeam);
+            if (t != null) {
+                try { t.addEntry(name); } catch (Throwable ignored) {}
+            }
+        }
     }
 
     public void removeScoreboard(UUID uuid) {

@@ -332,8 +332,15 @@ public class DuelManager {
             session.setRoundStarting(false);
             // Match-End Win/Lose Title (User-Wunsch). Zeigt großen Titel an
             // beide Spieler.
-            winner.sendTitle("§a§lVICTORY", "§7" + scoreFormat, 0, 60, 20);
-            dead.sendTitle("§c§lDEFEAT", "§7" + scoreFormat, 0, 60, 20);
+            java.util.Map<String,String> ph = java.util.Map.of("score", scoreFormat);
+            winner.sendTitle(
+                plugin.getConfigManager().getMessage("duel.win-title", "§a§lVICTORY", ph),
+                plugin.getConfigManager().getMessage("duel.win-subtitle", "§7" + scoreFormat, ph),
+                0, 60, 20);
+            dead.sendTitle(
+                plugin.getConfigManager().getMessage("duel.lose-title", "§c§lDEFEAT", ph),
+                plugin.getConfigManager().getMessage("duel.lose-subtitle", "§7" + scoreFormat, ph),
+                0, 60, 20);
             winner.playSound(winner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
             dead.playSound(dead.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
             // Flag Match als beendet BEVOR endDuel läuft, damit ein
@@ -351,8 +358,15 @@ public class DuelManager {
         // anzeigen, dann erst nächste Runde starten.
         final String winnerName = winner.getName();
         final int currentRound = session.getRound();
+        java.util.Map<String,String> phRound = java.util.Map.of(
+                "winner", winnerName,
+                "round", String.valueOf(currentRound),
+                "score", scoreFormat);
         winner.sendTitle("§a§lRound won!", "§7" + scoreFormat, 0, 40, 10);
-        dead.sendTitle("§c§lRound lost", "§7" + winnerName + " §7won round §f" + currentRound, 0, 40, 10);
+        dead.sendTitle(
+                plugin.getConfigManager().getMessage("duel.round-lost-title", "§c§lRound lost", phRound),
+                plugin.getConfigManager().getMessage("duel.round-lost-subtitle", "§7" + winnerName + " §7won round §f" + currentRound, phRound),
+                0, 40, 10);
 
         // Nächste Runde vorbereiten
         session.setRound(session.getRound() + 1);
@@ -559,8 +573,16 @@ public class DuelManager {
         if (winner != null) {
             winner.sendMessage(plugin.getPrefix() + "§aYou won the duel §7by timeout!");
             loser.sendMessage(plugin.getPrefix() + "§cYou lost the duel §7by timeout.");
-            winner.sendTitle("§a§lVICTORY", "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)", 0, 60, 20);
-            loser.sendTitle("§c§lDEFEAT", "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)", 0, 60, 20);
+            String scoreFmt = "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)";
+            java.util.Map<String,String> phTO = java.util.Map.of("score", scoreFmt);
+            winner.sendTitle(
+                plugin.getConfigManager().getMessage("duel.win-title", "§a§lVICTORY", phTO),
+                plugin.getConfigManager().getMessage("duel.win-subtitle", scoreFmt, phTO),
+                0, 60, 20);
+            loser.sendTitle(
+                plugin.getConfigManager().getMessage("duel.lose-title", "§c§lDEFEAT", phTO),
+                plugin.getConfigManager().getMessage("duel.lose-subtitle", scoreFmt, phTO),
+                0, 60, 20);
             winner.playSound(winner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
             loser.playSound(loser.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
 

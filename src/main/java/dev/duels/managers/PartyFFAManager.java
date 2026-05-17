@@ -106,6 +106,10 @@ public class PartyFFAManager {
         return playerToSession.get(uuid);
     }
 
+    public java.util.Collection<FFASession> getAllSessions() {
+        return sessionsByLeader.values();
+    }
+
     /**
      * Startet eine Party-FFA-Session. Liefert eine Fehlermeldung wenn etwas
      * schiefläuft, sonst {@code null} bei Erfolg.
@@ -339,7 +343,10 @@ public class PartyFFAManager {
             @Override
             public void run() {
                 if (time > 0) {
-                    showTitleToSession(session, "§c" + time, "§7Get ready", 0, 20, 0);
+                    String cdt = plugin.getConfigManager().getMessage(
+                            "duel.countdown-title", "§c" + time,
+                            java.util.Map.of("seconds", String.valueOf(time)));
+                    showTitleToSession(session, cdt, "§7Get ready", 0, 20, 0);
                     for (UUID u : session.allParticipants) {
                         Player p = Bukkit.getPlayer(u);
                         if (p != null) {
@@ -349,7 +356,8 @@ public class PartyFFAManager {
                     }
                     time--;
                 } else {
-                    showTitleToSession(session, "§a§lFIGHT!",
+                    showTitleToSession(session,
+                            plugin.getConfigManager().getMessage("duel.fight-title", "§a§lFIGHT!"),
                             "§7Team vs Team", 0, 20, 10);
                     for (UUID u : session.allParticipants) {
                         Player p = Bukkit.getPlayer(u);
@@ -492,9 +500,13 @@ public class PartyFFAManager {
             for (UUID u : session.allParticipants) {
                 Player p = Bukkit.getPlayer(u);
                 int t = session.getTeam(u);
+                java.util.Map<String,String> phT = java.util.Map.of("team", winningName);
                 if (t == winningTeam && t > 0) {
                     if (p != null && p.isOnline()) {
-                        p.sendTitle("§a§lTEAM VICTORY", "§7" + winningName + " §7wins!", 0, 60, 20);
+                        p.sendTitle(
+                            plugin.getConfigManager().getMessage("team.win-title", "§a§lTEAM VICTORY", phT),
+                            plugin.getConfigManager().getMessage("team.win-subtitle", "§7" + winningName + " §7wins!", phT),
+                            0, 60, 20);
                     }
                     plugin.getPlayerManager().addStat(u, "wins", 1);
                     plugin.getPlayerManager().addStat(u, "coins", coinReward);
@@ -503,7 +515,10 @@ public class PartyFFAManager {
                     }
                 } else if (t > 0) {
                     if (p != null && p.isOnline()) {
-                        p.sendTitle("§c§lDEFEAT", "§7" + winningName + " §7won", 0, 60, 20);
+                        p.sendTitle(
+                            plugin.getConfigManager().getMessage("team.lose-title", "§c§lDEFEAT", phT),
+                            plugin.getConfigManager().getMessage("team.lose-subtitle", "§7" + winningName + " §7won", phT),
+                            0, 60, 20);
                     }
                     plugin.getPlayerManager().addStat(u, "losses", 1);
                 }
@@ -518,12 +533,19 @@ public class PartyFFAManager {
             if (winner != null) {
                 broadcastToSession(session, "§6§lWinner: §e" + winner.getName());
                 final Player win = winner;
-                win.sendTitle("§a§lFFA VICTORY", "§7You won the FFA!", 0, 60, 20);
+                java.util.Map<String,String> phF = java.util.Map.of("winner", win.getName());
+                win.sendTitle(
+                    plugin.getConfigManager().getMessage("ffa.win-title", "§a§lFFA VICTORY", phF),
+                    plugin.getConfigManager().getMessage("ffa.win-subtitle", "§7You won the FFA!", phF),
+                    0, 60, 20);
                 for (UUID u : session.allParticipants) {
                     if (u.equals(win.getUniqueId())) continue;
                     Player p = Bukkit.getPlayer(u);
                     if (p != null && p.isOnline()) {
-                        p.sendTitle("§c§lDEFEAT", "§7" + win.getName() + " §7won the FFA", 0, 60, 20);
+                        p.sendTitle(
+                            plugin.getConfigManager().getMessage("ffa.lose-title", "§c§lDEFEAT", phF),
+                            plugin.getConfigManager().getMessage("ffa.lose-subtitle", "§7" + win.getName() + " §7won the FFA", phF),
+                            0, 60, 20);
                     }
                 }
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);

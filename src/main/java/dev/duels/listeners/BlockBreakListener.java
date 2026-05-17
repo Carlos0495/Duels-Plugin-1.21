@@ -88,23 +88,57 @@ public class BlockBreakListener implements Listener {
         return null;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    // HIGHEST + ignoreCancelled=false: läuft auch wenn Anti-Grief gecancelt
+    // hat. Wenn die Explosion in einem aktiven Duel/FFA passiert, un-canceln
+    // wir und filtern blockList nach der Kit-Whitelist.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onEntityExplode(EntityExplodeEvent event) {
-        // Filter Block-Liste nach erlaubten Materialien aller laufenden Duels
-        // (rein additive Vereinigung aller aktiven breakable-Listen). Wenn
-        // niemand duelt, lassen wir das Server-Default unverändert.
-        if (event.blockList().isEmpty()) return;
-        java.util.Set<Material> union = collectActiveBreakable();
-        if (union == null) return; // niemand im Duel -> nicht eingreifen
+        java.util.Set<Material> union = collectBreakableAt(event.getLocation());
+        if (union == null) return; // nicht in Duel/FFA-Arena
+        if (event.isCancelled()) event.setCancelled(false);
         event.blockList().removeIf(b -> !union.contains(b.getType()));
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onBlockExplode(BlockExplodeEvent event) {
-        if (event.blockList().isEmpty()) return;
-        java.util.Set<Material> union = collectActiveBreakable();
+        java.util.Set<Material> union = collectBreakableAt(event.getBlock().getLocation());
         if (union == null) return;
+        if (event.isCancelled()) event.setCancelled(false);
         event.blockList().removeIf(b -> !union.contains(b.getType()));
+    }
+
+    /**
+     * Liefert die Vereinigung der breakable-Listen aller Duel-/FFA-Sessions
+     * deren Arena die gegebene Location enthält (Welt-Match + grobe Distanz).
+     * {@code null} = keine aktive Session an dieser Location → Listener
+     * greift nicht ein.
+     */
+    private java.util.Set<Material> collectBreakableAt(org.bukkit.Location loc) {
+        if (loc == null || loc.getWorld() == null) return null;
+        java.util.Set<Material> union = java.util.EnumSet.noneOf(Material.class);
+        boolean matched = false;
+        for (DuelSession s : plugin.getDuelManager().getAllSessions()) {
+            dev.duels.objects.Arena a = plugin.getArenaManager().getArena(s.getArenaName());
+            if (a == null) continue;
+            if (a.getSpawn1() == null || a.getSpawn1().getWorld() == null) continue;
+            if (!a.getSpawn1().getWorld().equals(loc.getWorld())) continue;
+            matched = true;
+            KitManager.Kit kit = plugin.getKitManager().getKit(s.getKitName());
+            if (kit != null) union.addAll(kit.getBreakableBlocks());
+        }
+        if (plugin.getPartyFFAManager() != null) {
+            for (dev.duels.managers.PartyFFAManager.FFASession s :
+                    plugin.getPartyFFAManager().getAllSessions()) {
+                if (s.reservedArena == null) continue;
+                if (s.reservedArena.getSpawn1() == null
+                        || s.reservedArena.getSpawn1().getWorld() == null) continue;
+                if (!s.reservedArena.getSpawn1().getWorld().equals(loc.getWorld())) continue;
+                matched = true;
+                KitManager.Kit kit = plugin.getKitManager().getKit(s.kitName);
+                if (kit != null) union.addAll(kit.getBreakableBlocks());
+            }
+        }
+        return matched ? union : null;
     }
 
     private boolean isAllowed(DuelSession session, Material mat) {

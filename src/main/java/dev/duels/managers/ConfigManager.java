@@ -185,7 +185,55 @@ public class ConfigManager {
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
         if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
         if (!mainConfig.contains("duel-request-timeout-seconds")) { mainConfig.set("duel-request-timeout-seconds", 30); dirty = true; }
+
+        // ---- Konfigurierbare Messages ----
+        // Alle Texte unter `messages.*` lassen sich in der config.yml frei
+        // umschreiben. Verfügbare Platzhalter sind pro Kontext unterschiedlich
+        // — die Defaults zeigen, welche möglich sind.
+        if (!mainConfig.contains("messages.duel.win-title"))      { mainConfig.set("messages.duel.win-title", "&a&lVICTORY"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.win-subtitle"))   { mainConfig.set("messages.duel.win-subtitle", "&7{score}"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.lose-title"))     { mainConfig.set("messages.duel.lose-title", "&c&lDEFEAT"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.lose-subtitle"))  { mainConfig.set("messages.duel.lose-subtitle", "&7{score}"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.round-lost-title"))    { mainConfig.set("messages.duel.round-lost-title", "&c&lRound lost"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.round-lost-subtitle")) { mainConfig.set("messages.duel.round-lost-subtitle", "&7{winner} &7won round &f{round}"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.countdown-title"))     { mainConfig.set("messages.duel.countdown-title", "&c{seconds}"); dirty = true; }
+        if (!mainConfig.contains("messages.duel.fight-title"))         { mainConfig.set("messages.duel.fight-title", "&a&lFIGHT!"); dirty = true; }
+        if (!mainConfig.contains("messages.team.win-title"))      { mainConfig.set("messages.team.win-title", "&a&lTEAM VICTORY"); dirty = true; }
+        if (!mainConfig.contains("messages.team.win-subtitle"))   { mainConfig.set("messages.team.win-subtitle", "&7{team} &7wins!"); dirty = true; }
+        if (!mainConfig.contains("messages.team.lose-title"))     { mainConfig.set("messages.team.lose-title", "&c&lDEFEAT"); dirty = true; }
+        if (!mainConfig.contains("messages.team.lose-subtitle"))  { mainConfig.set("messages.team.lose-subtitle", "&7{team} &7won"); dirty = true; }
+        if (!mainConfig.contains("messages.ffa.win-title"))       { mainConfig.set("messages.ffa.win-title", "&a&lFFA VICTORY"); dirty = true; }
+        if (!mainConfig.contains("messages.ffa.win-subtitle"))    { mainConfig.set("messages.ffa.win-subtitle", "&7You won the FFA!"); dirty = true; }
+        if (!mainConfig.contains("messages.ffa.lose-title"))      { mainConfig.set("messages.ffa.lose-title", "&c&lDEFEAT"); dirty = true; }
+        if (!mainConfig.contains("messages.ffa.lose-subtitle"))   { mainConfig.set("messages.ffa.lose-subtitle", "&7{winner} &7won the FFA"); dirty = true; }
+
+        // Symbole für Status-Suffix (PlaceholderAPI %duels_status% + Nametag).
+        if (!mainConfig.contains("status.duel-symbol"))    { mainConfig.set("status.duel-symbol", "&c ⚔"); dirty = true; }
+        if (!mainConfig.contains("status.spec-symbol"))    { mainConfig.set("status.spec-symbol", "&7 👁"); dirty = true; }
+        if (!mainConfig.contains("status.team1-symbol"))   { mainConfig.set("status.team1-symbol", "&b[T1] "); dirty = true; }
+        if (!mainConfig.contains("status.team2-symbol"))   { mainConfig.set("status.team2-symbol", "&c[T2] "); dirty = true; }
+
         if (dirty) plugin.saveConfig();
+    }
+
+    /**
+     * Liest eine konfigurierbare Message aus der config.yml. Unterstützt
+     * &amp;-Farbcodes (werden zu §) und einfache Platzhalter
+     * ({@code {key}}) aus der übergebenen Map.
+     */
+    public String getMessage(String path, String fallback, java.util.Map<String, String> placeholders) {
+        String raw = mainConfig.getString("messages." + path, fallback);
+        if (raw == null) raw = fallback != null ? fallback : "";
+        if (placeholders != null) {
+            for (java.util.Map.Entry<String, String> e : placeholders.entrySet()) {
+                raw = raw.replace("{" + e.getKey() + "}", e.getValue() == null ? "" : e.getValue());
+            }
+        }
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&', raw);
+    }
+
+    public String getMessage(String path, String fallback) {
+        return getMessage(path, fallback, null);
     }
 
     /**
