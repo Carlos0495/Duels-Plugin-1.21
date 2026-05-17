@@ -41,7 +41,18 @@ public class ArenaListener implements Listener {
         BlockVector vector = new BlockVector(
                 blockLoc.getBlockX(), blockLoc.getBlockY(), blockLoc.getBlockZ());
         if (arena.isPlayerPlacedBlock(vector)) {
+            // Spieler bricht einen vorher von ihm platzierten Block ab.
+            // Aus dem Placed-Tracking entfernen — Reset muss NICHTS tun.
             arena.removePlayerPlacedBlock(vector);
+        } else {
+            // ORIGINAL-Welt-Block wird gebrochen → für Reset speichern,
+            // damit das Loch beim Match-Ende wieder geschlossen wird.
+            // Auch dann wenn die Arena keinen Snapshot hat.
+            if (!arena.getOriginalBlocks().containsKey(vector)) {
+                try { arena.getOriginalBlocks().put(vector,
+                        event.getBlock().getBlockData().clone()); }
+                catch (Throwable ignored) {}
+            }
         }
     }
 
