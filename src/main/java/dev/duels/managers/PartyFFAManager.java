@@ -322,6 +322,17 @@ public class PartyFFAManager {
             p.setHealth(p.getMaxHealth());
             p.setFoodLevel(20);
             p.setSaturation(20f);
+            // Team-Label überm Kopf via TextDisplay (umgeht TAB-Plugin-
+            // Override-Probleme mit Scoreboard-Teams). 2 Ticks Delay,
+            // damit der Teleport im neuen World/Pos sauber durch ist.
+            final int teamNum = t;
+            final UUID pid = u;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Player pl = Bukkit.getPlayer(pid);
+                if (pl != null && pl.isOnline()) {
+                    plugin.getTeamLabelManager().spawnLabel(pl, teamNum);
+                }
+            }, 2L);
             String teamColor = t == 1 ? "§b" : "§c";
             String teamName = t == 1 ? "Team 1" : "Team 2";
             p.sendMessage(plugin.getPrefix() + teamColor + "§l" + teamName + " §7on " + reservedArena.getName());
@@ -392,6 +403,9 @@ public class PartyFFAManager {
         FFASession session = playerToSession.get(dead.getUniqueId());
         if (session == null) return;
         session.alive.remove(dead.getUniqueId());
+
+        // Team-Label entfernen (Spieler ist tot, kein Label mehr nötig).
+        plugin.getTeamLabelManager().removeLabel(dead.getUniqueId());
 
         broadcastToSession(session,
                 "§c" + dead.getName() + " §7was eliminated. §f" + session.alive.size() + " §7alive.");
@@ -557,6 +571,11 @@ public class PartyFFAManager {
         // Team-Scoreboard-Color cleanup BEVOR Spectate-Restore — sonst
         // bleiben die [T1]/[T2]-Prefixes nach Match-Ende stehen.
         clearScoreboardTeamsFor(session);
+
+        // Alle TextDisplay-Team-Labels entfernen.
+        for (UUID u : session.allParticipants) {
+            plugin.getTeamLabelManager().removeLabel(u);
+        }
 
         // Alle Tote-Spectator zurück in Lobby. SpectateManager.stop() macht
         // teleport+setGameMode+setupPlayerInventory synchron.

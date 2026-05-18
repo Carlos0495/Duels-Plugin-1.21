@@ -74,6 +74,9 @@ public class PlayerListener implements Listener {
         }
 
         plugin.getScoreboardManager().removeScoreboard(uuid);
+        if (plugin.getTeamLabelManager() != null) {
+            plugin.getTeamLabelManager().removeLabel(uuid);
+        }
         plugin.getPlayerManager().savePlayerData(uuid);
     }
 

@@ -87,8 +87,8 @@ public class GUIManager {
             return;
         }
 
+        // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
-        sortedKits.sort(String::compareToIgnoreCase);
 
         int total = Math.min(sortedKits.size(), 35);
         int startRow = getCenteredStartRow(total, 7, 5);
@@ -159,8 +159,8 @@ public class GUIManager {
         }
 
 
+        // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
-        sortedKits.sort(String::compareToIgnoreCase);
 
 
         int total = Math.min(sortedKits.size(), 35);
@@ -243,8 +243,8 @@ public class GUIManager {
             return;
         }
 
+        // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
-        sortedKits.sort(String::compareToIgnoreCase);
 
         int total = Math.min(sortedKits.size(), 35);
         int startRow = getCenteredStartRow(total, 7, 5);
@@ -404,8 +404,8 @@ public class GUIManager {
                     Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
             inv.setItem(22, noKits);
         } else {
+            // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
             List<String> sortedKits = new ArrayList<>(kits);
-            sortedKits.sort(String::compareToIgnoreCase);
 
             int total = Math.min(sortedKits.size(), 35);
             int startRow = getCenteredStartRow(total, 7, 5);
@@ -904,8 +904,8 @@ public class GUIManager {
             return;
         }
 
+        // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
-        sortedKits.sort(String::compareToIgnoreCase);
 
         int slot = 10;
         for (String kitId : sortedKits) {

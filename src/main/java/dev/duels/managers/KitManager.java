@@ -13,7 +13,9 @@ import java.util.*;
 public class KitManager {
 
     private final DuelsPlugin plugin;
-    private final Map<String, Kit> kits = new HashMap<>(); // key = kitId (clean)
+    // LinkedHashMap behält die Insertion-Order — KitNames werden in der
+    // Reihenfolge geliefert, in der sie in kits.yml stehen.
+    private final Map<String, Kit> kits = new LinkedHashMap<>(); // key = kitId (clean)
     private final Map<UUID, Map<String, ItemStack[]>> playerKitLayouts = new HashMap<>();
 
     public KitManager(DuelsPlugin plugin) {

@@ -22,6 +22,7 @@ public final class DuelsPlugin extends JavaPlugin {
     private PartyManager partyManager;
     private PartyFFAManager partyFFAManager;
     private SpectateManager spectateManager;
+    private TeamLabelManager teamLabelManager;
 
     @Override
     public void onEnable() {
@@ -42,6 +43,7 @@ public final class DuelsPlugin extends JavaPlugin {
         partyManager = new PartyManager(this);
         partyFFAManager = new PartyFFAManager(this);
         spectateManager = new SpectateManager(this);
+        teamLabelManager = new TeamLabelManager(this);
 
         // Konfigurationen laden
         configManager.loadAllConfigs();
@@ -100,6 +102,7 @@ public final class DuelsPlugin extends JavaPlugin {
         arenaManager.cleanup();
         queueManager.cleanup();
         if (partyManager != null) partyManager.cleanupAll();
+        if (teamLabelManager != null) teamLabelManager.clearAll();
         playerManager.saveAllData();
         configManager.saveAllConfigs();
 
@@ -204,6 +207,7 @@ public final class DuelsPlugin extends JavaPlugin {
     public PartyManager getPartyManager() { return partyManager; }
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
     public SpectateManager getSpectateManager() { return spectateManager; }
+    public TeamLabelManager getTeamLabelManager() { return teamLabelManager; }
 
     // Prefix konfigurierbar via config.yml -> prefix: "..." (mit & für Farben)
     public String getPrefix() {

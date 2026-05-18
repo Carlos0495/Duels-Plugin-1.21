@@ -262,23 +262,11 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
      * "⚔" wenn im Duel/FFA, "👁" wenn spectating, sonst leer.
      */
     public void updateTabName(Player player) {
-        if (player == null || !player.isOnline()) return;
-        String suffix = "";
-        UUID uuid = player.getUniqueId();
-        boolean inDuel = plugin.getDuelManager() != null
-                && plugin.getDuelManager().isInDuel(uuid);
-        boolean inFFA = plugin.getPartyFFAManager() != null
-                && plugin.getPartyFFAManager().isParticipant(uuid);
-        boolean spectating = plugin.getSpectateManager() != null
-                && plugin.getSpectateManager().isSpectating(uuid);
-        if (spectating) {
-            suffix = " §7👁";
-        } else if (inDuel || inFFA) {
-            suffix = " §c⚔";
-        }
-        try {
-            player.setPlayerListName(player.getName() + suffix);
-        } catch (Throwable ignored) {}
+        // No-op. Vorher: setPlayerListName(player + " ⚔") — das hat den
+        // %luckperms_prefix% des TAB-Plugins gekillt. Da das ⚔/👁 jetzt
+        // via PAPI-Placeholder %duels_status% im TAB-Format dargestellt
+        // wird, ist setPlayerListName komplett überflüssig.
+        if (player == null) return;
     }
 
     /**
