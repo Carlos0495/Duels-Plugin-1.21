@@ -13,12 +13,17 @@ repositories {
     maven { url = 'https://repo.dmulloy2.net/repository/public/' }
     maven { url = 'https://maven.enginehub.org/repo/' }
     maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+    maven { url = 'https://jitpack.io' }
 
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.11.6")
+    // NEZNAMY TAB API — wir hooken direkt in TABs PlaceholderManager,
+    // damit %duels_status% garantiert von TAB ausgewertet wird (PAPI-
+    // Auto-Discovery durch TAB ist in manchen Setups unzuverlässig).
+    compileOnly("com.github.NEZNAMY:TAB-API:6.0.0")
 }
 
 tasks {

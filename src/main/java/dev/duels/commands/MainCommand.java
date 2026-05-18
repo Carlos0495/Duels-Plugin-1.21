@@ -78,6 +78,12 @@ public class MainCommand implements CommandExecutor {
         // Config-Änderungen (Material/Slot/Action) NIE ohne Server-Restart.
         plugin.getHotbarManager().loadHotbarConfig();
 
+        // Placeholders neu beim TAB-Plugin registrieren — falls TAB inzwischen
+        // gestartet ist oder seine eigene Placeholder-Map durch /tab reload
+        // zurückgesetzt wurde, ist %duels_status% sonst weg.
+        plugin.registerDuelsPlaceholders();
+        plugin.registerTabPlaceholders();
+
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
             plugin.getScoreboardManager().updateScoreboard(player);
             // Re-apply Lobby-Hotbar an alle Lobby-Spieler, damit gelöschte

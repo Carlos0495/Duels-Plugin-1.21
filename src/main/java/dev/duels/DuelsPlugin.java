@@ -71,13 +71,30 @@ public final class DuelsPlugin extends JavaPlugin {
 
         // PlaceholderAPI optional einhaken (für TAB-Plugin etc. — User-Bug:
         // "Zeichen hinter dem namen werden von dem TAB plugin überschrieben").
-        try {
-            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-                new dev.duels.placeholders.DuelsPlaceholders(this).register();
-                getLogger().info("Registered PlaceholderAPI expansion '%duels_status%'");
-            }
-        } catch (Throwable t) {
-            getLogger().warning("Could not register PlaceholderAPI expansion: " + t.getMessage());
+        // Erst direkt registrieren; falls schon eine alte Instanz existiert
+        // (z.B. nach Plugin-Reload), wird sie vorher abgemeldet.
+        registerDuelsPlaceholders();
+
+        // Direkte TAB-Integration: registriert %duels_status% direkt im
+        // NEZNAMY-TAB-PlaceholderManager. Hintergrund: in manchen Setups
+        // findet TAB unsere PAPI-Expansion nicht (TAB-Format zeigt
+        // %luckperms_prefix% korrekt, %duels_status% bleibt leer obwohl
+        // /papi parse korrekt funktioniert). Mit dieser direkten
+        // Registrierung wertet TAB %duels_status% selbst aus und ignoriert
+        // PAPI komplett.
+        registerTabPlaceholders();
+
+        // Falls PAPI/TAB selbst noch nicht geladen sind, mehrere Retries
+        // (Plugin-Load-Order kann variieren — manche TAB-Versionen brauchen
+        // länger zum Start). Zusätzlich nach TAB-Reload (durch /tab reload)
+        // muss neu registriert werden, weil TAB seine eigene Placeholder-
+        // Map dann zurücksetzt.
+        long[] retries = { 40L, 200L, 600L, 1200L }; // 2s, 10s, 30s, 60s
+        for (long delay : retries) {
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                registerDuelsPlaceholders();
+                registerTabPlaceholders();
+            }, delay);
         }
 
 
@@ -208,6 +225,55 @@ public final class DuelsPlugin extends JavaPlugin {
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
     public SpectateManager getSpectateManager() { return spectateManager; }
     public TeamLabelManager getTeamLabelManager() { return teamLabelManager; }
+
+    /**
+     * Registriert die PAPI-Expansion {@code %duels_*%}. Wird in
+     * {@link #onEnable()} einmalig + nach 2 s erneut aufgerufen
+     * (für den Fall, dass PAPI noch nicht geladen ist).
+     */
+    public void registerDuelsPlaceholders() {
+        try {
+            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") == null) {
+                getLogger().warning("PlaceholderAPI not present — %duels_status% will NOT work in TAB.");
+                return;
+            }
+            // Wenn unsere Expansion bereits registriert ist, abmelden
+            // (z.B. nach Plugin-Reload), sonst kollidiert register().
+            try {
+                me.clip.placeholderapi.expansion.PlaceholderExpansion existing =
+                        me.clip.placeholderapi.PlaceholderAPIPlugin.getInstance()
+                                .getLocalExpansionManager().getExpansion("duels");
+                if (existing != null) existing.unregister();
+            } catch (Throwable ignored) {}
+            boolean ok = new dev.duels.placeholders.DuelsPlaceholders(this).register();
+            if (ok) {
+                getLogger().info("Registered PlaceholderAPI expansion '%duels_*%' (identifier: duels).");
+            } else {
+                getLogger().warning("PlaceholderAPI.register() returned false for 'duels' expansion.");
+            }
+        } catch (Throwable t) {
+            getLogger().warning("Could not register PlaceholderAPI expansion: " + t.getMessage());
+        }
+    }
+
+    /**
+     * Registriert {@code %duels_status%} direkt im NEZNAMY-TAB-Plugin
+     * (PlaceholderManager). Wenn TAB nicht installiert ist, passiert nichts.
+     */
+    public void registerTabPlaceholders() {
+        try {
+            if (Bukkit.getPluginManager().getPlugin("TAB") == null) return;
+            dev.duels.placeholders.TabHook.unregister();
+            dev.duels.placeholders.TabHook.register(this);
+        } catch (NoClassDefFoundError e) {
+            // TAB-API-Klassen fehlen — vermutlich alte TAB-Version. PAPI-
+            // Fallback bleibt aktiv.
+            getLogger().warning("TAB plugin detected but TAB-API classes unavailable: "
+                    + e.getMessage() + " — falling back to PlaceholderAPI.");
+        } catch (Throwable t) {
+            getLogger().warning("Could not register TAB placeholders: " + t.getMessage());
+        }
+    }
 
     // Prefix konfigurierbar via config.yml -> prefix: "..." (mit & für Farben)
     public String getPrefix() {
