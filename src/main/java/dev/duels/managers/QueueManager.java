@@ -25,6 +25,16 @@ public class QueueManager {
 
         UUID uuid = player.getUniqueId();
 
+        // Welt-Whitelist: Spieler müssen in einer der unter
+        // queue.allowed-worlds konfigurierten Welten stehen, um eine Queue
+        // betreten zu können. Standard: nur die Lobby-Welt (die Welt, in
+        // der /setspawn gesetzt wurde) ist erlaubt.
+        if (!isAllowedWorld(player)) {
+            player.sendMessage(plugin.getPrefix() + "§cYou can only queue from the lobby world.");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+
         // Spieler in einer Party können keine Queues betreten — sie sollen
         // ausschließlich über das Party-Menü duellieren (User-Wunsch).
         if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) {
@@ -59,6 +69,37 @@ public class QueueManager {
         }
 
         plugin.getGuiManager().refreshQueueGUIs();
+    }
+
+    /**
+     * Prüft, ob der Spieler in einer Welt steht, die laut Config zum Queue-
+     * Beitritt berechtigt ist.
+     *
+     * <p>Konfigurationsschlüssel:</p>
+     * <pre>
+     * queue:
+     *   allowed-worlds:
+     *     - lobby
+     *     - hub
+     * </pre>
+     *
+     * <p>Wenn die Liste leer/nicht gesetzt ist, fällt der Check auf die
+     * vom Plugin bekannte Lobby-Welt zurück (Welt mit /setspawn). Damit
+     * funktioniert das Plugin ohne Config-Eintrag genauso wie vorher.</p>
+     */
+    public boolean isAllowedWorld(Player player) {
+        if (player == null || player.getWorld() == null) return false;
+        java.util.List<String> allowed = plugin.getConfig().getStringList("queue.allowed-worlds");
+        if (allowed == null || allowed.isEmpty()) {
+            // Fallback: Lobby-Welt (Welt mit /setspawn).
+            return plugin.getPlayerManager() != null
+                    && plugin.getPlayerManager().isInLobbyWorld(player);
+        }
+        String world = player.getWorld().getName();
+        for (String w : allowed) {
+            if (w != null && w.equalsIgnoreCase(world)) return true;
+        }
+        return false;
     }
 
     public boolean leaveAllQueues(UUID uuid) {

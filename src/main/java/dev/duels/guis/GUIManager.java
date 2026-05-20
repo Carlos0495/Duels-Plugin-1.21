@@ -79,11 +79,17 @@ public class GUIManager {
     public void populateQueueGUI(Player viewer, Inventory inv) {
         inv.clear();
 
+        var gc = plugin.getGuiConfig();
+
         Set<String> kits = plugin.getKitManager().getKitNames();
         if (kits.isEmpty()) {
-            ItemStack noKits = createItem(Material.BARRIER, "§cNo Kits Available",
-                    Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
-            inv.setItem(22, noKits);
+            ItemStack noKits = gc != null
+                    ? gc.buildItem("queue-gui.no-kits", Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"))
+                    : createItem(Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
+            int slot = gc != null ? gc.getSlot("queue-gui.no-kits", 22) : 22;
+            inv.setItem(slot, noKits);
             return;
         }
 
@@ -138,23 +144,33 @@ public class GUIManager {
             }
         }
 
-        ItemStack info = createItem(Material.PAPER, "§6Queue: Select a Kit",
-                Arrays.asList("§7Pick a kit and you will be queued.", "§7Click again to leave.", "§7Live updates: queue + playing."));
-        inv.setItem(4, info);
+        ItemStack info = gc != null
+                ? gc.buildItem("queue-gui.info", Material.PAPER, "§6Queue: Select a Kit",
+                        Arrays.asList("§7Pick a kit and you will be queued.", "§7Click again to leave.", "§7Live updates: queue + playing."))
+                : createItem(Material.PAPER, "§6Queue: Select a Kit",
+                        Arrays.asList("§7Pick a kit and you will be queued.", "§7Click again to leave.", "§7Live updates: queue + playing."));
+        inv.setItem(gc != null ? gc.getSlot("queue-gui.info", 4) : 4, info);
 
-        ItemStack close = createItem(Material.BARRIER, "§cClose", null);
-        inv.setItem(49, close);
+        ItemStack close = gc != null
+                ? gc.buildItem("queue-gui.close", Material.BARRIER, "§cClose", null)
+                : createItem(Material.BARRIER, "§cClose", null);
+        inv.setItem(gc != null ? gc.getSlot("queue-gui.close", 49) : 49, close);
     }
 
     private void populateKitsGUI(Inventory inv) {
         inv.clear();
 
 
+        var gc = plugin.getGuiConfig();
+
         Set<String> kits = plugin.getKitManager().getKitNames();
         if (kits == null || kits.isEmpty()) {
-            ItemStack noKits = createItem(Material.BARRIER, "§cNo Kits Available",
-                    Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
-            inv.setItem(22, noKits);
+            ItemStack noKits = gc != null
+                    ? gc.buildItem("kits-gui.no-kits", Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"))
+                    : createItem(Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
+            inv.setItem(gc != null ? gc.getSlot("kits-gui.no-kits", 22) : 22, noKits);
             return;
         }
 
@@ -209,13 +225,18 @@ public class GUIManager {
         }
 
 
-        ItemStack instructions = createItem(Material.PAPER, "§6Select a Kit",
-                Arrays.asList("§7Click on a kit to preview it."));
-        inv.setItem(4, instructions);
+        ItemStack instructions = gc != null
+                ? gc.buildItem("kits-gui.info", Material.PAPER, "§6Select a Kit",
+                        Arrays.asList("§7Click on a kit to preview it."))
+                : createItem(Material.PAPER, "§6Select a Kit",
+                        Arrays.asList("§7Click on a kit to preview it."));
+        inv.setItem(gc != null ? gc.getSlot("kits-gui.info", 4) : 4, instructions);
 
 
-        ItemStack close = createItem(Material.BARRIER, "§cClose", null);
-        inv.setItem(49, close);
+        ItemStack close = gc != null
+                ? gc.buildItem("kits-gui.close", Material.BARRIER, "§cClose", null)
+                : createItem(Material.BARRIER, "§cClose", null);
+        inv.setItem(gc != null ? gc.getSlot("kits-gui.close", 49) : 49, close);
     }
 
     public void openKitsGUI(Player player) {
@@ -370,17 +391,23 @@ public class GUIManager {
     }
 
     public void openSettingsGUI(Player player) {
+        var gc = plugin.getGuiConfig();
         Inventory inv = Bukkit.createInventory(null, 27, SETTINGS_GUI_TITLE);
 
-        ItemStack editLayouts = createItem(Material.CHEST, "§aEdit Kit Inventory Layouts",
-                Arrays.asList("§7Edit your personal inventory layout", "§7for each kit separately.", "", "§eClick to edit"));
-        inv.setItem(11, editLayouts);
+        ItemStack editLayouts = gc != null
+                ? gc.buildItem("settings-gui.edit-layouts", Material.CHEST, "§aEdit Kit Inventory Layouts",
+                        Arrays.asList("§7Edit your personal inventory layout", "§7for each kit separately.", "", "§eClick to edit"))
+                : createItem(Material.CHEST, "§aEdit Kit Inventory Layouts",
+                        Arrays.asList("§7Edit your personal inventory layout", "§7for each kit separately.", "", "§eClick to edit"));
+        inv.setItem(gc != null ? gc.getSlot("settings-gui.edit-layouts", 11) : 11, editLayouts);
 
         ItemStack autoFly = createAutoFlyItem(player);
-        inv.setItem(15, autoFly);
+        inv.setItem(gc != null ? gc.getSlot("settings-gui.auto-fly-name", 15) : 15, autoFly);
 
-        ItemStack close = createItem(Material.BARRIER, "§cClose", null);
-        inv.setItem(26, close);
+        ItemStack close = gc != null
+                ? gc.buildItem("settings-gui.close", Material.BARRIER, "§cClose", null)
+                : createItem(Material.BARRIER, "§cClose", null);
+        inv.setItem(gc != null ? gc.getSlot("settings-gui.close", 26) : 26, close);
 
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(SETTINGS_GUI_TITLE, System.currentTimeMillis()));
@@ -396,13 +423,17 @@ public class GUIManager {
     }
 
     public void openEditLayoutsGUI(Player player) {
+        var gc = plugin.getGuiConfig();
         Inventory inv = Bukkit.createInventory(null, 54, EDIT_LAYOUTS_GUI_TITLE);
 
         Set<String> kits = plugin.getKitManager().getKitNames();
         if (kits.isEmpty()) {
-            ItemStack noKits = createItem(Material.BARRIER, "§cNo Kits Available",
-                    Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
-            inv.setItem(22, noKits);
+            ItemStack noKits = gc != null
+                    ? gc.buildItem("edit-layouts-gui.no-kits", Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"))
+                    : createItem(Material.BARRIER, "§cNo Kits Available",
+                            Arrays.asList("§7There are no kits available yet.", "§7Ask an admin to create some kits!"));
+            inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.no-kits", 22) : 22, noKits);
         } else {
             // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
             List<String> sortedKits = new ArrayList<>(kits);
@@ -453,12 +484,17 @@ public class GUIManager {
             }
         }
 
-        ItemStack instructions = createItem(Material.PAPER, "§6Select a Kit to Edit",
-                Arrays.asList("§7Click on a kit to §eedit §7your", "§apersonal inventory layout §7for it."));
-        inv.setItem(4, instructions);
+        ItemStack instructions = gc != null
+                ? gc.buildItem("edit-layouts-gui.info", Material.PAPER, "§6Select a Kit to Edit",
+                        Arrays.asList("§7Click on a kit to §eedit §7your", "§apersonal inventory layout §7for it."))
+                : createItem(Material.PAPER, "§6Select a Kit to Edit",
+                        Arrays.asList("§7Click on a kit to §eedit §7your", "§apersonal inventory layout §7for it."));
+        inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.info", 4) : 4, instructions);
 
-        ItemStack close = createItem(Material.BARRIER, "§cClose", null);
-        inv.setItem(49, close);
+        ItemStack close = gc != null
+                ? gc.buildItem("edit-layouts-gui.close", Material.BARRIER, "§cClose", null)
+                : createItem(Material.BARRIER, "§cClose", null);
+        inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.close", 49) : 49, close);
 
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUTS_GUI_TITLE, System.currentTimeMillis()));
@@ -486,9 +522,14 @@ public class GUIManager {
             }
         }
 
+        var gc = plugin.getGuiConfig();
+
         // --- Armor/Offhand usw. bleibt wie bei dir ---
-        ItemStack redGlass = createItem(Material.RED_STAINED_GLASS_PANE, "§cFixed Slot",
-                Arrays.asList("§7This slot is fixed by the kit.", "§7You cannot change armor/offhand layout."));
+        ItemStack redGlass = gc != null
+                ? gc.buildItem("edit-layout-gui.fixed-slot", Material.RED_STAINED_GLASS_PANE, "§cFixed Slot",
+                        Arrays.asList("§7This slot is fixed by the kit.", "§7You cannot change armor/offhand layout."))
+                : createItem(Material.RED_STAINED_GLASS_PANE, "§cFixed Slot",
+                        Arrays.asList("§7This slot is fixed by the kit.", "§7You cannot change armor/offhand layout."));
 
         inv.setItem(36, kit != null && kit.getItem(100) != null ? kit.getItem(100).clone() : redGlass.clone());
         inv.setItem(37, kit != null && kit.getItem(101) != null ? kit.getItem(101).clone() : redGlass.clone());
@@ -496,24 +537,34 @@ public class GUIManager {
         inv.setItem(39, kit != null && kit.getItem(103) != null ? kit.getItem(103).clone() : redGlass.clone());
         inv.setItem(40, kit != null && kit.getItem(99)  != null ? kit.getItem(99).clone()  : redGlass.clone());
 
-        // Info Paper muss da bleiben wo du es willst (45)
-        ItemStack info = createItem(Material.PAPER, "§6Editing Layout",
-                Arrays.asList("§7Move items in slots §a0-35§7.", "§7Armor/offhand and buttons are locked.", "", "§eClick Save when done."));
+        ItemStack info = gc != null
+                ? gc.buildItem("edit-layout-gui.info", Material.PAPER, "§6Editing Layout",
+                        Arrays.asList("§7Move items in slots §a0-35§7.", "§7Armor/offhand and buttons are locked.", "", "§eClick Save when done."))
+                : createItem(Material.PAPER, "§6Editing Layout",
+                        Arrays.asList("§7Move items in slots §a0-35§7.", "§7Armor/offhand and buttons are locked.", "", "§eClick Save when done."));
         ItemMeta infoMeta = info.getItemMeta();
         infoMeta.getPersistentDataContainer().set(editKitKey, PersistentDataType.STRING, kitId);
         info.setItemMeta(infoMeta);
-        inv.setItem(45, info);
+        inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.info", 45) : 45, info);
 
-        ItemStack reset = createItem(Material.RED_DYE, "§cReset to Default",
-                Arrays.asList("§7Reset your inventory layout", "§7back to the default arrangement."));
-        inv.setItem(51, tagKitId(reset, kitId));
+        ItemStack reset = gc != null
+                ? gc.buildItem("edit-layout-gui.reset", Material.RED_DYE, "§cReset to Default",
+                        Arrays.asList("§7Reset your inventory layout", "§7back to the default arrangement."))
+                : createItem(Material.RED_DYE, "§cReset to Default",
+                        Arrays.asList("§7Reset your inventory layout", "§7back to the default arrangement."));
+        inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.reset", 51) : 51, tagKitId(reset, kitId));
 
-        ItemStack save = createItem(Material.LIME_DYE, "§aSave Layout",
-                Arrays.asList("§7Save your current inventory arrangement", "§7as your personal layout for this kit."));
-        inv.setItem(52, tagKitId(save, kitId));
+        ItemStack save = gc != null
+                ? gc.buildItem("edit-layout-gui.save", Material.LIME_DYE, "§aSave Layout",
+                        Arrays.asList("§7Save your current inventory arrangement", "§7as your personal layout for this kit."))
+                : createItem(Material.LIME_DYE, "§aSave Layout",
+                        Arrays.asList("§7Save your current inventory arrangement", "§7as your personal layout for this kit."));
+        inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.save", 52) : 52, tagKitId(save, kitId));
 
-        ItemStack close = createItem(Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving"));
-        inv.setItem(53, tagKitId(close, kitId));
+        ItemStack close = gc != null
+                ? gc.buildItem("edit-layout-gui.close", Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving"))
+                : createItem(Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving"));
+        inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.close", 53) : 53, tagKitId(close, kitId));
 
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUT_GUI_TITLE_PREFIX + display, System.currentTimeMillis()));

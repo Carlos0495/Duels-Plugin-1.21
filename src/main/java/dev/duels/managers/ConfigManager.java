@@ -180,6 +180,14 @@ public class ConfigManager {
                 dirty = true;
             }
         }
+        // Queue-Welt-Whitelist: nur Spieler in diesen Welten können Queues
+        // betreten. Leer = jede Welt erlaubt (mit Fallback auf Lobby-Welt).
+        // Standardwert leer, damit das Plugin out-of-box wie vorher
+        // funktioniert (Lobby-Welt automatisch erlaubt).
+        if (!mainConfig.contains("queue.allowed-worlds")) {
+            mainConfig.set("queue.allowed-worlds", new java.util.ArrayList<String>());
+            dirty = true;
+        }
         if (!mainConfig.contains("duel-time")) { mainConfig.set("duel-time", 180); dirty = true; }
         if (!mainConfig.contains("request-timeout")) { mainConfig.set("request-timeout", 30); dirty = true; }
         if (!mainConfig.contains("default-map")) { mainConfig.set("default-map", "§cᴅᴜᴇʟѕ ᴍᴀᴘ"); dirty = true; }

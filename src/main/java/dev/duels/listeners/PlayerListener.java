@@ -143,18 +143,39 @@ public class PlayerListener implements Listener {
                 plugin.getPlayerManager().setupPlayerInventory(player);
             }
         } else if (event.getNewGameMode() == GameMode.CREATIVE) {
-            player.getInventory().clear();
+            // Beim Wechsel in den Kreativ-Modus NUR die Plugin-Hotbar-Items
+            // entfernen (PDC-getaggt). Alles andere im Inventar (Build-
+            // Materialien, Tools, persönliche Items) bleibt erhalten —
+            // User-Wunsch: "wenn man in kreativ geht, nur die hotbaritems
+            // weggehen und sonst egal was man in inventar hat es nicht
+            // weggeht".
+            if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
+                plugin.getPlayerManager().removeHotbarItems(player);
+                player.updateInventory();
+            }
         }
     }
 
     @EventHandler
     public void onFoodLevelChange(FoodLevelChangeEvent event) {
-        if (event.getEntity() instanceof Player player) {
-            if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-                event.setCancelled(true);
-                player.setFoodLevel(20);
-                player.setSaturation(20f);
-            }
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        // Im Duel/FFA/Team-Match: Vanilla-Verhalten (Hunger nimmt ab,
+        // essen heilt etc.) — nichts erzwingen.
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+
+        // In der Lobby-Welt: Hunger bleibt voll (kein Verbrauch), damit
+        // die Spieler nicht zwischen Duels essen müssen.
+        // Außerhalb der Lobby (z.B. Build/Survival-Welt): Vanilla, also
+        // gar nichts erzwingen — sonst kann der Spieler dort nicht
+        // normal essen/Hunger haben.
+        if (plugin.getPlayerManager() != null
+                && plugin.getPlayerManager().isInLobbyWorld(player)) {
+            event.setCancelled(true);
+            player.setFoodLevel(20);
+            player.setSaturation(20f);
         }
     }
 
