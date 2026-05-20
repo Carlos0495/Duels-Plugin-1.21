@@ -79,6 +79,15 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                     ? 0 : plugin.getQueueManager().getQueueSize(kit));
         }
 
+        // Armor-Trim-Placeholders: %duels_armortrim_<piece>% und
+        // %duels_material_<piece>%. Optional kann ein Spielername als
+        // Suffix angehängt werden: %duels_armortrim_helmet_Steve%.
+        // Wenn kein Name angegeben ist, wird der aktuell aufrufende
+        // Spieler benutzt. <piece> ist eins aus: helmet/chestplate/leggings/boots.
+        if (lower.startsWith("armortrim_") || lower.startsWith("material_")) {
+            return resolveArmorTrimPlaceholder(player, lower);
+        }
+
         switch (lower) {
             case "status": {
                 Player on = player.getPlayer();
@@ -121,5 +130,50 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
             case "deaths": return String.valueOf(plugin.getPlayerManager().getStat(player.getUniqueId(), "deaths"));
         }
         return null;
+    }
+
+    /**
+     * Löst Armor-Trim-Placeholders auf:
+     * <ul>
+     *   <li>{@code armortrim_helmet} → "silence" (für Caller-Spieler)</li>
+     *   <li>{@code material_chestplate} → "diamond"</li>
+     *   <li>{@code armortrim_helmet_Steve} → Trim-Pattern von Steve</li>
+     * </ul>
+     * Wenn nichts gesetzt ist, gibt leeren String zurück.
+     */
+    private String resolveArmorTrimPlaceholder(OfflinePlayer caller, String lower) {
+        if (plugin.getArmorTrimManager() == null) return "";
+        boolean trimQuery = lower.startsWith("armortrim_");
+        String rest = trimQuery ? lower.substring("armortrim_".length())
+                                 : lower.substring("material_".length());
+        // rest = "helmet" oder "helmet_steve"
+        String pieceKey;
+        String targetName;
+        int underscore = rest.indexOf('_');
+        if (underscore < 0) {
+            pieceKey = rest;
+            targetName = null;
+        } else {
+            pieceKey = rest.substring(0, underscore);
+            targetName = rest.substring(underscore + 1);
+        }
+        dev.duels.managers.ArmorTrimManager.Piece piece;
+        try {
+            piece = dev.duels.managers.ArmorTrimManager.Piece.valueOf(pieceKey.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return "";
+        }
+
+        java.util.UUID uuid;
+        if (targetName == null) {
+            uuid = caller.getUniqueId();
+        } else {
+            OfflinePlayer target = org.bukkit.Bukkit.getOfflinePlayer(targetName);
+            uuid = target != null ? target.getUniqueId() : null;
+        }
+        if (uuid == null) return "";
+        return trimQuery
+                ? plugin.getArmorTrimManager().getTrim(uuid, piece)
+                : plugin.getArmorTrimManager().getMaterial(uuid, piece);
     }
 }

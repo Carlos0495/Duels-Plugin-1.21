@@ -42,6 +42,9 @@ public class GUIManager {
     private final NamespacedKey duelKitKey;
     private final NamespacedKey editKitKey;
     private final NamespacedKey bestOfValueKey;
+    private final NamespacedKey armorTrimOpenKey;
+    private final NamespacedKey armorTrimPieceKey;
+    private final NamespacedKey armorTrimActionKey;
 
     public GUIManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -52,7 +55,9 @@ public class GUIManager {
         this.editKitKey = new NamespacedKey(plugin, "edit_kit");
         this.bestOfValueKey = new NamespacedKey(plugin, "bestof_value");
         this.duelTargetKey = new NamespacedKey(plugin, "duel_target");
-
+        this.armorTrimOpenKey   = new NamespacedKey(plugin, "armortrim_open");
+        this.armorTrimPieceKey  = new NamespacedKey(plugin, "armortrim_piece");
+        this.armorTrimActionKey = new NamespacedKey(plugin, "armortrim_action");
     }
     public static final String COMPARE_GUI_TITLE = "§bCompare Stats";
 
@@ -566,8 +571,135 @@ public class GUIManager {
                 : createItem(Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving"));
         inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.close", 53) : 53, tagKitId(close, kitId));
 
+        // Armor-Trim-Button — nur sichtbar wenn der Spieler die Permission
+        // duels.armortrim hat. Klickt der Spieler darauf, öffnet sich der
+        // Armor-Trim-Editor (helmet/chest/leggings/boots Auswahl).
+        if (player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
+            ItemStack trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE, "§dArmor Trims",
+                    Arrays.asList("§7Customize the &dArmor Trim",
+                            "§7applied to your duel armor.", "",
+                            "§eClick to open editor"));
+            ItemMeta tmeta = trimBtn.getItemMeta();
+            tmeta.getPersistentDataContainer().set(armorTrimOpenKey, PersistentDataType.STRING, kitId);
+            trimBtn.setItemMeta(tmeta);
+            inv.setItem(50, trimBtn);
+        }
+
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUT_GUI_TITLE_PREFIX + display, System.currentTimeMillis()));
+    }
+
+    public static final String ARMOR_TRIM_GUI_TITLE = "§dArmor Trim Editor";
+
+    public NamespacedKey getArmorTrimOpenKey()   { return armorTrimOpenKey; }
+    public NamespacedKey getArmorTrimPieceKey()  { return armorTrimPieceKey; }
+    public NamespacedKey getArmorTrimActionKey() { return armorTrimActionKey; }
+
+    /**
+     * Öffnet den Armor-Trim-Editor: pro Rüstungsteil (Helm, Chest,
+     * Leggings, Boots) eine Zeile mit dem aktuellen Trim-Pattern, dem
+     * Material und einer Remove-Option.
+     */
+    public void openArmorTrimGUI(Player player) {
+        if (!player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
+            player.sendMessage(plugin.getPrefix() + "§cYou don't have permission to edit armor trims.");
+            return;
+        }
+        Inventory inv = Bukkit.createInventory(null, 54, ARMOR_TRIM_GUI_TITLE);
+        UUID uuid = player.getUniqueId();
+        var atm = plugin.getArmorTrimManager();
+
+        // Header
+        ItemStack title = createItem(Material.NETHERITE_INGOT, "§dArmor Trim Editor",
+                Arrays.asList("§7Click trim/material to cycle.",
+                        "§7Click §cRemove §7to clear that piece."));
+        inv.setItem(4, title);
+
+        // 4 Rüstungs-Zeilen ab Slot 19
+        dev.duels.managers.ArmorTrimManager.Piece[] pieces = {
+                dev.duels.managers.ArmorTrimManager.Piece.HELMET,
+                dev.duels.managers.ArmorTrimManager.Piece.CHESTPLATE,
+                dev.duels.managers.ArmorTrimManager.Piece.LEGGINGS,
+                dev.duels.managers.ArmorTrimManager.Piece.BOOTS
+        };
+        Material[] pieceMats = {
+                Material.NETHERITE_HELMET, Material.NETHERITE_CHESTPLATE,
+                Material.NETHERITE_LEGGINGS, Material.NETHERITE_BOOTS
+        };
+
+        int[] rowStarts = { 10, 19, 28, 37 };
+        for (int i = 0; i < pieces.length; i++) {
+            var piece = pieces[i];
+            String currentTrim = atm.getTrim(uuid, piece);
+            String currentMat  = atm.getMaterial(uuid, piece);
+
+            // Piece-Vorschau (Slot rowStart)
+            ItemStack pieceItem = new ItemStack(pieceMats[i]);
+            ItemMeta pm = pieceItem.getItemMeta();
+            pm.setDisplayName("§b" + dev.duels.managers.ArmorTrimManager.displayName(piece.key()));
+            pm.setLore(Arrays.asList(
+                    "§7Trim: §f" + (currentTrim.isEmpty() ? "§7None" : currentTrim),
+                    "§7Material: §f" + (currentMat.isEmpty() ? "§7None" : currentMat)
+            ));
+            pieceItem.setItemMeta(pm);
+            inv.setItem(rowStarts[i], pieceItem);
+
+            // Trim cycle button
+            ItemStack trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE,
+                    "§eTrim: §f" + (currentTrim.isEmpty() ? "§7None" : currentTrim),
+                    Arrays.asList("§7Left-click to cycle forward",
+                            "§7Right-click to cycle backward",
+                            "§7Shift-click: jump to None"));
+            tagPieceAction(trimBtn, piece, "trim");
+            inv.setItem(rowStarts[i] + 2, trimBtn);
+
+            // Material cycle button
+            ItemStack matBtn = createItem(materialIconFor(currentMat),
+                    "§eMaterial: §f" + (currentMat.isEmpty() ? "§7None" : currentMat),
+                    Arrays.asList("§7Left-click to cycle forward",
+                            "§7Right-click to cycle backward",
+                            "§7Shift-click: jump to None"));
+            tagPieceAction(matBtn, piece, "material");
+            inv.setItem(rowStarts[i] + 4, matBtn);
+
+            // Remove button (clear both)
+            ItemStack remove = createItem(Material.BARRIER, "§cRemove Trim",
+                    Arrays.asList("§7Clear trim & material for this piece."));
+            tagPieceAction(remove, piece, "clear");
+            inv.setItem(rowStarts[i] + 6, remove);
+        }
+
+        // Close button
+        ItemStack close = createItem(Material.BARRIER, "§cClose", null);
+        inv.setItem(49, close);
+
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(ARMOR_TRIM_GUI_TITLE, System.currentTimeMillis()));
+    }
+
+    private void tagPieceAction(ItemStack item, dev.duels.managers.ArmorTrimManager.Piece piece, String action) {
+        ItemMeta meta = item.getItemMeta();
+        meta.getPersistentDataContainer().set(armorTrimPieceKey, PersistentDataType.STRING, piece.key());
+        meta.getPersistentDataContainer().set(armorTrimActionKey, PersistentDataType.STRING, action);
+        item.setItemMeta(meta);
+    }
+
+    private Material materialIconFor(String material) {
+        if (material == null || material.isEmpty()) return Material.GRAY_DYE;
+        return switch (material.toLowerCase()) {
+            case "amethyst"  -> Material.AMETHYST_SHARD;
+            case "copper"    -> Material.COPPER_INGOT;
+            case "diamond"   -> Material.DIAMOND;
+            case "emerald"   -> Material.EMERALD;
+            case "gold"      -> Material.GOLD_INGOT;
+            case "iron"      -> Material.IRON_INGOT;
+            case "lapis"     -> Material.LAPIS_LAZULI;
+            case "netherite" -> Material.NETHERITE_INGOT;
+            case "quartz"    -> Material.QUARTZ;
+            case "redstone"  -> Material.REDSTONE;
+            case "resin"     -> Material.RESIN_BRICK;
+            default          -> Material.GRAY_DYE;
+        };
     }
 
     private ItemStack tagKitId(ItemStack item, String kitId) {

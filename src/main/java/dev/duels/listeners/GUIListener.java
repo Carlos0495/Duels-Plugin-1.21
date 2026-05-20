@@ -162,6 +162,12 @@ public class GUIListener implements Listener {
             return;
         }
 
+        // Armor Trim Editor GUI
+        if (title.equals(GUIManager.ARMOR_TRIM_GUI_TITLE)) {
+            handleArmorTrimGUIClick(event, player, top, clickedInv);
+            return;
+        }
+
         // Edit Layout GUI
         if (title.startsWith(GUIManager.EDIT_LAYOUT_GUI_TITLE_PREFIX)) {
             handleEditLayoutGUIClick(event, player, top, clickedInv);
@@ -423,6 +429,21 @@ public class GUIListener implements Listener {
 
         // Nur Top-Inventar behandeln
         if (clickedInv != top) return;
+
+        // Armor-Trim-Editor Button (Slot 50): falls vorhanden öffnen.
+        if (raw == 50) {
+            event.setCancelled(true);
+            ItemStack btn = event.getCurrentItem();
+            if (btn != null && btn.hasItemMeta()
+                    && btn.getItemMeta().getPersistentDataContainer()
+                            .has(plugin.getGuiManager().getArmorTrimOpenKey(), PersistentDataType.STRING)) {
+                player.closeInventory();
+                plugin.getGuiManager().closeGUI(player.getUniqueId());
+                Bukkit.getScheduler().runTaskLater(plugin,
+                        () -> plugin.getGuiManager().openArmorTrimGUI(player), 2L);
+            }
+            return;
+        }
 
         // Buttons (unten rechts): 51/52/53
         if (raw == 51 || raw == 52 || raw == 53) {
@@ -905,6 +926,70 @@ public class GUIListener implements Listener {
             }
             player.updateInventory();
         }
+    }
+
+    private void handleArmorTrimGUIClick(InventoryClickEvent event, Player player, Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+        ItemMeta meta = clicked.getItemMeta();
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+
+        // Close button
+        String name = meta.getDisplayName();
+        if (name != null && name.contains("§cClose") && event.getRawSlot() == 49) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            return;
+        }
+
+        NamespacedKey pieceKey  = plugin.getGuiManager().getArmorTrimPieceKey();
+        NamespacedKey actionKey = plugin.getGuiManager().getArmorTrimActionKey();
+        if (!pdc.has(pieceKey, PersistentDataType.STRING)
+                || !pdc.has(actionKey, PersistentDataType.STRING)) {
+            return;
+        }
+        String pieceStr  = pdc.get(pieceKey,  PersistentDataType.STRING);
+        String actionStr = pdc.get(actionKey, PersistentDataType.STRING);
+
+        dev.duels.managers.ArmorTrimManager.Piece piece;
+        try {
+            piece = dev.duels.managers.ArmorTrimManager.Piece.valueOf(pieceStr.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+
+        var atm = plugin.getArmorTrimManager();
+        UUID uuid = player.getUniqueId();
+
+        boolean shift = event.isShiftClick();
+        boolean back  = event.isRightClick();
+
+        int dir = back ? -1 : 1;
+        switch (actionStr) {
+            case "trim" -> {
+                String current = atm.getTrim(uuid, piece);
+                String next = shift ? "" : atm.cyclePattern(current, dir);
+                atm.setTrim(uuid, piece, next);
+            }
+            case "material" -> {
+                String current = atm.getMaterial(uuid, piece);
+                String next = shift ? "" : atm.cycleMaterial(current, dir);
+                atm.setMaterial(uuid, piece, next);
+            }
+            case "clear" -> {
+                atm.setTrim(uuid, piece, "");
+                atm.setMaterial(uuid, piece, "");
+            }
+            default -> { return; }
+        }
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+
+        // GUI neu öffnen damit Anzeige aktualisiert ist
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> plugin.getGuiManager().openArmorTrimGUI(player), 1L);
     }
 }
 

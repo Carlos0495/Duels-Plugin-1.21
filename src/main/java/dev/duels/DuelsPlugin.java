@@ -20,6 +20,7 @@ public final class DuelsPlugin extends JavaPlugin {
     private GUIManager guiManager;
     private HotbarManager hotbarManager;
     private GuiConfig guiConfig;
+    private ArmorTrimManager armorTrimManager;
     private PartyManager partyManager;
     private PartyFFAManager partyFFAManager;
     private SpectateManager spectateManager;
@@ -42,6 +43,7 @@ public final class DuelsPlugin extends JavaPlugin {
         guiManager = new GUIManager(this);
         hotbarManager = new HotbarManager(this);
         guiConfig = new GuiConfig(this);
+        armorTrimManager = new ArmorTrimManager(this);
         partyManager = new PartyManager(this);
         partyFFAManager = new PartyFFAManager(this);
         spectateManager = new SpectateManager(this);
@@ -225,6 +227,7 @@ public final class DuelsPlugin extends JavaPlugin {
     public GUIManager getGuiManager() { return guiManager; }
     public HotbarManager getHotbarManager() { return hotbarManager; }
     public GuiConfig getGuiConfig() { return guiConfig; }
+    public ArmorTrimManager getArmorTrimManager() { return armorTrimManager; }
     public PartyManager getPartyManager() { return partyManager; }
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
     public SpectateManager getSpectateManager() { return spectateManager; }

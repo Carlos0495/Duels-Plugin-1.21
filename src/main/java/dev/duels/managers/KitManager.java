@@ -252,6 +252,14 @@ public class KitManager {
 
         inv.setItemInOffHand(kit.getItem(99) != null ? kit.getItem(99).clone() : null);
 
+        // Persönliche Armor-Trims des Spielers auf die gerade angezogene
+        // Rüstung anwenden (nur wenn duels.armortrim Permission). Wirkt
+        // damit automatisch für JEDES Kit, ohne im Kit selbst Trims
+        // hinterlegen zu müssen.
+        if (plugin.getArmorTrimManager() != null) {
+            plugin.getArmorTrimManager().applyTrimsToArmor(player);
+        }
+
         player.updateInventory();
     }
 
