@@ -431,17 +431,25 @@ public class GUIListener implements Listener {
         if (clickedInv != top) return;
 
         // Armor-Trim-Editor Button (Slot 50): falls vorhanden öffnen.
+        // Wenn der Button locked ist (Spieler ohne duels.armortrim), tut der
+        // Klick nichts außer einer kurzen Meldung.
         if (raw == 50) {
             event.setCancelled(true);
             ItemStack btn = event.getCurrentItem();
-            if (btn != null && btn.hasItemMeta()
-                    && btn.getItemMeta().getPersistentDataContainer()
-                            .has(plugin.getGuiManager().getArmorTrimOpenKey(), PersistentDataType.STRING)) {
-                player.closeInventory();
-                plugin.getGuiManager().closeGUI(player.getUniqueId());
-                Bukkit.getScheduler().runTaskLater(plugin,
-                        () -> plugin.getGuiManager().openArmorTrimGUI(player), 2L);
+            if (btn == null || !btn.hasItemMeta()) return;
+            PersistentDataContainer pdc = btn.getItemMeta().getPersistentDataContainer();
+            if (!pdc.has(plugin.getGuiManager().getArmorTrimOpenKey(), PersistentDataType.STRING)) {
+                return;
             }
+            if (pdc.has(plugin.getGuiManager().getArmorTrimLockedKey(), PersistentDataType.BYTE)) {
+                player.sendMessage(plugin.getPrefix() + "§cYou don't have permission to use armor trims.");
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
+                return;
+            }
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> plugin.getGuiManager().openArmorTrimGUI(player), 2L);
             return;
         }
 

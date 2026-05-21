@@ -167,3 +167,7 @@ permissions:
   duels.party.public:
     description: Allows opening a public party announced in chat
     default: false
+
+  duels.armortrim:
+    description: Allows editing personal armor trims via /duels armortrim
+    default: false

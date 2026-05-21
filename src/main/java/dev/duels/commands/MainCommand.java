@@ -26,6 +26,36 @@ public class MainCommand implements CommandExecutor {
             return true;
         }
 
+        // /duels invlayout  -> öffnet Edit-Layouts GUI (Kit-Auswahl) damit man
+        // dort die persönliche Inventar-Anordnung pro Kit anpasst.
+        if (args.length > 0 && (args[0].equalsIgnoreCase("invlayout")
+                || args[0].equalsIgnoreCase("editlayout")
+                || args[0].equalsIgnoreCase("kitlayout"))) {
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                return true;
+            }
+            plugin.getGuiManager().openEditLayoutsGUI(p);
+            return true;
+        }
+
+        // /duels armortrim  -> öffnet den Armor-Trim-Editor wenn Permission da
+        // ist, sonst kurze Meldung (kein Crash, kein GUI).
+        if (args.length > 0 && (args[0].equalsIgnoreCase("armortrim")
+                || args[0].equalsIgnoreCase("armortrims")
+                || args[0].equalsIgnoreCase("trim"))) {
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                return true;
+            }
+            if (!p.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
+                p.sendMessage(plugin.getPrefix() + "§cYou don't have permission to use armor trims.");
+                return true;
+            }
+            plugin.getGuiManager().openArmorTrimGUI(p);
+            return true;
+        }
+
         if (args.length > 0 && args[0].equalsIgnoreCase("setpartyffaspawn")) {
             if (!sender.hasPermission("duels.admin")) {
                 sender.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
@@ -54,6 +84,8 @@ public class MainCommand implements CommandExecutor {
         sender.sendMessage("§c/queue join <kit> §8- §7Join a queue");
         sender.sendMessage("§c/queue gui §8- §7Open the kit GUI");
         sender.sendMessage("§c/queue leave §8- §7Leave a queue");
+        sender.sendMessage("§c/duels invlayout §8- §7Edit your per-kit inventory layout");
+        sender.sendMessage("§c/duels armortrim §8- §7Open the armor trim editor (needs duels.armortrim)");
 
         if (sender.hasPermission("duels.admin")) {
             sender.sendMessage("§c/setspawn §8- §7Set spawn location");

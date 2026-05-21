@@ -45,6 +45,7 @@ public class GUIManager {
     private final NamespacedKey armorTrimOpenKey;
     private final NamespacedKey armorTrimPieceKey;
     private final NamespacedKey armorTrimActionKey;
+    private final NamespacedKey armorTrimLockedKey;
 
     public GUIManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -58,6 +59,7 @@ public class GUIManager {
         this.armorTrimOpenKey   = new NamespacedKey(plugin, "armortrim_open");
         this.armorTrimPieceKey  = new NamespacedKey(plugin, "armortrim_piece");
         this.armorTrimActionKey = new NamespacedKey(plugin, "armortrim_action");
+        this.armorTrimLockedKey = new NamespacedKey(plugin, "armortrim_locked");
     }
     public static final String COMPARE_GUI_TITLE = "§bCompare Stats";
 
@@ -571,19 +573,31 @@ public class GUIManager {
                 : createItem(Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving"));
         inv.setItem(gc != null ? gc.getSlot("edit-layout-gui.close", 53) : 53, tagKitId(close, kitId));
 
-        // Armor-Trim-Button — nur sichtbar wenn der Spieler die Permission
-        // duels.armortrim hat. Klickt der Spieler darauf, öffnet sich der
-        // Armor-Trim-Editor (helmet/chest/leggings/boots Auswahl).
-        if (player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
-            ItemStack trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE, "§dArmor Trims",
-                    Arrays.asList("§7Customize the &dArmor Trim",
+        // Armor-Trim-Button — IMMER sichtbar. Ohne Permission ist er
+        // sichtbar aber unbenutzbar (Lore weist darauf hin, Klick passiert
+        // nichts).
+        boolean hasTrimPerm = player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION);
+        ItemStack trimBtn;
+        if (hasTrimPerm) {
+            trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE, "§dArmor Trims",
+                    Arrays.asList("§7Customize the §dArmor Trim",
                             "§7applied to your duel armor.", "",
                             "§eClick to open editor"));
-            ItemMeta tmeta = trimBtn.getItemMeta();
-            tmeta.getPersistentDataContainer().set(armorTrimOpenKey, PersistentDataType.STRING, kitId);
-            trimBtn.setItemMeta(tmeta);
-            inv.setItem(50, trimBtn);
+        } else {
+            trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE, "§7Armor Trims §c(locked)",
+                    Arrays.asList("§7Customize the §dArmor Trim",
+                            "§7applied to your duel armor.", "",
+                            "§cYou don't have permission",
+                            "§cto use this feature."));
         }
+        ItemMeta tmeta = trimBtn.getItemMeta();
+        tmeta.getPersistentDataContainer().set(armorTrimOpenKey, PersistentDataType.STRING, kitId);
+        if (!hasTrimPerm) {
+            // Markiert den Button als "locked" → Klick-Handler verweigert
+            tmeta.getPersistentDataContainer().set(armorTrimLockedKey, PersistentDataType.BYTE, (byte) 1);
+        }
+        trimBtn.setItemMeta(tmeta);
+        inv.setItem(50, trimBtn);
 
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUT_GUI_TITLE_PREFIX + display, System.currentTimeMillis()));
@@ -594,6 +608,7 @@ public class GUIManager {
     public NamespacedKey getArmorTrimOpenKey()   { return armorTrimOpenKey; }
     public NamespacedKey getArmorTrimPieceKey()  { return armorTrimPieceKey; }
     public NamespacedKey getArmorTrimActionKey() { return armorTrimActionKey; }
+    public NamespacedKey getArmorTrimLockedKey() { return armorTrimLockedKey; }
 
     /**
      * Öffnet den Armor-Trim-Editor: pro Rüstungsteil (Helm, Chest,
@@ -633,29 +648,43 @@ public class GUIManager {
             String currentTrim = atm.getTrim(uuid, piece);
             String currentMat  = atm.getMaterial(uuid, piece);
 
-            // Piece-Vorschau (Slot rowStart)
+            // Piece-Vorschau (Slot rowStart) — Netherite-Rüstung mit
+            // aktuellem Trim live drauf, damit man die Optik sieht.
             ItemStack pieceItem = new ItemStack(pieceMats[i]);
-            ItemMeta pm = pieceItem.getItemMeta();
-            pm.setDisplayName("§b" + dev.duels.managers.ArmorTrimManager.displayName(piece.key()));
-            pm.setLore(Arrays.asList(
+            ItemMeta pmRaw = pieceItem.getItemMeta();
+            if (pmRaw instanceof org.bukkit.inventory.meta.ArmorMeta am) {
+                org.bukkit.inventory.meta.trim.TrimPattern tp =
+                        dev.duels.managers.ArmorTrimManager.resolvePattern(currentTrim);
+                org.bukkit.inventory.meta.trim.TrimMaterial tm =
+                        dev.duels.managers.ArmorTrimManager.resolveMaterial(currentMat);
+                if (tp != null && tm != null) {
+                    am.setTrim(new org.bukkit.inventory.meta.trim.ArmorTrim(tm, tp));
+                }
+            }
+            pmRaw.setDisplayName("§b" + dev.duels.managers.ArmorTrimManager.displayName(piece.key()));
+            pmRaw.setLore(Arrays.asList(
                     "§7Trim: §f" + (currentTrim.isEmpty() ? "§7None" : currentTrim),
                     "§7Material: §f" + (currentMat.isEmpty() ? "§7None" : currentMat)
             ));
-            pieceItem.setItemMeta(pm);
+            pieceItem.setItemMeta(pmRaw);
             inv.setItem(rowStarts[i], pieceItem);
 
-            // Trim cycle button
-            ItemStack trimBtn = createItem(Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE,
-                    "§eTrim: §f" + (currentTrim.isEmpty() ? "§7None" : currentTrim),
+            // Trim cycle button — Item = das Smithing-Template des aktuellen
+            // Patterns (visuell durch-cyclen). Wenn kein Pattern: Flow als
+            // neutrales Default-Icon.
+            ItemStack trimBtn = createItem(trimTemplateMaterial(currentTrim),
+                    "§eTrim: §f" + (currentTrim.isEmpty() ? "§7None"
+                            : dev.duels.managers.ArmorTrimManager.displayName(currentTrim)),
                     Arrays.asList("§7Left-click to cycle forward",
                             "§7Right-click to cycle backward",
                             "§7Shift-click: jump to None"));
             tagPieceAction(trimBtn, piece, "trim");
             inv.setItem(rowStarts[i] + 2, trimBtn);
 
-            // Material cycle button
+            // Material cycle button — Icon = das jeweilige Material-Item.
             ItemStack matBtn = createItem(materialIconFor(currentMat),
-                    "§eMaterial: §f" + (currentMat.isEmpty() ? "§7None" : currentMat),
+                    "§eMaterial: §f" + (currentMat.isEmpty() ? "§7None"
+                            : dev.duels.managers.ArmorTrimManager.displayName(currentMat)),
                     Arrays.asList("§7Left-click to cycle forward",
                             "§7Right-click to cycle backward",
                             "§7Shift-click: jump to None"));
@@ -682,6 +711,17 @@ public class GUIManager {
         meta.getPersistentDataContainer().set(armorTrimPieceKey, PersistentDataType.STRING, piece.key());
         meta.getPersistentDataContainer().set(armorTrimActionKey, PersistentDataType.STRING, action);
         item.setItemMeta(meta);
+    }
+
+    private Material trimTemplateMaterial(String trim) {
+        if (trim == null || trim.isEmpty()) return Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+        String enumName = trim.toUpperCase() + "_ARMOR_TRIM_SMITHING_TEMPLATE";
+        try {
+            Material m = Material.valueOf(enumName);
+            return m;
+        } catch (IllegalArgumentException ex) {
+            return Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+        }
     }
 
     private Material materialIconFor(String material) {
