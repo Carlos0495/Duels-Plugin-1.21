@@ -170,6 +170,17 @@ public class DuelListener implements Listener {
                 plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
             }
 
+            // Death-Message im Chat anzeigen
+            String deathMsg;
+            if (killer != null && !killer.equals(player)) {
+                deathMsg = "§7" + player.getName() + " §7was killed by §c" + killer.getName();
+            } else {
+                deathMsg = "§7" + player.getName() + " §7died";
+            }
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                online.sendMessage(deathMsg);
+            }
+
             // Direkt zum Spawn teleportieren (1 Tick Delay damit
             // der gecancelte Damage-Event fertig verarbeitet ist)
             Bukkit.getScheduler().runTaskLater(plugin, () -> {

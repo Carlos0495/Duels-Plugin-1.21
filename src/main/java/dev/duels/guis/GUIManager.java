@@ -67,7 +67,8 @@ public class GUIManager {
         KILLS("Kills"),
         WINS("Wins"),
         KD("KD"),
-        WINRATE("Winrate");
+        WINRATE("Winrate"),
+        COINS("Coins");
 
         private final String label;
         StatsSort(String label) { this.label = label; }
@@ -845,6 +846,7 @@ public class GUIManager {
                 int total = wins + losses;
                 yield total == 0 ? 0.0 : ((double) wins / total) * 100.0;
             }
+            case COINS -> pd.getCoins();
         };
     }
 
@@ -863,6 +865,7 @@ public class GUIManager {
                 double wr = total == 0 ? 0.0 : ((double) wins / total) * 100.0;
                 yield String.format("%.1f%%", wr);
             }
+            case COINS -> String.valueOf(pd.getCoins());
         };
     }
 
