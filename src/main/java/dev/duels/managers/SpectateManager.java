@@ -176,6 +176,12 @@ public class SpectateManager {
         }
     }
 
+    /** Liefert den gespeicherten Match-Key eines Spectators. */
+    public String getMatchKey(UUID spectatorId) {
+        SpectateInfo info = spectators.get(spectatorId);
+        return info != null ? info.matchKey : null;
+    }
+
     /** Berechnet den Match-Key für einen aktuell duell-/ffa-aktiven Spieler. */
     public String computeMatchKey(Player target) {
         if (target == null) return null;

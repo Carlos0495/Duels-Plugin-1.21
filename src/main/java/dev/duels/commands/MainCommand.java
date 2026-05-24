@@ -44,6 +44,41 @@ public class MainCommand implements CommandExecutor {
         if (args.length > 0 && (args[0].equalsIgnoreCase("armortrim")
                 || args[0].equalsIgnoreCase("armortrims")
                 || args[0].equalsIgnoreCase("trim"))) {
+            // /duels armortrim clear <player|all> — Admin-Befehl
+            if (args.length >= 3 && args[1].equalsIgnoreCase("clear")) {
+                if (!sender.hasPermission("duels.admin")) {
+                    sender.sendMessage(plugin.getPrefix() + "§cNo permission.");
+                    return true;
+                }
+                String targetArg = args[2];
+                if (targetArg.equalsIgnoreCase("all")) {
+                    int count = 0;
+                    for (Player op : org.bukkit.Bukkit.getOnlinePlayers()) {
+                        clearTrimsForPlayer(op);
+                        count++;
+                    }
+                    sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + count + " §7players.");
+                } else {
+                    Player target = org.bukkit.Bukkit.getPlayerExact(targetArg);
+                    if (target == null) {
+                        // Auch Offline-Spieler unterstützen via UUID-Lookup
+                        java.util.UUID offUuid = plugin.getPlayerManager().getUUIDFromName(targetArg);
+                        if (offUuid != null) {
+                            for (dev.duels.managers.ArmorTrimManager.Piece piece : dev.duels.managers.ArmorTrimManager.Piece.values()) {
+                                plugin.getArmorTrimManager().clearPiece(offUuid, piece);
+                            }
+                            sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + targetArg + " §7(offline).");
+                        } else {
+                            sender.sendMessage(plugin.getPrefix() + "§cPlayer not found: §f" + targetArg);
+                        }
+                        return true;
+                    }
+                    clearTrimsForPlayer(target);
+                    sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + target.getName() + "§7.");
+                }
+                return true;
+            }
+
             if (!(sender instanceof Player p)) {
                 sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
                 return true;
@@ -136,5 +171,13 @@ public class MainCommand implements CommandExecutor {
 
         sender.sendMessage(plugin.getPrefix() + "§7Plugin configuration §a§lreloaded!");
         plugin.getLogger().info("Duels plugin reloaded by " + sender.getName());
+    }
+
+    private void clearTrimsForPlayer(Player target) {
+        java.util.UUID uuid = target.getUniqueId();
+        for (dev.duels.managers.ArmorTrimManager.Piece piece : dev.duels.managers.ArmorTrimManager.Piece.values()) {
+            plugin.getArmorTrimManager().clearPiece(uuid, piece);
+        }
+        target.sendMessage(plugin.getPrefix() + "§7Your armor trims have been §ccleared §7by an admin.");
     }
 }

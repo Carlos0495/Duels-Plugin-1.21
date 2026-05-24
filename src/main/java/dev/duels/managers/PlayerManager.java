@@ -407,7 +407,13 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             forceLobbyState(player);
             setupPlayerInventory(player);
             refreshQueueSlotItem(player);
-            applyLobbyFly(player);
+            // Fly mit kurzem Delay applizieren — nach Cross-World-Teleport
+            // oder redundantem setGameMode kann Paper den Flight-State
+            // zurücksetzen. 2-Tick-Delay (wie bei onJoin) garantiert, dass
+            // der Teleport vollständig abgeschlossen ist.
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) applyLobbyFly(player);
+            }, 2L);
         }
 
         plugin.getScoreboardManager().updateScoreboard(player);
@@ -431,7 +437,12 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         player.getActivePotionEffects().forEach(effect ->
                 player.removePotionEffect(effect.getType()));
 
-        player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        // GameMode nur setzen wenn nötig — Paper kann bei redundantem
+        // setGameMode(SURVIVAL) die Flight-Flags zurücksetzen, was dazu
+        // führt dass /spawn das Fliegen deaktiviert obwohl es an war.
+        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        }
     }
 
 
@@ -512,6 +523,16 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 
 
     public void updatePlayerVisibility(Player player) {
+        // Spieler im Duel/FFA: Visibility-Item NICHT ins Inventar setzen,
+        // da es das aktive Kit ersetzen würde (User-Bug: "Visibility item
+        // ersetzt aktuelles Item wenn jemand /spawn macht").
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+        // Spectator: ebenfalls kein Visibility-Item (leeres Inv im Spectator-Mode).
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(player.getUniqueId())) return;
+
         boolean hidden = isHidden(player.getUniqueId());
         ItemStack visibilityItem = new ItemStack(hidden ? Material.RED_DYE : Material.GREEN_DYE);
         ItemMeta meta = visibilityItem.getItemMeta();

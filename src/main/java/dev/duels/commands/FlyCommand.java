@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 public class FlyCommand implements CommandExecutor {
 
     private final DuelsPlugin plugin;
+    private final java.util.Map<java.util.UUID, Long> flyCooldown = new java.util.HashMap<>();
 
     public FlyCommand(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -16,12 +17,44 @@ public class FlyCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player)) {
+        if (!(sender instanceof Player player)) {
             sender.sendMessage(plugin.getPrefix() + "Only players can use this command!");
             return true;
         }
 
-        Player player = (Player) sender;
+        // /fly disable <player|all> — Admin-Befehl
+        if (args.length >= 2 && args[0].equalsIgnoreCase("disable")) {
+            if (!player.hasPermission("duels.admin")) {
+                player.sendMessage(plugin.getPrefix() + "§cNo permission.");
+                return true;
+            }
+            String targetArg = args[1];
+            if (targetArg.equalsIgnoreCase("all")) {
+                int count = 0;
+                for (Player p : org.bukkit.Bukkit.getOnlinePlayers()) {
+                    if (p.getAllowFlight() || p.isFlying()) {
+                        p.setFlying(false);
+                        p.setAllowFlight(false);
+                        plugin.getPlayerManager().setAutoFly(p.getUniqueId(), false);
+                        p.sendMessage(plugin.getPrefix() + "§7Fly: §cOFF §8(disabled by admin)");
+                        count++;
+                    }
+                }
+                player.sendMessage(plugin.getPrefix() + "§7Disabled fly for §f" + count + " §7players.");
+            } else {
+                Player target = org.bukkit.Bukkit.getPlayerExact(targetArg);
+                if (target == null) {
+                    player.sendMessage(plugin.getPrefix() + "§cPlayer not found: §f" + targetArg);
+                    return true;
+                }
+                target.setFlying(false);
+                target.setAllowFlight(false);
+                plugin.getPlayerManager().setAutoFly(target.getUniqueId(), false);
+                target.sendMessage(plugin.getPrefix() + "§7Fly: §cOFF §8(disabled by admin)");
+                player.sendMessage(plugin.getPrefix() + "§7Disabled fly for §f" + target.getName() + "§7.");
+            }
+            return true;
+        }
 
         if (!player.hasPermission("duels.fly")) {
             player.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
@@ -36,13 +69,23 @@ public class FlyCommand implements CommandExecutor {
         boolean currentlyFlying = player.isFlying() || player.getAllowFlight();
 
         if (currentlyFlying) {
-            // Fly ausschalten
             player.setFlying(false);
             player.setAllowFlight(false);
             plugin.getPlayerManager().setAutoFly(player.getUniqueId(), false);
             player.sendMessage(plugin.getPrefix() + "§7Fly: §cOFF §8(autofly disabled)");
         } else {
-            // Fly einschalten
+            // Cooldown prüfen
+            int cooldownSec = plugin.getConfigManager().getMainConfig()
+                    .getInt("party.fly-cooldown", 3);
+            long now = System.currentTimeMillis();
+            Long last = flyCooldown.get(player.getUniqueId());
+            if (last != null && (now - last) < cooldownSec * 1000L) {
+                int remaining = (int) ((cooldownSec * 1000L - (now - last)) / 1000) + 1;
+                player.sendMessage(plugin.getPrefix() + "§cPlease wait §f" + remaining + "s §cbefore enabling fly again.");
+                return true;
+            }
+            flyCooldown.put(player.getUniqueId(), now);
+
             player.setAllowFlight(true);
             player.setFlying(true);
             plugin.getPlayerManager().setAutoFly(player.getUniqueId(), true);

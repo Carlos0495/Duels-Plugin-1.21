@@ -495,4 +495,42 @@ public class PlayerListener implements Listener {
             }
         }.runTaskTimer(plugin, 0, 1);
     }
+
+    /**
+     * Spectator-TP-Einschränkung: Spectators dürfen sich nur zu Spielern
+     * teleportieren die Teil des beobachteten Matches sind (User-Wunsch:
+     * "spectator sollen sich nicht zu anderen spielern tp können").
+     */
+    @EventHandler
+    public void onSpectatorTeleport(org.bukkit.event.player.PlayerTeleportEvent event) {
+        if (event.getCause() != org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.SPECTATE)
+            return;
+        Player spectator = event.getPlayer();
+        if (plugin.getSpectateManager() == null
+                || !plugin.getSpectateManager().isSpectating(spectator.getUniqueId()))
+            return;
+
+        Location to = event.getTo();
+        if (to == null) return;
+
+        // Ziel-Spieler in der Nähe des TP-Ziels finden
+        boolean allowed = false;
+        String matchKey = plugin.getSpectateManager().getMatchKey(spectator.getUniqueId());
+        if (matchKey != null) {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.equals(spectator)) continue;
+                String pKey = plugin.getSpectateManager().computeMatchKey(p);
+                if (matchKey.equals(pKey) && p.getLocation().distance(to) < 5.0) {
+                    allowed = true;
+                    break;
+                }
+            }
+        }
+
+        if (!allowed) {
+            event.setCancelled(true);
+            spectator.sendMessage(plugin.getPrefix()
+                    + "§cYou can only teleport to players in your match.");
+        }
+    }
 }

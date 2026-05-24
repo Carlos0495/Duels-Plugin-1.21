@@ -70,6 +70,27 @@ public class BlockBreakListener implements Listener {
 
         if (kit.isPlaceable(event.getBlockPlaced().getType())) {
             if (event.isCancelled()) event.setCancelled(false);
+            // ArenaListener trackt Placements bei NORMAL-Priority. Wenn ein
+            // Anti-Grief-Plugin den Event vorher gecancelt hat, läuft der
+            // ArenaListener NICHT (ignoreCancelled=true default). Wir un-
+            // canceln hier bei HIGHEST → Block wird platziert, aber NICHT
+            // in playerPlacedBlocks getrackt. Daher hier nachholen, damit
+            // resetArena() den Block entfernt (User-Bug: "geplactes
+            // glowstone geht nicht weg").
+            dev.duels.objects.Arena arena = findArenaAt(event.getBlock().getLocation());
+            if (arena != null) {
+                dev.duels.objects.BlockVector v = new dev.duels.objects.BlockVector(
+                        event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
+                arena.addPlayerPlacedBlock(v);
+                // Original-Block auch für den Reset vormerken falls die
+                // Position nicht im Snapshot ist (corner-nahe Blöcke).
+                if (!arena.getOriginalBlocks().containsKey(v)) {
+                    try {
+                        arena.getOriginalBlocks().put(v,
+                                event.getBlockReplacedState().getBlockData().clone());
+                    } catch (Throwable ignored) {}
+                }
+            }
         } else {
             event.setCancelled(true);
         }

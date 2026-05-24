@@ -59,9 +59,15 @@ public class ScoreboardManager {
         // vom Scoreboard des BEOBACHTERS ab, nicht vom Main-Scoreboard.
         syncNametagTeams(board);
 
+        // FFA/Team-Teilnehmer sollen ebenfalls das Duel-Scoreboard verwenden
+        // (User-Wunsch: "bei party duels/ffa/team duels soll auch das andere
+        // scoreboard verwendet werden").
+        boolean inFFA = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid);
+
         // Linien holen
         java.util.List<String> lines;
-        if (inDuel) {
+        if (inDuel || inFFA) {
             lines = plugin.getConfigManager().getMainConfig().getStringList("duel-scoreboard-lines");
         } else {
             lines = plugin.getConfigManager().getMainConfig().getStringList("scoreboard-lines");
@@ -145,6 +151,32 @@ public class ScoreboardManager {
         // %timeleft%: -1 = until-death (kein Timer) → Unendlich-Zeichen.
         String timeLeftStr = (timeLeft < 0) ? "§5§l∞" : (timeLeft + "s");
 
+        // FFA/Team-Placeholders: %alive%, %yourteam%, %enemyteam%
+        int aliveCount = 0;
+        int yourTeamAlive = 0;
+        int enemyTeamAlive = 0;
+        String ffaMapName = mapName;
+        PartyFFAManager.FFASession ffaSession = plugin.getPartyFFAManager() != null
+                ? plugin.getPartyFFAManager().getSession(uuid) : null;
+        if (ffaSession != null) {
+            aliveCount = ffaSession.alive.size();
+            if (ffaSession.reservedArena != null) {
+                ffaMapName = ffaSession.reservedArena.getName();
+            }
+            if (ffaSession.isTeamMode()) {
+                int myTeam = ffaSession.getTeam(uuid);
+                for (java.util.UUID u : ffaSession.alive) {
+                    int t = ffaSession.getTeam(u);
+                    if (t == myTeam) yourTeamAlive++;
+                    else enemyTeamAlive++;
+                }
+            }
+        }
+        // FFA/Team: %map% überschreiben mit Arena-Name
+        if (ffaSession != null && !ffaMapName.equals(mapName)) {
+            mapName = ffaMapName;
+        }
+
         // Alle Platzhalter ersetzen
         return line
                 .replace("%kills%", String.valueOf(kills))
@@ -166,7 +198,10 @@ public class ScoreboardManager {
                 .replace("%requiredwins%", String.valueOf(requiredWins))
                 .replace("%score%", scoreStr)
                 .replace("%yourwins%", String.valueOf(yourWins))
-                .replace("%opponentwins%", String.valueOf(oppWins));
+                .replace("%opponentwins%", String.valueOf(oppWins))
+                .replace("%alive%", String.valueOf(aliveCount))
+                .replace("%yourteam%", String.valueOf(yourTeamAlive))
+                .replace("%enemyteam%", String.valueOf(enemyTeamAlive));
     }
 
     private String getEmptyLineId(int index) {

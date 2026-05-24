@@ -38,6 +38,7 @@ public class PartyManager {
     private final Map<UUID, UUID> memberToLeader = new HashMap<>();
     // pending invites: invited player -> set of leader UUIDs
     private final Map<UUID, Set<UUID>> pendingInvites = new HashMap<>();
+    private final Map<UUID, Long> publicToggleCooldown = new HashMap<>();
 
     public PartyManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -60,10 +61,20 @@ public class PartyManager {
         if (!main.contains("party.size.default")) { main.set("party.size.default", 15); dirty = true; }
         if (!main.contains("party.size.tier1")) { main.set("party.size.tier1", 20); dirty = true; }
         if (!main.contains("party.size.tier2")) { main.set("party.size.tier2", 30); dirty = true; }
+        // Konfigurierbare Permission-Nodes für Party-Größen (User-Wunsch:
+        // "permissions für die party größe in der config bearbeiten").
+        if (!main.contains("party.permission.tier1")) { main.set("party.permission.tier1", "duels.party.size.20"); dirty = true; }
+        if (!main.contains("party.permission.tier2")) { main.set("party.permission.tier2", "duels.party.size.30"); dirty = true; }
         if (!main.contains("party.announce-message"))
             { main.set("party.announce-message", "&d[Party] &f%leader% &7opened a &epublic party&7! Click to join."); dirty = true; }
         if (!main.contains("party.invite-timeout-seconds"))
             { main.set("party.invite-timeout-seconds", 60); dirty = true; }
+        // Welt-Einschränkung: in welcher Welt man einer Party beitreten und
+        // die öffentliche Party-Nachricht sehen kann (leer = überall erlaubt).
+        if (!main.contains("party.allowed-world")) { main.set("party.allowed-world", ""); dirty = true; }
+        // Cooldowns (in Sekunden)
+        if (!main.contains("party.public-toggle-cooldown")) { main.set("party.public-toggle-cooldown", 30); dirty = true; }
+        if (!main.contains("party.fly-cooldown")) { main.set("party.fly-cooldown", 3); dirty = true; }
         if (dirty) plugin.saveConfig();
     }
 
@@ -94,9 +105,14 @@ public class PartyManager {
         int tier1 = cfg.getInt("party.size.tier1", 20);
         int tier2 = cfg.getInt("party.size.tier2", 30);
 
+        // Permission-Nodes aus Config lesen (User-Wunsch: konfigurierbare
+        // Permissions für Party-Größen).
+        String permTier1 = cfg.getString("party.permission.tier1", "duels.party.size.20");
+        String permTier2 = cfg.getString("party.permission.tier2", "duels.party.size.30");
+
         int max = def;
-        if (player.hasPermission("duels.party.size.20")) max = Math.max(max, tier1);
-        if (player.hasPermission("duels.party.size.30")) max = Math.max(max, tier2);
+        if (player.hasPermission(permTier1)) max = Math.max(max, tier1);
+        if (player.hasPermission(permTier2)) max = Math.max(max, tier2);
         return max;
     }
 
@@ -246,6 +262,10 @@ public class PartyManager {
     }
 
     public boolean acceptInvite(Player target, String leaderName) {
+        if (!isInAllowedWorld(target)) {
+            target.sendMessage(plugin.getPrefix() + "§cYou can only join parties in the lobby world.");
+            return false;
+        }
         Player leader = (leaderName == null || leaderName.isEmpty()) ? null : Bukkit.getPlayer(leaderName);
         UUID leaderId = leader != null ? leader.getUniqueId() : null;
 
@@ -331,10 +351,22 @@ public class PartyManager {
         return true;
     }
 
+    /** Prüft ob der Spieler in der erlaubten Party-Welt ist. Leerer Config-Wert = überall erlaubt. */
+    public boolean isInAllowedWorld(Player player) {
+        String allowed = plugin.getConfigManager().getMainConfig()
+                .getString("party.allowed-world", "");
+        if (allowed == null || allowed.isEmpty()) return true;
+        return player.getWorld().getName().equalsIgnoreCase(allowed);
+    }
+
     public boolean joinPublic(Player joiner, Player leader) {
         Party party = parties.get(leader.getUniqueId());
         if (party == null || !party.isPublic()) {
             joiner.sendMessage(plugin.getPrefix() + "§cThat party is not public.");
+            return false;
+        }
+        if (!isInAllowedWorld(joiner)) {
+            joiner.sendMessage(plugin.getPrefix() + "§cYou can only join parties in the lobby world.");
             return false;
         }
         if (isInParty(joiner.getUniqueId())) {
@@ -365,6 +397,18 @@ public class PartyManager {
             leader.sendMessage(plugin.getPrefix() + "§cYou don't have a party. Use /party create first.");
             return false;
         }
+        // Cooldown
+        int cooldownSec = plugin.getConfigManager().getMainConfig()
+                .getInt("party.public-toggle-cooldown", 30);
+        long now = System.currentTimeMillis();
+        Long last = publicToggleCooldown.get(leader.getUniqueId());
+        if (last != null && (now - last) < cooldownSec * 1000L) {
+            int remaining = (int) ((cooldownSec * 1000L - (now - last)) / 1000) + 1;
+            leader.sendMessage(plugin.getPrefix() + "§cPlease wait §f" + remaining + "s §cbefore toggling again.");
+            return false;
+        }
+        publicToggleCooldown.put(leader.getUniqueId(), now);
+
         party.setPublic(!party.isPublic());
         if (party.isPublic()) {
             announceInChat(party, leader);
@@ -385,7 +429,14 @@ public class PartyManager {
                 .hoverEvent(HoverEvent.showText(Component.text("/party join " + leader.getName())))
                 .clickEvent(ClickEvent.runCommand("/party join " + leader.getName()));
 
-        Bukkit.getServer().sendMessage(msg);
+        // Nur Spieler in der erlaubten Welt sehen die Nachricht
+        // (User-Wunsch: "in welcher Welt man die Nachricht der öffentlichen
+        // party sehen kann").
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (isInAllowedWorld(p)) {
+                p.sendMessage(msg);
+            }
+        }
     }
 
     public void broadcast(Party party, String message) {
@@ -430,7 +481,15 @@ public class PartyManager {
             Player np = Bukkit.getPlayer(newLeaderId);
             if (np != null && np.isOnline()) {
                 np.sendMessage(plugin.getPrefix() + "§dYou are now the §fparty leader§d.");
-                plugin.getHotbarManager().applyMode(np, HotbarManager.MODE_PARTY_LEADER);
+                // Hotbar nur ändern wenn der Spieler NICHT in einem aktiven
+                // Spiel ist (User-Bug: "kit des neuen leaders wird mit
+                // hotbaritems ersetzt während eines spiels").
+                boolean inGame = plugin.getDuelManager().isInDuel(newLeaderId)
+                        || (plugin.getPartyFFAManager() != null
+                                && plugin.getPartyFFAManager().isParticipant(newLeaderId));
+                if (!inGame) {
+                    plugin.getHotbarManager().applyMode(np, HotbarManager.MODE_PARTY_LEADER);
+                }
             }
             broadcast(moved, "§7Leader left. §d" + (np != null ? np.getName() : newLeaderId.toString()) + " §7is now the leader.");
         } else {

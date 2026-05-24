@@ -43,8 +43,8 @@ public class DuelListener implements Listener {
                 }
             }, 2L);
 
-            // Kill-Stat für Killer
-            if (killer != null) {
+            // Kill-Stat für Killer (nicht bei Selbsttötung)
+            if (killer != null && !killer.equals(dead)) {
                 plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
             }
             plugin.getPlayerManager().addStat(dead.getUniqueId(), "deaths", 1);
@@ -80,9 +80,19 @@ public class DuelListener implements Listener {
 
         // Normaler Death - Stats updaten
         plugin.getPlayerManager().addStat(dead.getUniqueId(), "deaths", 1);
-        if (killer != null) {
+        if (killer != null && !killer.equals(dead)) {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
+
+        // Auto-Respawn auch bei normalem Tod (User-Bug: "wenn man zu sich
+        // selbst stirbt dann spawnt man nicht am spawn wieder"). Ohne
+        // explizites respawn() bleibt der Spieler auf dem Death-Screen
+        // und Paper benutzt den Welt-Spawn statt unseren Plugin-Spawn.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (dead.isOnline() && dead.isDead()) {
+                try { dead.spigot().respawn(); } catch (Throwable ignored) {}
+            }
+        }, 2L);
 
         // Scoreboards updaten
         plugin.getScoreboardManager().updateScoreboard(dead);
