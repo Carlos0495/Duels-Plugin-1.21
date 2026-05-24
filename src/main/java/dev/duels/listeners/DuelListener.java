@@ -92,54 +92,85 @@ public class DuelListener implements Listener {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
-        // Auto-Respawn nach kurzem Delay — Paper braucht mind. 1 Tick
-        // nach dem Death-Event damit der Server den Tod vollständig
-        // verarbeitet hat.
+        // Auto-Respawn mit mehrfachem Delay-Ansatz.
+        // Ender-Pearl-Tode sind problematisch weil Paper den Teleport
+        // und den Tod gleichzeitig verarbeitet — längerer Delay + aggressive
+        // State-Resets nötig.
         final UUID deadId = dead.getUniqueId();
+
+        // Phase 1 (2 Ticks): Respawn erzwingen
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player p = Bukkit.getPlayer(deadId);
             if (p == null || !p.isOnline()) return;
             if (p.isDead()) {
                 try { p.spigot().respawn(); } catch (Throwable ignored) {}
             }
-            // Zweiter Delayed-Task: NACHDEM respawn() den
-            // PlayerRespawnEvent ausgelöst hat und Paper den Spieler
-            // bewegt hat, nochmal explizit den vollen State fixen.
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                Player pp = Bukkit.getPlayer(deadId);
-                if (pp == null || !pp.isOnline()) return;
-                if (plugin.getDuelManager().isInDuel(deadId)) return;
+        }, 2L);
 
-                org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
-                if (spawn != null) {
-                    pp.teleport(spawn);
-                }
-                pp.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                pp.setHealth(pp.getAttribute(
-                        org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
-                pp.setFoodLevel(20);
-                pp.setSaturation(20f);
-                pp.getInventory().clear();
-                plugin.getPlayerManager().setupPlayerInventory(pp);
-                plugin.getPlayerManager().applyLobbyFly(pp);
-                plugin.getScoreboardManager().updateScoreboard(pp);
+        // Phase 2 (10 Ticks / 0.5s): Voller State-Reset + Teleport.
+        // Genug Delay damit Paper den Respawn + eventuelle
+        // Pearl-Teleports vollständig abgearbeitet hat.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player pp = Bukkit.getPlayer(deadId);
+            if (pp == null || !pp.isOnline()) return;
+            if (plugin.getDuelManager().isInDuel(deadId)) return;
+            // Falls Respawn noch nicht durch ist
+            if (pp.isDead()) {
+                try { pp.spigot().respawn(); } catch (Throwable ignored) {}
+            }
+            resetPlayerToSpawn(pp);
+        }, 10L);
 
-                // Entity für alle Observer refreshen — behebt Ghost-State
-                // bei dem Client und Server desynct sind.
-                for (Player other : Bukkit.getOnlinePlayers()) {
-                    if (other.equals(pp)) continue;
-                    if (other.canSee(pp)) {
-                        other.hidePlayer(plugin, pp);
-                        other.showPlayer(plugin, pp);
-                    }
-                }
-            }, 3L);
-        }, 1L);
+        // Phase 3 (20 Ticks / 1s): Safety-Net — falls Phase 2 den
+        // Ghost-State nicht gefixt hat (z.B. bei Ender-Pearl wo der
+        // Client den Teleport noch nicht verarbeitet hat).
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player pp = Bukkit.getPlayer(deadId);
+            if (pp == null || !pp.isOnline()) return;
+            if (plugin.getDuelManager().isInDuel(deadId)) return;
+            resetPlayerToSpawn(pp);
+        }, 20L);
 
         // Scoreboards updaten
         plugin.getScoreboardManager().updateScoreboard(dead);
         if (killer != null) {
             plugin.getScoreboardManager().updateScoreboard(killer);
+        }
+    }
+
+    /**
+     * Spieler komplett zum Spawn zurücksetzen: Teleport, GameMode, Health,
+     * Inventar und Entity-Refresh für alle Observer.
+     */
+    private void resetPlayerToSpawn(Player pp) {
+        org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+        if (spawn != null) {
+            // Velocity auf 0 setzen damit kein Restmomentum den Teleport stört
+            pp.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+            pp.setFallDistance(0f);
+            pp.teleport(spawn);
+        }
+        pp.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        pp.setHealth(pp.getAttribute(
+                org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
+        pp.setFoodLevel(20);
+        pp.setSaturation(20f);
+        pp.setFireTicks(0);
+        pp.getActivePotionEffects().forEach(
+                e -> pp.removePotionEffect(e.getType()));
+        pp.getInventory().clear();
+        pp.getInventory().setArmorContents(null);
+        plugin.getPlayerManager().setupPlayerInventory(pp);
+        pp.updateInventory();
+        plugin.getPlayerManager().applyLobbyFly(pp);
+        plugin.getScoreboardManager().updateScoreboard(pp);
+
+        // Entity für alle Observer refreshen — zwingt den Client die
+        // Spieler-Entity neu zu laden und behebt Ghost-State.
+        for (Player other : Bukkit.getOnlinePlayers()) {
+            if (other.equals(pp)) continue;
+            other.hidePlayer(plugin, pp);
+            other.showPlayer(plugin, pp);
         }
     }
 
@@ -269,6 +300,23 @@ public class DuelListener implements Listener {
             if ((inDuel || inFFA) && event.isCancelled()) {
                 event.setCancelled(false);
             }
+        }
+    }
+
+    /**
+     * Ender-Pearl-Teleport abfangen wenn der Spieler tot ist oder gerade
+     * respawnt — verhindert Ghost-State bei Ender-Pearl-Tod.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onTeleport(org.bukkit.event.player.PlayerTeleportEvent event) {
+        if (event.getCause() == org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
+            Player p = event.getPlayer();
+            if (p.isDead() || p.getHealth() <= 0) {
+                event.setCancelled(true);
+                return;
+            }
+            // Nicht in Duel/FFA: Ender-Pearl-Teleport in Lobby blocken
+            // (Spieler soll nicht aus dem Spawn-Bereich raus teleportieren)
         }
     }
 
