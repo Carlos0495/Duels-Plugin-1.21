@@ -12,6 +12,8 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 
+import java.util.UUID;
+
 public class DuelListener implements Listener {
 
     private final DuelsPlugin plugin;
@@ -78,9 +80,7 @@ public class DuelListener implements Listener {
             return;
         }
 
-        // Normaler Death: keepInventory setzen damit Items nicht gedroppt
-        // werden — setupPlayerInventory setzt das Inventar ohnehin komplett
-        // neu auf.
+        // Normaler Death — Items nicht droppen, Death-Message unterdrücken.
         event.setDeathMessage(null);
         event.getDrops().clear();
         event.setDroppedExp(0);
@@ -92,32 +92,49 @@ public class DuelListener implements Listener {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
-        // Auto-Respawn + expliziter Teleport zum Spawn.
-        // spigot().respawn() alleine verursacht bei Cross-World-Teleport
-        // Desync (Spieler sieht alte Welt, andere sehen ihn am Spawn).
-        // Deshalb: respawn + verzögerter expliziter Teleport + State-Reset.
+        // Auto-Respawn nach kurzem Delay — Paper braucht mind. 1 Tick
+        // nach dem Death-Event damit der Server den Tod vollständig
+        // verarbeitet hat.
+        final UUID deadId = dead.getUniqueId();
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (dead.isOnline() && dead.isDead()) {
-                try { dead.spigot().respawn(); } catch (Throwable ignored) {}
+            Player p = Bukkit.getPlayer(deadId);
+            if (p == null || !p.isOnline()) return;
+            if (p.isDead()) {
+                try { p.spigot().respawn(); } catch (Throwable ignored) {}
             }
-        }, 2L);
-        // Nach dem Respawn explizit zum Spawn teleportieren und State resetten
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!dead.isOnline()) return;
-            if (plugin.getDuelManager().isInDuel(dead.getUniqueId())) return;
-            org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
-            if (spawn != null) {
-                dead.teleport(spawn);
-            }
-            // Sicherstellen dass der Spieler im richtigen GameMode ist
-            dead.setGameMode(org.bukkit.GameMode.SURVIVAL);
-            dead.setHealth(dead.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
-            dead.setFoodLevel(20);
-            dead.setSaturation(20f);
-            plugin.getPlayerManager().setupPlayerInventory(dead);
-            plugin.getPlayerManager().applyLobbyFly(dead);
-            plugin.getScoreboardManager().updateScoreboard(dead);
-        }, 5L);
+            // Zweiter Delayed-Task: NACHDEM respawn() den
+            // PlayerRespawnEvent ausgelöst hat und Paper den Spieler
+            // bewegt hat, nochmal explizit den vollen State fixen.
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Player pp = Bukkit.getPlayer(deadId);
+                if (pp == null || !pp.isOnline()) return;
+                if (plugin.getDuelManager().isInDuel(deadId)) return;
+
+                org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+                if (spawn != null) {
+                    pp.teleport(spawn);
+                }
+                pp.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                pp.setHealth(pp.getAttribute(
+                        org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
+                pp.setFoodLevel(20);
+                pp.setSaturation(20f);
+                pp.getInventory().clear();
+                plugin.getPlayerManager().setupPlayerInventory(pp);
+                plugin.getPlayerManager().applyLobbyFly(pp);
+                plugin.getScoreboardManager().updateScoreboard(pp);
+
+                // Entity für alle Observer refreshen — behebt Ghost-State
+                // bei dem Client und Server desynct sind.
+                for (Player other : Bukkit.getOnlinePlayers()) {
+                    if (other.equals(pp)) continue;
+                    if (other.canSee(pp)) {
+                        other.hidePlayer(plugin, pp);
+                        other.showPlayer(plugin, pp);
+                    }
+                }
+            }, 3L);
+        }, 1L);
 
         // Scoreboards updaten
         plugin.getScoreboardManager().updateScoreboard(dead);

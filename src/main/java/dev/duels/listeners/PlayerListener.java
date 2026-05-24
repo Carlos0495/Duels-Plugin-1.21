@@ -107,10 +107,13 @@ public class PlayerListener implements Listener {
             if (!plugin.getDuelManager().isInDuel(uuid)) {
                 forceLobbyState(player);
                 plugin.getPlayerManager().setupPlayerInventory(player);
+                // updateInventory() erzwingt Client-Server Inventory-Sync
+                // und verhindert Ghost-State nach Self-Kill.
+                player.updateInventory();
                 spawnParticlesCircle(player);
                 plugin.getPlayerManager().applyLobbyFly(player);
             }
-        }, 1L);
+        }, 2L);
     }
 
     @EventHandler
