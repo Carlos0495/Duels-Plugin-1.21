@@ -80,7 +80,8 @@ public class DuelListener implements Listener {
             return;
         }
 
-        // Normaler Death — Items nicht droppen, Death-Message unterdrücken.
+        // Fallback: Falls der Tod trotz EntityDamageEvent-Cancel durchkommt
+        // (z.B. /kill, void, Plugin-API), trotzdem sauber behandeln.
         event.setDeathMessage(null);
         event.getDrops().clear();
         event.setDroppedExp(0);
@@ -92,13 +93,8 @@ public class DuelListener implements Listener {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
-        // Auto-Respawn mit mehrfachem Delay-Ansatz.
-        // Ender-Pearl-Tode sind problematisch weil Paper den Teleport
-        // und den Tod gleichzeitig verarbeitet — längerer Delay + aggressive
-        // State-Resets nötig.
         final UUID deadId = dead.getUniqueId();
-
-        // Phase 1 (2 Ticks): Respawn erzwingen
+        // Auto-Respawn + Reset
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player p = Bukkit.getPlayer(deadId);
             if (p == null || !p.isOnline()) return;
@@ -106,36 +102,12 @@ public class DuelListener implements Listener {
                 try { p.spigot().respawn(); } catch (Throwable ignored) {}
             }
         }, 2L);
-
-        // Phase 2 (10 Ticks / 0.5s): Voller State-Reset + Teleport.
-        // Genug Delay damit Paper den Respawn + eventuelle
-        // Pearl-Teleports vollständig abgearbeitet hat.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player pp = Bukkit.getPlayer(deadId);
-            if (pp == null || !pp.isOnline()) return;
-            if (plugin.getDuelManager().isInDuel(deadId)) return;
-            // Falls Respawn noch nicht durch ist
-            if (pp.isDead()) {
-                try { pp.spigot().respawn(); } catch (Throwable ignored) {}
-            }
-            resetPlayerToSpawn(pp);
-        }, 10L);
-
-        // Phase 3 (20 Ticks / 1s): Safety-Net — falls Phase 2 den
-        // Ghost-State nicht gefixt hat (z.B. bei Ender-Pearl wo der
-        // Client den Teleport noch nicht verarbeitet hat).
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player pp = Bukkit.getPlayer(deadId);
             if (pp == null || !pp.isOnline()) return;
             if (plugin.getDuelManager().isInDuel(deadId)) return;
             resetPlayerToSpawn(pp);
-        }, 20L);
-
-        // Scoreboards updaten
-        plugin.getScoreboardManager().updateScoreboard(dead);
-        if (killer != null) {
-            plugin.getScoreboardManager().updateScoreboard(killer);
-        }
+        }, 5L);
     }
 
     /**
@@ -174,17 +146,37 @@ public class DuelListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
+        if (!(event.getEntity() instanceof Player player)) return;
 
-        Player player = (Player) event.getEntity();
+        // In Duel oder FFA: normaler Tod erlaubt (eigene Pipeline)
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
 
-        // Außerhalb Duel/FFA: kein Damage-Block durch dieses Plugin mehr.
-        // User regelt PvP/PvE in der Lobby über andere Plugins.
-        // (Plugin sorgt nur dafür, dass keine externen Plugins den Spieler
-        // im Duel/FFA sterben lassen wenn sie es nicht sollten — das wird
-        // durch die separaten Damage-By-Entity-Hooks unten gehandhabt.)
+        // Außerhalb von Duel/FFA: Tod verhindern statt respawnen.
+        // Wenn der Schaden den Spieler töten würde, canceln wir den Tod
+        // und teleportieren zum Spawn. Das vermeidet komplett den
+        // Death/Respawn-Zyklus und damit den Ghost-State (besonders bei
+        // Ender-Pearl-Tod).
+        double healthAfter = player.getHealth() - event.getFinalDamage();
+        if (healthAfter <= 0) {
+            event.setCancelled(true);
+
+            // Death-Stat zählen
+            plugin.getPlayerManager().addStat(player.getUniqueId(), "deaths", 1);
+            Player killer = player.getKiller();
+            if (killer != null && !killer.equals(player)) {
+                plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
+            }
+
+            // Direkt zum Spawn teleportieren (1 Tick Delay damit
+            // der gecancelte Damage-Event fertig verarbeitet ist)
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
+                resetPlayerToSpawn(player);
+            }, 1L);
+        }
     }
 
     @EventHandler
