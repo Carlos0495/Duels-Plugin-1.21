@@ -92,13 +92,32 @@ public class DuelListener implements Listener {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
-        // Auto-Respawn: ohne explizites respawn() bleibt der Spieler auf dem
-        // Death-Screen stecken und kann nichts mehr machen.
+        // Auto-Respawn + expliziter Teleport zum Spawn.
+        // spigot().respawn() alleine verursacht bei Cross-World-Teleport
+        // Desync (Spieler sieht alte Welt, andere sehen ihn am Spawn).
+        // Deshalb: respawn + verzögerter expliziter Teleport + State-Reset.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (dead.isOnline() && dead.isDead()) {
                 try { dead.spigot().respawn(); } catch (Throwable ignored) {}
             }
         }, 2L);
+        // Nach dem Respawn explizit zum Spawn teleportieren und State resetten
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!dead.isOnline()) return;
+            if (plugin.getDuelManager().isInDuel(dead.getUniqueId())) return;
+            org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+            if (spawn != null) {
+                dead.teleport(spawn);
+            }
+            // Sicherstellen dass der Spieler im richtigen GameMode ist
+            dead.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            dead.setHealth(dead.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
+            dead.setFoodLevel(20);
+            dead.setSaturation(20f);
+            plugin.getPlayerManager().setupPlayerInventory(dead);
+            plugin.getPlayerManager().applyLobbyFly(dead);
+            plugin.getScoreboardManager().updateScoreboard(dead);
+        }, 5L);
 
         // Scoreboards updaten
         plugin.getScoreboardManager().updateScoreboard(dead);

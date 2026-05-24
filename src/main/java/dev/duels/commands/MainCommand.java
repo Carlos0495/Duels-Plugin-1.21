@@ -144,6 +144,7 @@ public class MainCommand implements CommandExecutor {
         // Hotbar-Config muss ebenfalls neu eingelesen werden, sonst greifen
         // Config-Änderungen (Material/Slot/Action) NIE ohne Server-Restart.
         plugin.getHotbarManager().loadHotbarConfig();
+        plugin.getPartyManager().loadConfig();
         if (plugin.getGuiConfig() != null) plugin.getGuiConfig().load();
 
         // Placeholders neu beim TAB-Plugin registrieren — falls TAB inzwischen
