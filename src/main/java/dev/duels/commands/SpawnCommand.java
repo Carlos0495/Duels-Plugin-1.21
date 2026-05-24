@@ -22,19 +22,34 @@ public class SpawnCommand implements CommandExecutor {
         }
 
         Player player = (Player) sender;
+        java.util.UUID uuid = player.getUniqueId();
 
-        // Check if player is in a duel
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            // Handle as forfeit
+        // Check if player is in a duel (1v1)
+        if (plugin.getDuelManager().isInDuel(uuid)) {
             plugin.getDuelManager().handleForfeit(player);
             return true;
         }
 
-        // Spectator: sauber beenden statt nur teleportieren — sonst bleibt
-        // der Spieler im SPECTATOR-Mode und der Gamemode-Change-Blocker
-        // verhindert den SURVIVAL-Switch in teleportToSpawn.
+        // FFA/Team: wenn noch alive → als "freiwillig ausgeschieden"
+        // behandeln (Spectator-Modus, bleibt in Party). Zweites /spawn
+        // (wenn schon Spectator) → zurück zum Spawn.
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) {
+            var ffaSess = plugin.getPartyFFAManager().getSession(uuid);
+            if (ffaSess != null && ffaSess.alive.contains(uuid)) {
+                // Spieler ist noch alive → eliminate und in Spectator setzen
+                plugin.getPartyFFAManager().voluntaryLeave(player);
+                player.sendMessage(plugin.getPrefix()
+                        + "§7You left the match. Use §e/spawn §7again to return to spawn.");
+                return true;
+            }
+            // Spieler ist bereits tot/spectator → Spectator stoppen
+            // und zum Spawn teleportieren (bleibt aber in der Party).
+        }
+
+        // Spectator: sauber beenden statt nur teleportieren
         if (plugin.getSpectateManager() != null
-                && plugin.getSpectateManager().isSpectating(player.getUniqueId())) {
+                && plugin.getSpectateManager().isSpectating(uuid)) {
             plugin.getSpectateManager().stop(player);
             return true;
         }

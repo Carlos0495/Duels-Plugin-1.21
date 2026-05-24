@@ -59,15 +59,24 @@ public class ScoreboardManager {
         // vom Scoreboard des BEOBACHTERS ab, nicht vom Main-Scoreboard.
         syncNametagTeams(board);
 
-        // FFA/Team-Teilnehmer sollen ebenfalls das Duel-Scoreboard verwenden
-        // (User-Wunsch: "bei party duels/ffa/team duels soll auch das andere
-        // scoreboard verwendet werden").
-        boolean inFFA = plugin.getPartyFFAManager() != null
-                && plugin.getPartyFFAManager().isParticipant(uuid);
+        // FFA/Team-Teilnehmer bekommen eigene Scoreboard-Lines
+        PartyFFAManager.FFASession ffaSess = plugin.getPartyFFAManager() != null
+                ? plugin.getPartyFFAManager().getSession(uuid) : null;
+        boolean inFFA = ffaSess != null;
 
-        // Linien holen
+        // Linien holen: FFA, Team, Duel oder Lobby
         java.util.List<String> lines;
-        if (inDuel || inFFA) {
+        if (inFFA && ffaSess.isTeamMode()) {
+            lines = plugin.getConfigManager().getMainConfig().getStringList("team-scoreboard-lines");
+            if (lines == null || lines.isEmpty()) {
+                lines = plugin.getConfigManager().getMainConfig().getStringList("duel-scoreboard-lines");
+            }
+        } else if (inFFA) {
+            lines = plugin.getConfigManager().getMainConfig().getStringList("ffa-scoreboard-lines");
+            if (lines == null || lines.isEmpty()) {
+                lines = plugin.getConfigManager().getMainConfig().getStringList("duel-scoreboard-lines");
+            }
+        } else if (inDuel) {
             lines = plugin.getConfigManager().getMainConfig().getStringList("duel-scoreboard-lines");
         } else {
             lines = plugin.getConfigManager().getMainConfig().getStringList("scoreboard-lines");
@@ -170,6 +179,11 @@ public class ScoreboardManager {
                     if (t == myTeam) yourTeamAlive++;
                     else enemyTeamAlive++;
                 }
+            }
+            // Auch Spectator (tote FFA-Spieler) sehen die richtigen Alive-Zahlen
+            if (!ffaSession.alive.contains(uuid) && ffaSession.allParticipants.contains(uuid)) {
+                // Spieler ist tot, aber noch als Spectator im Match
+                aliveCount = ffaSession.alive.size();
             }
         }
         // FFA/Team: %map% überschreiben mit Arena-Name

@@ -61,10 +61,11 @@ public class PartyManager {
         if (!main.contains("party.size.default")) { main.set("party.size.default", 15); dirty = true; }
         if (!main.contains("party.size.tier1")) { main.set("party.size.tier1", 20); dirty = true; }
         if (!main.contains("party.size.tier2")) { main.set("party.size.tier2", 30); dirty = true; }
-        // Konfigurierbare Permission-Nodes für Party-Größen (User-Wunsch:
-        // "permissions für die party größe in der config bearbeiten").
+        if (!main.contains("party.size.tier3")) { main.set("party.size.tier3", 50); dirty = true; }
+        // Konfigurierbare Permission-Nodes für Party-Größen
         if (!main.contains("party.permission.tier1")) { main.set("party.permission.tier1", "duels.party.size.20"); dirty = true; }
         if (!main.contains("party.permission.tier2")) { main.set("party.permission.tier2", "duels.party.size.30"); dirty = true; }
+        if (!main.contains("party.permission.tier3")) { main.set("party.permission.tier3", "duels.party.size.50"); dirty = true; }
         if (!main.contains("party.announce-message"))
             { main.set("party.announce-message", "&d[Party] &f%leader% &7opened a &epublic party&7! Click to join."); dirty = true; }
         if (!main.contains("party.invite-timeout-seconds"))
@@ -104,15 +105,16 @@ public class PartyManager {
         int def = cfg.getInt("party.size.default", 15);
         int tier1 = cfg.getInt("party.size.tier1", 20);
         int tier2 = cfg.getInt("party.size.tier2", 30);
+        int tier3 = cfg.getInt("party.size.tier3", 50);
 
-        // Permission-Nodes aus Config lesen (User-Wunsch: konfigurierbare
-        // Permissions für Party-Größen).
         String permTier1 = cfg.getString("party.permission.tier1", "duels.party.size.20");
         String permTier2 = cfg.getString("party.permission.tier2", "duels.party.size.30");
+        String permTier3 = cfg.getString("party.permission.tier3", "duels.party.size.50");
 
         int max = def;
         if (player.hasPermission(permTier1)) max = Math.max(max, tier1);
         if (player.hasPermission(permTier2)) max = Math.max(max, tier2);
+        if (player.hasPermission(permTier3)) max = Math.max(max, tier3);
         return max;
     }
 

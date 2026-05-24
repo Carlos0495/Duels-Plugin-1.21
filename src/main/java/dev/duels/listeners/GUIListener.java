@@ -30,6 +30,7 @@ import java.util.List;
 public class GUIListener implements Listener {
 
     private final DuelsPlugin plugin;
+    private final java.util.Map<UUID, Long> flyCooldown = new java.util.HashMap<>();
 
     private final NamespacedKey queueKitKey;
     private final NamespacedKey previewKitKey;
@@ -673,6 +674,21 @@ public class GUIListener implements Listener {
             }
 
             boolean newValue = !plugin.getPlayerManager().getAutoFly(player.getUniqueId());
+
+            // Cooldown beim Aktivieren
+            if (newValue) {
+                int cooldownSec = plugin.getConfigManager().getMainConfig()
+                        .getInt("party.fly-cooldown", 3);
+                long now = System.currentTimeMillis();
+                Long last = flyCooldown.get(player.getUniqueId());
+                if (last != null && (now - last) < cooldownSec * 1000L) {
+                    int remaining = (int) ((cooldownSec * 1000L - (now - last)) / 1000) + 1;
+                    player.sendMessage(plugin.getPrefix() + "§cPlease wait §f" + remaining + "s §cbefore enabling fly again.");
+                    return;
+                }
+                flyCooldown.put(player.getUniqueId(), now);
+            }
+
             plugin.getPlayerManager().setAutoFly(player.getUniqueId(), newValue);
 
             player.sendMessage(plugin.getPrefix() + "§7Auto Fly is now " + (newValue ? "§aENABLED" : "§cDISABLED"));

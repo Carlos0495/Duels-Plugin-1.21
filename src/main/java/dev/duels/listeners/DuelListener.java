@@ -78,16 +78,22 @@ public class DuelListener implements Listener {
             return;
         }
 
-        // Normaler Death - Stats updaten
+        // Normaler Death: keepInventory setzen damit Items nicht gedroppt
+        // werden — setupPlayerInventory setzt das Inventar ohnehin komplett
+        // neu auf.
+        event.setDeathMessage(null);
+        event.getDrops().clear();
+        event.setDroppedExp(0);
+        event.setKeepInventory(true);
+        event.setKeepLevel(true);
+
         plugin.getPlayerManager().addStat(dead.getUniqueId(), "deaths", 1);
         if (killer != null && !killer.equals(dead)) {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
-        // Auto-Respawn auch bei normalem Tod (User-Bug: "wenn man zu sich
-        // selbst stirbt dann spawnt man nicht am spawn wieder"). Ohne
-        // explizites respawn() bleibt der Spieler auf dem Death-Screen
-        // und Paper benutzt den Welt-Spawn statt unseren Plugin-Spawn.
+        // Auto-Respawn: ohne explizites respawn() bleibt der Spieler auf dem
+        // Death-Screen stecken und kann nichts mehr machen.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (dead.isOnline() && dead.isDead()) {
                 try { dead.spigot().respawn(); } catch (Throwable ignored) {}

@@ -449,6 +449,55 @@ public class PartyFFAManager {
         }
     }
 
+    /**
+     * Spieler verlässt freiwillig das Match via /spawn — wird wie ein Tod
+     * behandelt (Spectator-Modus) aber ohne Kill/Death-Stat-Änderungen.
+     */
+    public void voluntaryLeave(Player player) {
+        if (player == null) return;
+        FFASession session = playerToSession.get(player.getUniqueId());
+        if (session == null) return;
+        session.alive.remove(player.getUniqueId());
+
+        plugin.getTeamLabelManager().removeLabel(player.getUniqueId());
+
+        broadcastToSession(session,
+                "§e" + player.getName() + " §7left the match. §f" + session.alive.size() + " §7alive.");
+
+        boolean willEnd;
+        if (session.isTeamMode()) {
+            int aliveT1 = 0, aliveT2 = 0;
+            for (UUID u : session.alive) {
+                int t = session.getTeam(u);
+                if (t == 1) aliveT1++;
+                else if (t == 2) aliveT2++;
+            }
+            willEnd = (aliveT1 == 0 || aliveT2 == 0);
+        } else {
+            willEnd = session.alive.size() <= 1;
+        }
+
+        if (!willEnd) {
+            UUID anchor = null;
+            if (session.isTeamMode()) {
+                int myTeam = session.getTeam(player.getUniqueId());
+                for (UUID u : session.alive) {
+                    if (session.getTeam(u) == myTeam) { anchor = u; break; }
+                }
+            }
+            if (anchor == null && !session.alive.isEmpty()) {
+                anchor = session.alive.iterator().next();
+            }
+            final UUID anchorFinal = anchor;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
+                plugin.getSpectateManager().enterAutoSpectateForFFA(player, anchorFinal, session.leaderId);
+            }, 1L);
+        } else {
+            endSession(session);
+        }
+    }
+
     public void handlePlayerQuit(UUID uuid) {
         FFASession session = playerToSession.remove(uuid);
         if (session == null) return;
