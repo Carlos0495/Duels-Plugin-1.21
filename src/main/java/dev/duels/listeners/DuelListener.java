@@ -13,11 +13,15 @@ import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class DuelListener implements Listener {
 
     private final DuelsPlugin plugin;
+    /** Spieler die gerade per Ender-Pearl teleportiert wurden (außerhalb Duel/FFA). */
+    private final Set<UUID> recentPearlTP = new HashSet<>();
 
     public DuelListener(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -135,17 +139,41 @@ public class DuelListener implements Listener {
         }, 5L);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
+        if (!(event.getEntity() instanceof Player player)) return;
 
-        Player player = (Player) event.getEntity();
+        // Ender-Pearl-Schaden: wenn tödlich und außerhalb Duel/FFA,
+        // canceln und zum Spawn teleportieren statt sterben lassen.
+        // Verhindert Ghost-State bei Pearl-Tod.
+        UUID uuid = player.getUniqueId();
+        if (recentPearlTP.contains(uuid)
+                && player.getHealth() - event.getFinalDamage() <= 0) {
+            event.setCancelled(true);
+            recentPearlTP.remove(uuid);
 
-        // Außerhalb Duel/FFA: kein Damage-Block durch dieses Plugin mehr.
-        // User regelt PvP/PvE in der Lobby über andere Plugins.
-        // (Plugin sorgt nur dafür, dass keine externen Plugins den Spieler
-        // im Duel/FFA sterben lassen wenn sie es nicht sollten — das wird
-        // durch die separaten Damage-By-Entity-Hooks unten gehandhabt.)
+            plugin.getPlayerManager().addStat(uuid, "deaths", 1);
+
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
+                org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+                if (spawn != null) {
+                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                    player.setFallDistance(0f);
+                    player.teleport(spawn);
+                }
+                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                player.setHealth(player.getAttribute(
+                        org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
+                player.setFoodLevel(20);
+                player.setSaturation(20f);
+                player.getInventory().clear();
+                plugin.getPlayerManager().setupPlayerInventory(player);
+                player.updateInventory();
+                plugin.getPlayerManager().applyLobbyFly(player);
+                plugin.getScoreboardManager().updateScoreboard(player);
+            }, 1L);
+        }
     }
 
     @EventHandler
@@ -265,19 +293,21 @@ public class DuelListener implements Listener {
     }
 
     /**
-     * Ender-Pearl-Teleport für Spieler außerhalb von Duel/FFA canceln.
-     * Der Pearl-TP passiert VOR dem Schaden — wenn der Schaden dann
-     * tötet, entsteht ein Ghost-State weil Client und Server über die
-     * Position desynct sind. Cancel des TPs verhindert auch den Schaden.
+     * Ender-Pearl-TP tracken: Spieler außerhalb Duel/FFA merken damit
+     * wir im EntityDamageEvent den Pearl-Schaden abfangen können.
      */
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
             Player p = event.getPlayer();
             UUID uuid = p.getUniqueId();
             if (!plugin.getDuelManager().isInDuel(uuid)
                     && !plugin.getPartyFFAManager().isParticipant(uuid)) {
-                event.setCancelled(true);
+                recentPearlTP.add(uuid);
+                // Nach 2 Ticks wieder entfernen (Pearl-Schaden kommt
+                // im selben oder nächsten Tick nach dem TP)
+                Bukkit.getScheduler().runTaskLater(plugin,
+                        () -> recentPearlTP.remove(uuid), 2L);
             }
         }
     }
