@@ -144,35 +144,23 @@ public class DuelListener implements Listener {
         if (!(event.getEntity() instanceof Player player)) return;
 
         // Ender-Pearl-Schaden: wenn tödlich und außerhalb Duel/FFA,
-        // canceln und zum Spawn teleportieren statt sterben lassen.
-        // Verhindert Ghost-State bei Pearl-Tod.
+        // Pearl-Schaden canceln und stattdessen den Spieler normal
+        // killen (setHealth(0)). So kommt die Death-Message vom
+        // DeathMessages-Plugin und der Tod zählt als normaler Death.
+        // Der Ghost-State wird vermieden weil der Tod nicht mehr
+        // während des Pearl-Teleports passiert.
         UUID uuid = player.getUniqueId();
         if (recentPearlTP.contains(uuid)
                 && player.getHealth() - event.getFinalDamage() <= 0) {
             event.setCancelled(true);
             recentPearlTP.remove(uuid);
 
-            plugin.getPlayerManager().addStat(uuid, "deaths", 1);
-
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            // Nächsten Tick: Spieler normal töten — triggert
+            // PlayerDeathEvent mit Death-Message und Stats.
+            Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
-                org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
-                if (spawn != null) {
-                    player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                    player.setFallDistance(0f);
-                    player.teleport(spawn);
-                }
-                player.setGameMode(org.bukkit.GameMode.SURVIVAL);
-                player.setHealth(player.getAttribute(
-                        org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
-                player.setFoodLevel(20);
-                player.setSaturation(20f);
-                player.getInventory().clear();
-                plugin.getPlayerManager().setupPlayerInventory(player);
-                player.updateInventory();
-                plugin.getPlayerManager().applyLobbyFly(player);
-                plugin.getScoreboardManager().updateScoreboard(player);
-            }, 1L);
+                player.setHealth(0);
+            });
         }
     }
 
