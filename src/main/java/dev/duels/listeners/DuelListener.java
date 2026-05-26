@@ -143,24 +143,29 @@ public class DuelListener implements Listener {
     public void onEntityDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
 
-        // Ender-Pearl-Schaden: wenn tödlich und außerhalb Duel/FFA,
-        // Pearl-Schaden canceln und stattdessen den Spieler normal
-        // killen (setHealth(0)). So kommt die Death-Message vom
-        // DeathMessages-Plugin und der Tod zählt als normaler Death.
-        // Der Ghost-State wird vermieden weil der Tod nicht mehr
-        // während des Pearl-Teleports passiert.
+        // Ender-Pearl tödlicher Schaden außerhalb Duel/FFA:
+        // Pearl-Schaden canceln, Spieler erst zum Spawn teleportieren,
+        // dann dort töten. So passiert der Tod in der Spawn-Welt
+        // (kein Cross-World-Desync / Ghost-State) und die Death-Message
+        // vom DeathMessages-Plugin kommt normal durch.
         UUID uuid = player.getUniqueId();
         if (recentPearlTP.contains(uuid)
                 && player.getHealth() - event.getFinalDamage() <= 0) {
             event.setCancelled(true);
             recentPearlTP.remove(uuid);
 
-            // Nächsten Tick: Spieler normal töten — triggert
-            // PlayerDeathEvent mit Death-Message und Stats.
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            // Erst zum Spawn TP, dann dort sterben lassen
+            org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+            if (spawn != null) {
+                player.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                player.setFallDistance(0f);
+                player.teleport(spawn);
+            }
+            // 1 Tick warten damit der TP verarbeitet ist, dann killen
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (!player.isOnline()) return;
                 player.setHealth(0);
-            });
+            }, 1L);
         }
     }
 
