@@ -265,14 +265,18 @@ public class DuelListener implements Listener {
     }
 
     /**
-     * Ender-Pearl-Teleport canceln wenn der Spieler tot ist oder gerade
-     * respawnt — verhindert Ghost-State bei Ender-Pearl-Tod.
+     * Ender-Pearl-Teleport für Spieler außerhalb von Duel/FFA canceln.
+     * Der Pearl-TP passiert VOR dem Schaden — wenn der Schaden dann
+     * tötet, entsteht ein Ghost-State weil Client und Server über die
+     * Position desynct sind. Cancel des TPs verhindert auch den Schaden.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
             Player p = event.getPlayer();
-            if (p.isDead() || p.getHealth() <= 0) {
+            UUID uuid = p.getUniqueId();
+            if (!plugin.getDuelManager().isInDuel(uuid)
+                    && !plugin.getPartyFFAManager().isParticipant(uuid)) {
                 event.setCancelled(true);
             }
         }
