@@ -77,9 +77,16 @@ public class GUIManager {
 
     private final Map<UUID, StatsSort> statsSortMode = new HashMap<>();
 
+    /** Custom-Items aus guis.yml in ein Inventar einfügen (falls vorhanden). */
+    private void injectCustomItems(Inventory inv, String guiSection) {
+        var gc = plugin.getGuiConfig();
+        if (gc != null) gc.applyCustomItems(inv, guiSection);
+    }
+
     public void openQueueGUI(Player player) {
         Inventory inv = Bukkit.createInventory(null, 54, QUEUE_GUI_TITLE);
         populateQueueGUI(player, inv);
+        injectCustomItems(inv, "queue-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(QUEUE_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -250,6 +257,7 @@ public class GUIManager {
     public void openKitsGUI(Player player) {
         Inventory inv = Bukkit.createInventory(null, 54, KITS_GUI_TITLE);
         populateKitsGUI(inv);
+        injectCustomItems(inv, "kits-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(KITS_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -259,6 +267,7 @@ public class GUIManager {
     public void openDuelGUI(Player sender, Player target) {
         Inventory inv = Bukkit.createInventory(null, 54, DUEL_GUI_TITLE);
         populateDuelGUI(sender, target, inv);
+        injectCustomItems(inv, "duel-gui");
         sender.openInventory(inv);
         openGUIs.put(sender.getUniqueId(), new GUI(DUEL_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -372,6 +381,7 @@ public class GUIManager {
         ItemStack close = createItem(Material.BARRIER, "§cClose", null);
         inv.setItem(26, close);
 
+        injectCustomItems(inv, "bestof-gui");
         sender.openInventory(inv);
         openGUIs.put(sender.getUniqueId(), new GUI(BESTOF_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -417,6 +427,7 @@ public class GUIManager {
                 : createItem(Material.BARRIER, "§cClose", null);
         inv.setItem(gc != null ? gc.getSlot("settings-gui.close", 26) : 26, close);
 
+        injectCustomItems(inv, "settings-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(SETTINGS_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -504,6 +515,7 @@ public class GUIManager {
                 : createItem(Material.BARRIER, "§cClose", null);
         inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.close", 49) : 49, close);
 
+        injectCustomItems(inv, "edit-layouts-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUTS_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -600,6 +612,7 @@ public class GUIManager {
         trimBtn.setItemMeta(tmeta);
         inv.setItem(50, trimBtn);
 
+        injectCustomItems(inv, "edit-layout-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(EDIT_LAYOUT_GUI_TITLE_PREFIX + display, System.currentTimeMillis()));
     }
@@ -703,6 +716,7 @@ public class GUIManager {
         ItemStack close = createItem(Material.BARRIER, "§cClose", null);
         inv.setItem(49, close);
 
+        injectCustomItems(inv, "armor-trim-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(ARMOR_TRIM_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -791,6 +805,7 @@ public class GUIManager {
         ItemStack close = createItem(Material.BARRIER, "§cClose", null);
         inv.setItem(26, close);
 
+        injectCustomItems(inv, "stats-gui");
         player.openInventory(inv);
         openGUIs.put(player.getUniqueId(), new GUI(STATS_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -892,6 +907,7 @@ public class GUIManager {
 
         inv.setItem(26, createItem(Material.BARRIER, "§cClose", null));
 
+        injectCustomItems(inv, "compare-gui");
         viewer.openInventory(inv);
         openGUIs.put(viewer.getUniqueId(), new GUI(COMPARE_GUI_TITLE, System.currentTimeMillis()));
     }
@@ -1019,6 +1035,7 @@ public class GUIManager {
         inv.setItem(22, partyActionItem(Material.BARRIER, "§cDisband Party", null, "DISBAND"));
         inv.setItem(26, createItem(Material.ARROW, "§7Close", null));
 
+        injectCustomItems(inv, "party-menu");
         leader.openInventory(inv);
         openGUIs.put(leader.getUniqueId(), new GUI(PARTY_MENU_TITLE, System.currentTimeMillis()));
     }
@@ -1063,6 +1080,7 @@ public class GUIManager {
 
         inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
 
+        injectCustomItems(inv, "party-select-member");
         leader.openInventory(inv);
         openGUIs.put(leader.getUniqueId(), new GUI(PARTY_SELECT_MEMBER_TITLE, System.currentTimeMillis()));
     }
@@ -1116,6 +1134,7 @@ public class GUIManager {
 
         inv.setItem(53, createItem(Material.BARRIER, "§cClose", null));
 
+        injectCustomItems(inv, "party-teams");
         leader.openInventory(inv);
         openGUIs.put(leader.getUniqueId(), new GUI(PARTY_TEAMS_TITLE, System.currentTimeMillis()));
     }
@@ -1155,6 +1174,7 @@ public class GUIManager {
 
         inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
 
+        injectCustomItems(inv, "party-kit-select");
         leader.openInventory(inv);
         openGUIs.put(leader.getUniqueId(), new GUI(PARTY_KIT_SELECT_TITLE, System.currentTimeMillis()));
     }

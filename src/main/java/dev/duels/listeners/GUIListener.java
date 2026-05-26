@@ -151,6 +151,11 @@ public class GUIListener implements Listener {
             return;
         }
 
+        // Custom GUI-Items: left-click / right-click Commands aus guis.yml
+        if (clickedInv == top && handleCustomItemClick(event, player)) {
+            return;
+        }
+
         // Queue GUI
         if (title.equals(GUIManager.QUEUE_GUI_TITLE)) {
             handleQueueGUIClick(event, player, top, clickedInv);
@@ -704,6 +709,47 @@ public class GUIListener implements Listener {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
         }
+    }
+
+    /**
+     * Prüft ob das geklickte Item ein Custom-GUI-Item mit left-click
+     * oder right-click Command ist. Gibt {@code true} zurück wenn
+     * das Item behandelt wurde.
+     */
+    private boolean handleCustomItemClick(InventoryClickEvent event, Player player) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return false;
+
+        var gc = plugin.getGuiConfig();
+        if (gc == null) return false;
+
+        PersistentDataContainer pdc = clicked.getItemMeta().getPersistentDataContainer();
+        String action = null;
+
+        boolean isLeft = event.isLeftClick();
+        boolean isRight = event.isRightClick();
+
+        if (isLeft) {
+            action = pdc.get(gc.getLeftClickKey(), PersistentDataType.STRING);
+        }
+        if (action == null && isRight) {
+            action = pdc.get(gc.getRightClickKey(), PersistentDataType.STRING);
+        }
+        if (action == null) return false;
+
+        event.setCancelled(true);
+
+        if (action.startsWith("COMMAND:")) {
+            String cmd = action.substring("COMMAND:".length()).trim();
+            if (cmd.startsWith("/")) cmd = cmd.substring(1);
+            if (!cmd.isEmpty()) {
+                player.closeInventory();
+                player.performCommand(cmd);
+                player.playSound(player.getLocation(),
+                        org.bukkit.Sound.UI_BUTTON_CLICK, 1f, 1f);
+            }
+        }
+        return true;
     }
 
     @EventHandler

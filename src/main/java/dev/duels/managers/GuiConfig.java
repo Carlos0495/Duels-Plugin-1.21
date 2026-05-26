@@ -9,6 +9,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import org.bukkit.NamespacedKey;
+import org.bukkit.persistence.PersistentDataType;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,10 +42,17 @@ public class GuiConfig {
     private final DuelsPlugin plugin;
     private File file;
     private FileConfiguration config;
+    private final NamespacedKey leftClickKey;
+    private final NamespacedKey rightClickKey;
 
     public GuiConfig(DuelsPlugin plugin) {
         this.plugin = plugin;
+        this.leftClickKey = new NamespacedKey(plugin, "gui_left_click");
+        this.rightClickKey = new NamespacedKey(plugin, "gui_right_click");
     }
+
+    public NamespacedKey getLeftClickKey() { return leftClickKey; }
+    public NamespacedKey getRightClickKey() { return rightClickKey; }
 
     public void load() {
         file = new File(plugin.getDataFolder(), "guis.yml");
@@ -259,5 +269,74 @@ public class GuiConfig {
             stack.setItemMeta(meta);
         }
         return stack;
+    }
+
+    /**
+     * Lädt custom-items aus {@code <guiSection>.custom-items} und setzt
+     * sie ins Inventar. Jedes Item kann {@code left-click} und/oder
+     * {@code right-click} als Command-Action haben.
+     *
+     * <pre>
+     * settings-gui:
+     *   custom-items:
+     *     ffa-layout:
+     *       slot: 13
+     *       material: CHEST
+     *       name: "&aFFA Layout"
+     *       lore:
+     *         - "&7Klicke um dein FFA Layout zu bearbeiten"
+     *       left-click: "COMMAND:/zxm open invlayoutFFA"
+     *       right-click: "COMMAND:/zxm open invlayoutFFA"
+     * </pre>
+     */
+    public void applyCustomItems(org.bukkit.inventory.Inventory inv, String guiSection) {
+        ConfigurationSection sec = config.getConfigurationSection(guiSection + ".custom-items");
+        if (sec == null) return;
+
+        for (String key : sec.getKeys(false)) {
+            ConfigurationSection item = sec.getConfigurationSection(key);
+            if (item == null) continue;
+
+            int slot = item.getInt("slot", -1);
+            if (slot < 0 || slot >= inv.getSize()) continue;
+
+            Material mat;
+            try {
+                mat = Material.valueOf(item.getString("material", "PAPER").toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                plugin.getLogger().warning("Invalid material for " + guiSection
+                        + ".custom-items." + key + ": " + item.getString("material"));
+                mat = Material.PAPER;
+            }
+
+            ItemStack stack = new ItemStack(mat);
+            ItemMeta meta = stack.getItemMeta();
+            if (meta != null) {
+                String name = item.getString("name", "");
+                if (!name.isEmpty()) {
+                    meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', name));
+                }
+                List<String> loreRaw = item.getStringList("lore");
+                if (!loreRaw.isEmpty()) {
+                    List<String> colored = new ArrayList<>(loreRaw.size());
+                    for (String l : loreRaw) colored.add(ChatColor.translateAlternateColorCodes('&', l));
+                    meta.setLore(colored);
+                }
+
+                String leftClick = item.getString("left-click", "");
+                String rightClick = item.getString("right-click", "");
+                if (!leftClick.isEmpty()) {
+                    meta.getPersistentDataContainer().set(leftClickKey,
+                            PersistentDataType.STRING, leftClick);
+                }
+                if (!rightClick.isEmpty()) {
+                    meta.getPersistentDataContainer().set(rightClickKey,
+                            PersistentDataType.STRING, rightClick);
+                }
+
+                stack.setItemMeta(meta);
+            }
+            inv.setItem(slot, stack);
+        }
     }
 }
