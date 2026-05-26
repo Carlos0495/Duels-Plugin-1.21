@@ -11,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.UUID;
 
@@ -80,9 +81,9 @@ public class DuelListener implements Listener {
             return;
         }
 
-        // Fallback: Falls der Tod trotz EntityDamageEvent-Cancel durchkommt
-        // (z.B. /kill, void, Plugin-API), trotzdem sauber behandeln.
-        event.setDeathMessage(null);
+        // Normaler Death: Items nicht droppen (Inventar wird beim Respawn
+        // ohnehin komplett neu aufgesetzt). Death-Message NICHT ändern
+        // damit externe Plugins (z.B. DeathMessages) sie anpassen können.
         event.getDrops().clear();
         event.setDroppedExp(0);
         event.setKeepInventory(true);
@@ -93,8 +94,9 @@ public class DuelListener implements Listener {
             plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
         }
 
+        // Auto-Respawn + State-Reset. UUID-basiert damit wir nach dem
+        // Delay ein frisches Player-Objekt haben (kein stale reference).
         final UUID deadId = dead.getUniqueId();
-        // Auto-Respawn + Reset
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player p = Bukkit.getPlayer(deadId);
             if (p == null || !p.isOnline()) return;
@@ -102,92 +104,48 @@ public class DuelListener implements Listener {
                 try { p.spigot().respawn(); } catch (Throwable ignored) {}
             }
         }, 2L);
+        // Nach dem Respawn: Teleport + voller State-Reset
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player pp = Bukkit.getPlayer(deadId);
-            if (pp == null || !pp.isOnline()) return;
+            Player p = Bukkit.getPlayer(deadId);
+            if (p == null || !p.isOnline()) return;
             if (plugin.getDuelManager().isInDuel(deadId)) return;
-            resetPlayerToSpawn(pp);
+            org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
+            if (spawn != null) {
+                p.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                p.setFallDistance(0f);
+                p.teleport(spawn);
+            }
+            p.setGameMode(org.bukkit.GameMode.SURVIVAL);
+            p.setHealth(p.getAttribute(
+                    org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
+            p.setFoodLevel(20);
+            p.setSaturation(20f);
+            p.setFireTicks(0);
+            p.getInventory().clear();
+            plugin.getPlayerManager().setupPlayerInventory(p);
+            p.updateInventory();
+            plugin.getPlayerManager().applyLobbyFly(p);
+            plugin.getScoreboardManager().updateScoreboard(p);
+            // Entity für alle Observer refreshen (Ghost-State fix)
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (other.equals(p)) continue;
+                other.hidePlayer(plugin, p);
+                other.showPlayer(plugin, p);
+            }
         }, 5L);
     }
 
-    /**
-     * Spieler komplett zum Spawn zurücksetzen: Teleport, GameMode, Health,
-     * Inventar und Entity-Refresh für alle Observer.
-     */
-    private void resetPlayerToSpawn(Player pp) {
-        org.bukkit.Location spawn = plugin.getArenaManager().getSpawnLocation();
-        if (spawn != null) {
-            // Velocity auf 0 setzen damit kein Restmomentum den Teleport stört
-            pp.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-            pp.setFallDistance(0f);
-            pp.teleport(spawn);
-        }
-        pp.setGameMode(org.bukkit.GameMode.SURVIVAL);
-        pp.setHealth(pp.getAttribute(
-                org.bukkit.attribute.Attribute.MAX_HEALTH).getValue());
-        pp.setFoodLevel(20);
-        pp.setSaturation(20f);
-        pp.setFireTicks(0);
-        pp.getActivePotionEffects().forEach(
-                e -> pp.removePotionEffect(e.getType()));
-        pp.getInventory().clear();
-        pp.getInventory().setArmorContents(null);
-        plugin.getPlayerManager().setupPlayerInventory(pp);
-        pp.updateInventory();
-        plugin.getPlayerManager().applyLobbyFly(pp);
-        plugin.getScoreboardManager().updateScoreboard(pp);
-
-        // Entity für alle Observer refreshen — zwingt den Client die
-        // Spieler-Entity neu zu laden und behebt Ghost-State.
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (other.equals(pp)) continue;
-            other.hidePlayer(plugin, pp);
-            other.showPlayer(plugin, pp);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler
     public void onEntityDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof Player)) return;
 
-        // In Duel oder FFA: normaler Tod erlaubt (eigene Pipeline)
-        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
-        if (plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+        Player player = (Player) event.getEntity();
 
-        // Außerhalb von Duel/FFA: Tod verhindern statt respawnen.
-        // Wenn der Schaden den Spieler töten würde, canceln wir den Tod
-        // und teleportieren zum Spawn. Das vermeidet komplett den
-        // Death/Respawn-Zyklus und damit den Ghost-State (besonders bei
-        // Ender-Pearl-Tod).
-        double healthAfter = player.getHealth() - event.getFinalDamage();
-        if (healthAfter <= 0) {
-            event.setCancelled(true);
-
-            // Death-Stat zählen
-            plugin.getPlayerManager().addStat(player.getUniqueId(), "deaths", 1);
-            Player killer = player.getKiller();
-            if (killer != null && !killer.equals(player)) {
-                plugin.getPlayerManager().addStat(killer.getUniqueId(), "kills", 1);
-            }
-
-            // Death-Message im Chat anzeigen
-            String deathMsg;
-            if (killer != null && !killer.equals(player)) {
-                deathMsg = "§7" + player.getName() + " §7was killed by §c" + killer.getName();
-            } else {
-                deathMsg = "§7" + player.getName() + " §7died";
-            }
-            for (Player online : Bukkit.getOnlinePlayers()) {
-                online.sendMessage(deathMsg);
-            }
-
-            // Direkt zum Spawn teleportieren (1 Tick Delay damit
-            // der gecancelte Damage-Event fertig verarbeitet ist)
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (!player.isOnline()) return;
-                resetPlayerToSpawn(player);
-            }, 1L);
-        }
+        // Außerhalb Duel/FFA: kein Damage-Block durch dieses Plugin mehr.
+        // User regelt PvP/PvE in der Lobby über andere Plugins.
+        // (Plugin sorgt nur dafür, dass keine externen Plugins den Spieler
+        // im Duel/FFA sterben lassen wenn sie es nicht sollten — das wird
+        // durch die separaten Damage-By-Entity-Hooks unten gehandhabt.)
     }
 
     @EventHandler
@@ -307,19 +265,16 @@ public class DuelListener implements Listener {
     }
 
     /**
-     * Ender-Pearl-Teleport abfangen wenn der Spieler tot ist oder gerade
+     * Ender-Pearl-Teleport canceln wenn der Spieler tot ist oder gerade
      * respawnt — verhindert Ghost-State bei Ender-Pearl-Tod.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onTeleport(org.bukkit.event.player.PlayerTeleportEvent event) {
-        if (event.getCause() == org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
+    public void onTeleport(PlayerTeleportEvent event) {
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL) {
             Player p = event.getPlayer();
             if (p.isDead() || p.getHealth() <= 0) {
                 event.setCancelled(true);
-                return;
             }
-            // Nicht in Duel/FFA: Ender-Pearl-Teleport in Lobby blocken
-            // (Spieler soll nicht aus dem Spawn-Bereich raus teleportieren)
         }
     }
 
