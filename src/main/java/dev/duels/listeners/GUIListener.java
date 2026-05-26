@@ -51,6 +51,33 @@ public class GUIListener implements Listener {
         this.bestOfValueKey = new NamespacedKey(plugin, "bestof_value");
         this.duelTargetKey = new NamespacedKey(plugin, "duel_target");
     }
+
+    /** Prüft ob ein Item die gegebene GUI-Item-ID hat (PDC-Tag). */
+    private boolean isGuiItem(ItemStack item, String id) {
+        var gc = plugin.getGuiConfig();
+        if (gc != null && gc.hasItemId(item, id)) return true;
+        // Fallback: Name-Match für Items die ohne GuiConfig gebaut wurden
+        if (item == null || !item.hasItemMeta()) return false;
+        String name = item.getItemMeta().getDisplayName();
+        if (name == null) return false;
+        // Map ID -> legacy display name
+        return switch (id) {
+            case "queue-gui.close", "kits-gui.close", "settings-gui.close",
+                 "edit-layouts-gui.close", "edit-layout-gui.close",
+                 "bestof-gui.close", "duel-gui.close", "stats-gui.close",
+                 "compare-gui.close" -> name.contains("§cClose");
+            case "queue-gui.info" -> name.equals("§6Queue: Select a Kit");
+            case "kits-gui.info" -> name.equals("§6Select a Kit");
+            case "kits-gui.no-kits" -> name.contains("§cNo Kits Available");
+            case "duel-gui.info" -> name.equals("§6Select a Kit");
+            case "settings-gui.edit-layouts" -> name.equals("§aEdit Kit Inventory Layouts");
+            case "settings-gui.auto-fly-name" -> name.equals("§bAuto Fly");
+            case "edit-layouts-gui.info" -> name.equals("§6Select a Kit to Edit");
+            case "edit-layout-gui.save" -> name.contains("§aSave Layout");
+            case "edit-layout-gui.reset" -> name.contains("§cReset to Default");
+            default -> false;
+        };
+    }
     @EventHandler
     public void onChat(org.bukkit.event.player.AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -221,11 +248,8 @@ public class GUIListener implements Listener {
             ItemStack clicked = event.getCurrentItem();
             if (clicked == null || !clicked.hasItemMeta()) return;
 
-            String name = clicked.getItemMeta().getDisplayName();
-            if (name == null) name = "";
-
             // Close
-            if (name.contains("§cClose")) {
+            if (isGuiItem(clicked, "stats-gui.close")) {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
                 return;
@@ -239,7 +263,8 @@ public class GUIListener implements Listener {
             }
 
             // Search (slot 15)
-            if (raw == 15 && name.contains("Search Players")) {
+            String sName = clicked.getItemMeta().getDisplayName();
+            if (raw == 15 && sName != null && sName.contains("Search Players")) {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
 
@@ -258,10 +283,7 @@ public class GUIListener implements Listener {
             ItemStack clicked = event.getCurrentItem();
             if (clicked == null || !clicked.hasItemMeta()) return;
 
-            String name = clicked.getItemMeta().getDisplayName();
-            if (name == null) name = "";
-
-            if (name.contains("§cClose")) {
+            if (isGuiItem(clicked, "compare-gui.close")) {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
             }
@@ -278,10 +300,9 @@ public class GUIListener implements Listener {
         if (clicked == null || !clicked.hasItemMeta()) return;
 
         ItemMeta meta = clicked.getItemMeta();
-        String display = meta.getDisplayName() == null ? "" : meta.getDisplayName();
 
         // Close Button / Info
-        if (display.equals("§cClose") || display.equals("§6Queue: Select a Kit")) {
+        if (isGuiItem(clicked, "queue-gui.close") || isGuiItem(clicked, "queue-gui.info")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -319,7 +340,7 @@ public class GUIListener implements Listener {
         String name = meta.getDisplayName() == null ? "" : meta.getDisplayName();
 
         // Close / Back
-        if (name.equals("§cClose") || name.equals("§cBack")) {
+        if (isGuiItem(clicked, "bestof-gui.close") || name.equals("§cBack")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -474,10 +495,7 @@ public class GUIListener implements Listener {
                 return;
             }
 
-            String name = button.getItemMeta().getDisplayName();
-            if (name == null) name = "";
-
-            if (name.contains("§aSave Layout")) {
+            if (isGuiItem(button, "edit-layout-gui.save")) {
                 ItemStack[] layout = new ItemStack[36];
                 for (int i = 0; i < 36; i++) {
                     ItemStack it = top.getItem(i);
@@ -495,7 +513,7 @@ public class GUIListener implements Listener {
                 return;
             }
 
-            if (name.contains("§cReset to Default")) {
+            if (isGuiItem(button, "edit-layout-gui.reset")) {
                 String kitDisplay = plugin.getKitManager().getKitDisplayName(kitId);
 
                 plugin.getKitManager().deleteCustomLayout(player.getUniqueId(), kitId);
@@ -507,7 +525,7 @@ public class GUIListener implements Listener {
                 return;
             }
 
-            if (name.contains("§cClose")) {
+            if (isGuiItem(button, "edit-layout-gui.close")) {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
             }
@@ -545,15 +563,14 @@ public class GUIListener implements Listener {
         if (clicked == null || !clicked.hasItemMeta()) return;
 
         ItemMeta meta = clicked.getItemMeta();
-        String name = meta.getDisplayName() == null ? "" : meta.getDisplayName();
 
-        if (name.equals("§cClose")) {
+        if (isGuiItem(clicked, "edit-layouts-gui.close")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
         }
 
-        if (name.equals("§6Select a Kit to Edit")) return;
+        if (isGuiItem(clicked, "edit-layouts-gui.info")) return;
 
         String kitId = meta.getPersistentDataContainer().get(editKitKey, PersistentDataType.STRING);
         if (kitId == null || kitId.isEmpty()) return;
@@ -570,9 +587,8 @@ public class GUIListener implements Listener {
         if (clicked == null || !clicked.hasItemMeta()) return;
 
         ItemMeta meta = clicked.getItemMeta();
-        String name = meta.getDisplayName() == null ? "" : meta.getDisplayName();
 
-        if (name.contains("§cClose") || name.equals("§6Select a Kit")) {
+        if (isGuiItem(clicked, "duel-gui.close") || isGuiItem(clicked, "duel-gui.info")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -640,15 +656,14 @@ public class GUIListener implements Listener {
         if (clicked == null || !clicked.hasItemMeta()) return;
 
         ItemMeta meta = clicked.getItemMeta();
-        String name = meta.getDisplayName() == null ? "" : meta.getDisplayName();
 
-        if (name.contains("§cClose") || name.contains("§6Select a Kit")) {
+        if (isGuiItem(clicked, "kits-gui.close") || isGuiItem(clicked, "kits-gui.info")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
         }
 
-        if (name.contains("§cNo Kits Available")) return;
+        if (isGuiItem(clicked, "kits-gui.no-kits")) return;
 
         String kitId = meta.getPersistentDataContainer().get(previewKitKey, PersistentDataType.STRING);
         if (kitId == null || kitId.isEmpty()) return;
@@ -665,14 +680,12 @@ public class GUIListener implements Listener {
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || !clicked.hasItemMeta()) return;
 
-        String name = clicked.getItemMeta().getDisplayName() == null ? "" : clicked.getItemMeta().getDisplayName();
-
-        if (name.equals("§aEdit Kit Inventory Layouts")) {
+        if (isGuiItem(clicked, "settings-gui.edit-layouts")) {
             plugin.getGuiManager().openEditLayoutsGUI(player);
             return;
         }
 
-        if (name.equals("§bAuto Fly")) {
+        if (isGuiItem(clicked, "settings-gui.auto-fly-name")) {
             if (!player.hasPermission("duels.fly")) {
                 player.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
                 return;
@@ -705,7 +718,7 @@ public class GUIListener implements Listener {
             return;
         }
 
-        if (name.equals("§cClose")) {
+        if (isGuiItem(clicked, "settings-gui.close")) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
         }
@@ -834,7 +847,8 @@ public class GUIListener implements Listener {
 
         // Close button
         String displayName = clicked.getItemMeta().getDisplayName();
-        if (displayName != null && (displayName.contains("§cClose") || displayName.equals("§7Close"))) {
+        if (isGuiItem(clicked, "party-menu.close")
+                || (displayName != null && (displayName.contains("§cClose") || displayName.equals("§7Close")))) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;

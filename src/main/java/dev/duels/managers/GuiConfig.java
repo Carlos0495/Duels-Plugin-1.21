@@ -44,15 +44,18 @@ public class GuiConfig {
     private FileConfiguration config;
     private final NamespacedKey leftClickKey;
     private final NamespacedKey rightClickKey;
+    private final NamespacedKey itemIdKey;
 
     public GuiConfig(DuelsPlugin plugin) {
         this.plugin = plugin;
         this.leftClickKey = new NamespacedKey(plugin, "gui_left_click");
         this.rightClickKey = new NamespacedKey(plugin, "gui_right_click");
+        this.itemIdKey = new NamespacedKey(plugin, "gui_item_id");
     }
 
     public NamespacedKey getLeftClickKey() { return leftClickKey; }
     public NamespacedKey getRightClickKey() { return rightClickKey; }
+    public NamespacedKey getItemIdKey() { return itemIdKey; }
 
     public void load() {
         file = new File(plugin.getDataFolder(), "guis.yml");
@@ -266,9 +269,21 @@ public class GuiConfig {
             if (name != null && !name.isEmpty()) meta.setDisplayName(name);
             List<String> lore = getLore(path, defaultLore);
             if (lore != null) meta.setLore(lore);
+            // PDC-Tag für Click-Handler: Items werden per ID erkannt,
+            // nicht per Display-Name — so kann der User den Namen frei ändern.
+            meta.getPersistentDataContainer().set(itemIdKey,
+                    PersistentDataType.STRING, path);
             stack.setItemMeta(meta);
         }
         return stack;
+    }
+
+    /** Prüft ob ein ItemStack die gegebene GUI-Item-ID hat. */
+    public boolean hasItemId(ItemStack item, String id) {
+        if (item == null || !item.hasItemMeta()) return false;
+        String val = item.getItemMeta().getPersistentDataContainer()
+                .get(itemIdKey, PersistentDataType.STRING);
+        return id.equals(val);
     }
 
     /**
