@@ -106,6 +106,12 @@ public class PartyFFAManager {
         return playerToSession.get(uuid);
     }
 
+    /** Liefert die Arena des FFA/Team-Matches des Spielers (oder null). */
+    public dev.duels.objects.Arena getArenaOf(UUID uuid) {
+        FFASession s = playerToSession.get(uuid);
+        return s != null ? s.reservedArena : null;
+    }
+
     public java.util.Collection<FFASession> getAllSessions() {
         return sessionsByLeader.values();
     }
@@ -170,6 +176,8 @@ public class PartyFFAManager {
         for (UUID u : session.alive) {
             Player p = Bukkit.getPlayer(u);
             if (p == null) continue;
+            if (plugin.getSpectateManager() != null) plugin.getSpectateManager().clearSpectating(p);
+            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) p.setGameMode(org.bukkit.GameMode.SURVIVAL);
             p.teleport(spawn);
             DuelManager.clearFullInventory(p);
             plugin.getKitManager().giveKit(p, kitName);
@@ -316,6 +324,8 @@ public class PartyFFAManager {
             if (p == null) continue;
             int t = session.getTeam(u);
             Location targetSpawn = (t == 1) ? spawn1 : spawn2;
+            if (plugin.getSpectateManager() != null) plugin.getSpectateManager().clearSpectating(p);
+            if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) p.setGameMode(org.bukkit.GameMode.SURVIVAL);
             p.teleport(targetSpawn);
             DuelManager.clearFullInventory(p);
             plugin.getKitManager().giveKit(p, kitName);

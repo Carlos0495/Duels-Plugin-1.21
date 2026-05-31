@@ -196,10 +196,29 @@ public class PlayerListener implements Listener {
             return;
         }
 
+        // Corner-Boundary für aktive Spieler (Duel/FFA/Team): wenn sie die
+        // Arena-Corners verlassen würden, werden sie ein kleines Stück zurück
+        // an die Kante geklemmt (verhindert Rausbuggen aus der Map).
+        java.util.UUID id = player.getUniqueId();
+        dev.duels.objects.Arena matchArena = null;
+        if (plugin.getDuelManager().isInDuel(id)) {
+            matchArena = plugin.getDuelManager().getArenaOf(id);
+        } else if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(id)) {
+            matchArena = plugin.getPartyFFAManager().getArenaOf(id);
+        }
+        if (matchArena != null) {
+            Location clamped = matchArena.clampInside(event.getTo());
+            if (clamped != null) {
+                event.setTo(clamped);
+                return;
+            }
+        }
+
         // Spectator-Boundary: wenn der Spectator außerhalb der Arena-Bounds
         // landet (Multiverse-Welt-Teleport, Eingabe oder Flug nach außen),
-        // ziehen wir ihn zurück zum aktuellen Target. Wir erlauben einen
-        // großzügigen 32-Block-Puffer um die Corner-Bounds.
+        // ziehen wir ihn zurück. Bevorzugt per Arena-Corners (kleines Stück
+        // zurück an die Kante), sonst Fallback auf Distanz zum Target.
         if (plugin.getSpectateManager() != null
                 && plugin.getSpectateManager().isSpectating(player.getUniqueId())) {
             dev.duels.managers.SpectateManager.SpectateInfo info =
@@ -213,9 +232,22 @@ public class PlayerListener implements Listener {
                         player.teleport(target.getLocation());
                         return;
                     }
-                    // Distance-Check: > 80 Blöcke vom Target → zurück. Das
-                    // verhindert "wegfliegen aus der Arena" ohne die Corners
-                    // zu benötigen.
+                    // Arena-Corners des Targets als Grenze nutzen.
+                    dev.duels.objects.Arena specArena = null;
+                    if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
+                        specArena = plugin.getDuelManager().getArenaOf(target.getUniqueId());
+                    } else if (plugin.getPartyFFAManager() != null
+                            && plugin.getPartyFFAManager().isParticipant(target.getUniqueId())) {
+                        specArena = plugin.getPartyFFAManager().getArenaOf(target.getUniqueId());
+                    }
+                    if (specArena != null) {
+                        Location clamped = specArena.clampInside(event.getTo());
+                        if (clamped != null) {
+                            event.setTo(clamped);
+                            return;
+                        }
+                    }
+                    // Fallback: Distance-Check > 80 Blöcke vom Target → zurück.
                     if (player.getLocation().distanceSquared(target.getLocation()) > 80 * 80) {
                         player.teleport(target.getLocation());
                     }

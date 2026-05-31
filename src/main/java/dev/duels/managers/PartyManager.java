@@ -353,12 +353,21 @@ public class PartyManager {
         return true;
     }
 
-    /** Prüft ob der Spieler in der erlaubten Party-Welt ist. Leerer Config-Wert = überall erlaubt. */
+    /** Prüft ob der Spieler in einer Welt ist in der er Partys beitreten darf. */
     public boolean isInAllowedWorld(Player player) {
-        String allowed = plugin.getConfigManager().getMainConfig()
+        // Neue config: worlds.join-party (Liste). Backward-compat: falls noch
+        // der alte Einzelwert party.allowed-world gesetzt ist, hat der Vorrang.
+        String legacy = plugin.getConfigManager().getMainConfig()
                 .getString("party.allowed-world", "");
-        if (allowed == null || allowed.isEmpty()) return true;
-        return player.getWorld().getName().equalsIgnoreCase(allowed);
+        if (legacy != null && !legacy.isEmpty()) {
+            return player.getWorld().getName().equalsIgnoreCase(legacy);
+        }
+        return plugin.getConfigManager().isWorldAllowed(player, "join-party");
+    }
+
+    /** Prüft ob in der Welt des Spielers die öffentliche Party-Nachricht angezeigt wird. */
+    public boolean canSeePublicMessage(Player player) {
+        return plugin.getConfigManager().isWorldAllowed(player, "public-party-message");
     }
 
     public boolean joinPublic(Player joiner, Player leader) {
@@ -431,11 +440,10 @@ public class PartyManager {
                 .hoverEvent(HoverEvent.showText(Component.text("/party join " + leader.getName())))
                 .clickEvent(ClickEvent.runCommand("/party join " + leader.getName()));
 
-        // Nur Spieler in der erlaubten Welt sehen die Nachricht
-        // (User-Wunsch: "in welcher Welt man die Nachricht der öffentlichen
-        // party sehen kann").
+        // Nur Spieler in den konfigurierten Welten sehen die Nachricht
+        // (config: worlds.public-party-message).
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (isInAllowedWorld(p)) {
+            if (canSeePublicMessage(p)) {
                 p.sendMessage(msg);
             }
         }

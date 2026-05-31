@@ -269,6 +269,13 @@ public class KitManager {
             player.sendMessage(plugin.getPrefix() + "§cKit not found: " + kitId);
             return;
         }
+        // Welt-Einschränkung: Kit-Vorschau nur in konfigurierten Welten.
+        if (plugin.getConfigManager() != null
+                && !plugin.getConfigManager().isWorldAllowed(player, "kit-preview")) {
+            player.sendMessage(plugin.getPrefix()
+                    + "§cYou can only preview kits in the lobby world.");
+            return;
+        }
 
         ItemStack[] saved = player.getInventory().getContents();
         ItemStack[] savedArmor = player.getInventory().getArmorContents();

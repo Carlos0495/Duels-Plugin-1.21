@@ -99,6 +99,55 @@ public class Arena {
                 loc.getZ() >= minZ && loc.getZ() <= maxZ;
     }
 
+    /**
+     * Prüft ob die Location (nur X/Z/Y, mit kleinem Rand) innerhalb der
+     * Corner-Bounds liegt. Liefert {@code false} wenn der Spieler die Arena
+     * verlassen würde.
+     */
+    public boolean isWithinBounds(Location loc) {
+        return isInArena(loc);
+    }
+
+    /**
+     * Klemmt eine Location zurück knapp INNERHALB der Corner-Bounds, falls
+     * sie außerhalb liegt. Es wird NICHT zum Zentrum teleportiert, sondern
+     * nur ein kleines Stück zurück an die Kante (User-Wunsch: "nur ein
+     * kleines Stück zurück, nicht komplett zurück"). Blickrichtung bleibt
+     * erhalten. Liefert {@code null} wenn keine Bounds gesetzt sind oder die
+     * Location bereits innerhalb liegt.
+     */
+    public Location clampInside(Location loc) {
+        if (corner1 == null || corner2 == null || loc == null) return null;
+        if (loc.getWorld() == null || corner1.getWorld() == null) return null;
+        if (!corner1.getWorld().getUID().equals(loc.getWorld().getUID())) return null;
+
+        double minX = Math.min(corner1.getX(), corner2.getX());
+        double maxX = Math.max(corner1.getX(), corner2.getX());
+        double minY = Math.min(corner1.getY(), corner2.getY());
+        double maxY = Math.max(corner1.getY(), corner2.getY());
+        double minZ = Math.min(corner1.getZ(), corner2.getZ());
+        double maxZ = Math.max(corner1.getZ(), corner2.getZ());
+
+        // Kleiner Rand damit der Spieler nicht exakt auf der Kante klebt.
+        final double m = 0.5;
+        double x = loc.getX();
+        double y = loc.getY();
+        double z = loc.getZ();
+
+        boolean outside = false;
+        if (x < minX + m) { x = minX + m; outside = true; }
+        else if (x > maxX - m) { x = maxX - m; outside = true; }
+        if (z < minZ + m) { z = minZ + m; outside = true; }
+        else if (z > maxZ - m) { z = maxZ - m; outside = true; }
+        if (y < minY) { y = minY; outside = true; }
+        else if (y > maxY) { y = maxY; outside = true; }
+
+        if (!outside) return null;
+
+        Location clamped = new Location(loc.getWorld(), x, y, z, loc.getYaw(), loc.getPitch());
+        return clamped;
+    }
+
     // Player-placed block tracking
     public void addPlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.add(v); }
     public void removePlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.remove(v); }

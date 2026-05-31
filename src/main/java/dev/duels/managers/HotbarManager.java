@@ -125,6 +125,17 @@ public class HotbarManager {
 
     /** Leert Slots 0–8 und setzt die Items des angegebenen Modus. */
     public void applyMode(Player player, String mode) {
+        if (player == null) return;
+        // Hotbar-/Party-Items NUR in der Lobby-Welt setzen. Sonst würde z.B.
+        // eine Party-Einladung/Annahme während eines Duel/FFA-Matches das
+        // aktive Kit mit den Party-Items überschreiben und die Runde
+        // zerstören (User-Bug: "man bekommt die party items erst wenn man in
+        // der lobby welt ist"). Wenn der Spieler zurück in die Lobby kommt,
+        // setzt setupPlayerInventory() die korrekte Hotbar (inkl. Party-Mode).
+        if (plugin.getPlayerManager() != null
+                && !plugin.getPlayerManager().isInLobbyWorld(player)) {
+            return;
+        }
         var inv = player.getInventory();
         for (int i = 0; i < 9; i++) inv.setItem(i, null);
 

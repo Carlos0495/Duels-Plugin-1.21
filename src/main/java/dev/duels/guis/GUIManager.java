@@ -442,6 +442,12 @@ public class GUIManager {
     }
 
     public void openEditLayoutsGUI(Player player) {
+        if (plugin.getConfigManager() != null
+                && !plugin.getConfigManager().isWorldAllowed(player, "kit-edit")) {
+            player.sendMessage(plugin.getPrefix()
+                    + "§cYou can only edit kits in the lobby world.");
+            return;
+        }
         var gc = plugin.getGuiConfig();
         Inventory inv = Bukkit.createInventory(null, 54, EDIT_LAYOUTS_GUI_TITLE);
 
@@ -521,6 +527,12 @@ public class GUIManager {
     }
 
     public void openEditLayoutGUI(Player player, String kitId) {
+        if (plugin.getConfigManager() != null
+                && !plugin.getConfigManager().isWorldAllowed(player, "kit-edit")) {
+            player.sendMessage(plugin.getPrefix()
+                    + "§cYou can only edit kits in the lobby world.");
+            return;
+        }
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
         String display = kit != null ? kit.getDisplayName() : kitId;
 
@@ -779,6 +791,7 @@ public class GUIManager {
         int deaths = plugin.getPlayerManager().getStat(player.getUniqueId(), "deaths");
         int wins = plugin.getPlayerManager().getStat(player.getUniqueId(), "wins");
         int losses = plugin.getPlayerManager().getStat(player.getUniqueId(), "losses");
+        int coins = plugin.getPlayerManager().getStat(player.getUniqueId(), "coins");
         double kd = deaths == 0 ? kills : (double) kills / deaths;
         String winrate = plugin.getPlayerManager().calculateWinrate(wins, losses);
 
@@ -788,7 +801,8 @@ public class GUIManager {
                 "§7KD Ratio: §6" + String.format("%.2f", kd),
                 "§7Wins: §a" + wins,
                 "§7Losses: §c" + losses,
-                "§7Win Rate: §b" + winrate
+                "§7Win Rate: §b" + winrate,
+                "§7Coins: §e" + coins
         ));
         head.setItemMeta(headMeta);
         inv.setItem(13, head);
@@ -925,6 +939,7 @@ public class GUIManager {
         int deaths = plugin.getPlayerManager().getStat(uuid, "deaths");
         int wins = plugin.getPlayerManager().getStat(uuid, "wins");
         int losses = plugin.getPlayerManager().getStat(uuid, "losses");
+        int coins = plugin.getPlayerManager().getStat(uuid, "coins");
         double kd = deaths == 0 ? kills : (double) kills / deaths;
         String winrate = plugin.getPlayerManager().calculateWinrate(wins, losses);
 
@@ -934,7 +949,8 @@ public class GUIManager {
                 "§7KD: §6" + String.format("%.2f", kd),
                 "§7Wins: §a" + wins,
                 "§7Losses: §c" + losses,
-                "§7Winrate: §b" + winrate
+                "§7Winrate: §b" + winrate,
+                "§7Coins: §e" + coins
         ));
 
         head.setItemMeta(meta);

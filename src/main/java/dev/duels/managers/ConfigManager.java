@@ -234,7 +234,43 @@ public class ConfigManager {
         if (!mainConfig.contains("status.team1-symbol"))   { mainConfig.set("status.team1-symbol", "&b[T1] "); dirty = true; }
         if (!mainConfig.contains("status.team2-symbol"))   { mainConfig.set("status.team2-symbol", "&c[T2] "); dirty = true; }
 
+        // Welt-Einschränkungen: In welchen Welten welche Aktion erlaubt ist.
+        // Jeweils eine LISTE von Welt-Namen. Leere Liste = überall erlaubt.
+        // Beispiel: ["world", "lobby"]
+        //   join-party            – wo man einer Party beitreten kann
+        //   public-party-message  – wo die öffentliche Party-Nachricht erscheint
+        //   queue                 – wo man der Queue beitreten / duellieren kann
+        //   kit-preview           – wo man Kits vorschauen kann
+        //   kit-edit              – wo man Kits (Layouts) bearbeiten kann
+        if (!mainConfig.contains("worlds.join-party"))
+            { mainConfig.set("worlds.join-party", java.util.Arrays.asList("world")); dirty = true; }
+        if (!mainConfig.contains("worlds.public-party-message"))
+            { mainConfig.set("worlds.public-party-message", java.util.Arrays.asList("world")); dirty = true; }
+        if (!mainConfig.contains("worlds.queue"))
+            { mainConfig.set("worlds.queue", java.util.Arrays.asList("world")); dirty = true; }
+        if (!mainConfig.contains("worlds.kit-preview"))
+            { mainConfig.set("worlds.kit-preview", java.util.Arrays.asList("world")); dirty = true; }
+        if (!mainConfig.contains("worlds.kit-edit"))
+            { mainConfig.set("worlds.kit-edit", java.util.Arrays.asList("world")); dirty = true; }
+
         if (dirty) plugin.saveConfig();
+    }
+
+    /**
+     * Prüft ob die angegebene Aktion in der aktuellen Welt des Spielers
+     * erlaubt ist. Liest {@code worlds.<action>} als Liste von Welt-Namen.
+     * Leere/fehlende Liste = überall erlaubt.
+     */
+    public boolean isWorldAllowed(org.bukkit.entity.Player player, String action) {
+        if (player == null) return false;
+        if (mainConfig == null) return true;
+        java.util.List<String> allowed = mainConfig.getStringList("worlds." + action);
+        if (allowed == null || allowed.isEmpty()) return true;
+        String world = player.getWorld() != null ? player.getWorld().getName() : "";
+        for (String w : allowed) {
+            if (w != null && w.equalsIgnoreCase(world)) return true;
+        }
+        return false;
     }
 
     /**

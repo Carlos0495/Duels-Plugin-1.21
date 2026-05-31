@@ -65,3 +65,29 @@ default-map: "§cᴅᴜᴇʟѕ ᴍᴀᴘ"  # Default map name
 
 # Spawn location
 spawn: null
+
+# Welt-Einschränkungen: In welchen Welten welche Aktion erlaubt ist.
+# Jeweils eine LISTE von Welt-Namen. Leere Liste ([]) = überall erlaubt.
+# Item-Ersetzungen (Lobby-Hotbar, Party-Items, Visibility-Item) passieren
+# IMMER nur in der Lobby-Welt (Welt in der /setspawn gesetzt wurde).
+worlds:
+  # Welten in denen man einer Party beitreten kann.
+  # Beispiel: ["world", "lobby"]
+  join-party:
+    - world
+  # Welten in denen die öffentliche Party-Nachricht angezeigt wird.
+  # Beispiel: ["world", "lobby"]
+  public-party-message:
+    - world
+  # Welten in denen man der Queue beitreten / duellieren kann.
+  # Beispiel: ["world"]
+  queue:
+    - world
+  # Welten in denen man Kits vorschauen kann (/previewkit).
+  # Beispiel: ["world"]
+  kit-preview:
+    - world
+  # Welten in denen man Kit-Layouts bearbeiten kann.
+  # Beispiel: ["world"]
+  kit-edit:
+    - world

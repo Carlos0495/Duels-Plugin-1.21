@@ -89,17 +89,18 @@ public class QueueManager {
      */
     public boolean isAllowedWorld(Player player) {
         if (player == null || player.getWorld() == null) return false;
+        // Backward-compat: alter Schlüssel queue.allowed-worlds hat Vorrang
+        // wenn gesetzt.
         java.util.List<String> allowed = plugin.getConfig().getStringList("queue.allowed-worlds");
-        if (allowed == null || allowed.isEmpty()) {
-            // Fallback: Lobby-Welt (Welt mit /setspawn).
-            return plugin.getPlayerManager() != null
-                    && plugin.getPlayerManager().isInLobbyWorld(player);
+        if (allowed != null && !allowed.isEmpty()) {
+            String world = player.getWorld().getName();
+            for (String w : allowed) {
+                if (w != null && w.equalsIgnoreCase(world)) return true;
+            }
+            return false;
         }
-        String world = player.getWorld().getName();
-        for (String w : allowed) {
-            if (w != null && w.equalsIgnoreCase(world)) return true;
-        }
-        return false;
+        // Neue config: worlds.queue (Liste). Leer = überall erlaubt.
+        return plugin.getConfigManager().isWorldAllowed(player, "queue");
     }
 
     public boolean leaveAllQueues(UUID uuid) {

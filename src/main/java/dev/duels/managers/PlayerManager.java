@@ -523,6 +523,13 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 
 
     public void updatePlayerVisibility(Player player) {
+        if (player == null) return;
+        // Visibility-Item NUR in der Lobby-Welt setzen. Sonst würde z.B. nach
+        // einem Duel-Ende (restoreAllVisibility loopt über ALLE Spieler) das
+        // Item in Slot 7 jedes Spielers in einer anderen Welt landen und das
+        // aktuelle Item überschreiben (User-Bug: "Visibility item ersetzt
+        // bei jedem anderen das aktuelle Item wenn jemand in die Lobby geht").
+        if (!isInLobbyWorld(player)) return;
         // Spieler im Duel/FFA: Visibility-Item NICHT ins Inventar setzen,
         // da es das aktive Kit ersetzen würde (User-Bug: "Visibility item
         // ersetzt aktuelles Item wenn jemand /spawn macht").

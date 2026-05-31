@@ -3,6 +3,7 @@ package dev.duels.managers;
 import dev.duels.DuelsPlugin;
 import dev.duels.objects.*;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
@@ -136,6 +137,14 @@ public class DuelManager {
         Player player2 = Bukkit.getPlayer(request.getTarget());
         if (player1 == null || player2 == null) return;
 
+        // Falls ein Teilnehmer gerade spectatet: Spectate sauber beenden,
+        // sonst blockiert onGameModeChange den Wechsel aus SPECTATOR und der
+        // Spieler wird nicht ins Duel teleportiert (User-Bug).
+        if (plugin.getSpectateManager() != null) {
+            plugin.getSpectateManager().clearSpectating(player1);
+            plugin.getSpectateManager().clearSpectating(player2);
+        }
+
         savedStates.putIfAbsent(player1.getUniqueId(), new PlayerState(player1));
         savedStates.putIfAbsent(player2.getUniqueId(), new PlayerState(player2));
 
@@ -200,6 +209,12 @@ public class DuelManager {
     }
 
     private void preparePlayersForDuel(Player p1, Player p2, DuelSession session, Arena arena) {
+        // GameMode auf SURVIVAL erzwingen (z.B. falls Spieler vorher
+        // spectatet hat). isInDuel ist hier bereits true → onGameModeChange
+        // überschreibt das Inventar nicht.
+        if (p1.getGameMode() != GameMode.SURVIVAL) p1.setGameMode(GameMode.SURVIVAL);
+        if (p2.getGameMode() != GameMode.SURVIVAL) p2.setGameMode(GameMode.SURVIVAL);
+
         // Inventar leeren
         forceRoundState(p1);
         forceRoundState(p2);
@@ -1034,6 +1049,13 @@ public class DuelManager {
 
     public DuelSession getDuelSession(UUID uuid) {
         return activeDuels.get(uuid);
+    }
+
+    /** Liefert die Arena in der sich der Spieler gerade duelliert (oder null). */
+    public Arena getArenaOf(UUID uuid) {
+        DuelSession s = activeDuels.get(uuid);
+        if (s == null) return null;
+        return plugin.getArenaManager().getArena(s.getArenaName());
     }
 
     public boolean isFrozen(UUID uuid) {

@@ -158,6 +158,22 @@ public class SpectateManager {
     }
 
     /**
+     * Entfernt einen Spieler aus dem Spectate-State OHNE ihn in die Lobby zu
+     * teleportieren. Wird verwendet, wenn ein Spectator direkt in ein Match
+     * (Duel/FFA/Team) gezogen wird — dort übernimmt der Match-Code Teleport,
+     * GameMode und Inventar. Verhindert dass der onGameModeChange-Listener
+     * den Wechsel aus SPECTATOR blockiert (User-Bug: Spectator wird nicht
+     * ins Duel teleportiert).
+     */
+    public void clearSpectating(Player spectator) {
+        if (spectator == null) return;
+        spectators.remove(spectator.getUniqueId());
+        if (spectator.getGameMode() == GameMode.SPECTATOR) {
+            spectator.setGameMode(GameMode.SURVIVAL);
+        }
+    }
+
+    /**
      * Wird vom Duel-/FFA-Manager beim Match-Ende aufgerufen, damit alle
      * Spectator dieses Matches automatisch in die Lobby kommen.
      */
