@@ -277,7 +277,7 @@ public class GUIManager {
 
         Set<String> kits = plugin.getKitManager().getKitNames();
         if (kits.isEmpty()) {
-            sender.sendMessage(plugin.getPrefix() + "§cNo kits available! Ask an admin to create one.");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.no-kits-admin", "&cNo kits available! Ask an admin to create one."));
             return;
         }
 
@@ -397,7 +397,7 @@ public class GUIManager {
 
     public void beginCustomBestOfPrompt(Player sender, UUID target, String kitId) {
         pendingCustomBestOf.put(sender.getUniqueId(), new PendingCustomBestOf(target, kitId));
-        sender.sendMessage(plugin.getPrefix() + "§eType a number §f1-100 §ein chat to set the round count, or §ccancel§e.");
+        sender.sendMessage(plugin.getConfigManager().prefixed("duel.round-count-prompt", "&eType a number &f1-100 &ein chat to set the round count, or &ccancel&e."));
     }
 
     public PendingCustomBestOf consumePendingCustomBestOf(UUID player) {
@@ -444,8 +444,7 @@ public class GUIManager {
     public void openEditLayoutsGUI(Player player) {
         if (plugin.getConfigManager() != null
                 && !plugin.getConfigManager().isWorldAllowed(player, "kit-edit")) {
-            player.sendMessage(plugin.getPrefix()
-                    + "§cYou can only edit kits in the lobby world.");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.kit-edit-lobby-only", "&cYou can only edit kits in the lobby world."));
             return;
         }
         var gc = plugin.getGuiConfig();
@@ -529,8 +528,7 @@ public class GUIManager {
     public void openEditLayoutGUI(Player player, String kitId) {
         if (plugin.getConfigManager() != null
                 && !plugin.getConfigManager().isWorldAllowed(player, "kit-edit")) {
-            player.sendMessage(plugin.getPrefix()
-                    + "§cYou can only edit kits in the lobby world.");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.kit-edit-lobby-only", "&cYou can only edit kits in the lobby world."));
             return;
         }
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
@@ -643,7 +641,7 @@ public class GUIManager {
      */
     public void openArmorTrimGUI(Player player) {
         if (!player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
-            player.sendMessage(plugin.getPrefix() + "§cYou don't have permission to edit armor trims.");
+            player.sendMessage(plugin.getConfigManager().prefixed("armortrim.no-permission", "&cYou don't have permission to edit armor trims."));
             return;
         }
         Inventory inv = Bukkit.createInventory(null, 54, ARMOR_TRIM_GUI_TITLE);
@@ -1021,7 +1019,7 @@ public class GUIManager {
     public void openPartyMenu(Player leader) {
         dev.duels.objects.Party party = plugin.getPartyManager().getPartyByLeader(leader.getUniqueId());
         if (party == null) {
-            leader.sendMessage(plugin.getPrefix() + "§cYou are not a party leader.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.not-leader", "&cYou are not a party leader."));
             return;
         }
 
@@ -1161,7 +1159,7 @@ public class GUIManager {
 
         Set<String> kits = plugin.getKitManager().getKitNames();
         if (kits.isEmpty()) {
-            leader.sendMessage(plugin.getPrefix() + "§cNo kits available!");
+            leader.sendMessage(plugin.getConfigManager().prefixed("general.no-kits", "&cNo kits available!"));
             return;
         }
 

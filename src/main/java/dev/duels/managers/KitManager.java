@@ -266,14 +266,14 @@ public class KitManager {
     public void giveKitPreview(Player player, String kitId) {
         Kit kit = kits.get(kitId);
         if (kit == null) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: " + kitId);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: {kit}", java.util.Map.of("kit", kitId)));
             return;
         }
         // Welt-Einschränkung: Kit-Vorschau nur in konfigurierten Welten.
         if (plugin.getConfigManager() != null
                 && !plugin.getConfigManager().isWorldAllowed(player, "kit-preview")) {
-            player.sendMessage(plugin.getPrefix()
-                    + "§cYou can only preview kits in the lobby world.");
+            player.sendMessage(plugin.getConfigManager().prefixed("preview.wrong-world",
+                    "&cYou can only preview kits in the lobby world."));
             return;
         }
 
@@ -283,8 +283,8 @@ public class KitManager {
 
         giveKit(player, kitId);
 
-        player.sendMessage(plugin.getPrefix() + "§aPreviewing kit: " + kit.getDisplayName());
-        player.sendMessage(plugin.getPrefix() + "§7Use §c/spawn §7to return to your normal inventory.");
+        player.sendMessage(plugin.getConfigManager().prefixed("preview.previewing", "&aPreviewing kit: {kit}", java.util.Map.of("kit", kit.getDisplayName())));
+        player.sendMessage(plugin.getConfigManager().prefixed("preview.return-hint", "&7Use &c/spawn &7to return to your normal inventory."));
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline() && !plugin.getDuelManager().isInDuel(player.getUniqueId())) {
@@ -292,7 +292,7 @@ public class KitManager {
                 player.getInventory().setArmorContents(savedArmor);
                 player.getInventory().setItemInOffHand(savedOffhand);
                 player.updateInventory();
-                player.sendMessage(plugin.getPrefix() + "§7Your inventory has been restored.");
+                player.sendMessage(plugin.getConfigManager().prefixed("preview.restored", "&7Your inventory has been restored."));
             }
         }, 20L * 60L * 5L);
     }

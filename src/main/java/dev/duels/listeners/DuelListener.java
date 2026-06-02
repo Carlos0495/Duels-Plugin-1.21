@@ -305,9 +305,86 @@ public class DuelListener implements Listener {
         }
     }
 
+    /**
+     * Anti-Glitch: verhindert dass Spieler sich per Ender-Pearl durch
+     * konfigurierte Blöcke (z.B. Wände/Barrier) glitchen. Läuft auf HIGH
+     * (cancelbar). Wenn der Pearl-Pfad durch einen geblockten Block geht,
+     * wird der Teleport abgebrochen und der Spieler ein Stück zurückgestoßen.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onAntiGlitchTeleport(PlayerTeleportEvent event) {
+        if (event.getCause() != PlayerTeleportEvent.TeleportCause.ENDER_PEARL) return;
+        if (!plugin.getConfigManager().isAntiGlitchEnabled()) return;
+
+        Player p = event.getPlayer();
+        UUID uuid = p.getUniqueId();
+        // Scope prüfen: DUELS = nur in Duel/FFA, GLOBAL = überall.
+        String scope = plugin.getConfigManager().getAntiGlitchScope();
+        boolean inMatch = plugin.getDuelManager().isInDuel(uuid)
+                || plugin.getPartyFFAManager().isParticipant(uuid);
+        if (!"GLOBAL".equalsIgnoreCase(scope) && !inMatch) return;
+
+        org.bukkit.Location from = event.getFrom();
+        org.bukkit.Location to = event.getTo();
+        if (from == null || to == null || from.getWorld() == null
+                || to.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
+            return;
+        }
+        if (pathCrossesBlockedBlock(from, to)) {
+            event.setCancelled(true);
+            // Spieler ein kleines Stück von 'to' weg, zurück Richtung 'from'
+            // stoßen (verhindert dass man direkt an der Wand klebt).
+            org.bukkit.util.Vector back = from.toVector().subtract(to.toVector());
+            if (back.lengthSquared() > 0.0001) {
+                back.normalize().multiply(0.4).setY(0.2);
+                p.setVelocity(back);
+            }
+        }
+    }
+
+    /**
+     * Sampled den geraden Pfad zwischen {@code from} und {@code to} und prüft
+     * ob ein dort liegender Block laut Anti-Glitch-Config geblockt ist.
+     */
+    private boolean pathCrossesBlockedBlock(org.bukkit.Location from, org.bukkit.Location to) {
+        org.bukkit.util.Vector start = from.toVector();
+        org.bukkit.util.Vector dir = to.toVector().subtract(start);
+        double length = dir.length();
+        if (length <= 0) {
+            return isBlockedAt(to);
+        }
+        dir.normalize();
+        org.bukkit.World world = from.getWorld();
+        double step = 0.25;
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (double d = 0; d <= length; d += step) {
+            org.bukkit.util.Vector point = start.clone().add(dir.clone().multiply(d));
+            int bx = point.getBlockX();
+            int by = point.getBlockY();
+            int bz = point.getBlockZ();
+            long key = (((long) bx & 0x3FFFFFF) << 38) | (((long) by & 0xFFF) << 26) | ((long) bz & 0x3FFFFFF);
+            if (!seen.add(key)) continue;
+            org.bukkit.Material feet = world.getBlockAt(bx, by, bz).getType();
+            org.bukkit.Material head = world.getBlockAt(bx, by + 1, bz).getType();
+            if (plugin.getConfigManager().isAntiGlitchBlocked(feet)
+                    || plugin.getConfigManager().isAntiGlitchBlocked(head)) {
+                return true;
+            }
+        }
+        return isBlockedAt(to);
+    }
+
+    private boolean isBlockedAt(org.bukkit.Location loc) {
+        if (loc == null || loc.getWorld() == null) return false;
+        org.bukkit.Material feet = loc.getBlock().getType();
+        org.bukkit.Material head = loc.getBlock().getRelative(0, 1, 0).getType();
+        return plugin.getConfigManager().isAntiGlitchBlocked(feet)
+                || plugin.getConfigManager().isAntiGlitchBlocked(head);
+    }
+
     @EventHandler
     public void onBedEnter(PlayerBedEnterEvent event) {
         event.setCancelled(true);
-        event.getPlayer().sendMessage(plugin.getPrefix() + "§cBeds are disabled! Spawn is fixed.");
+        event.getPlayer().sendMessage(plugin.getConfigManager().prefixed("general.beds-disabled", "&cBeds are disabled! Spawn is fixed."));
     }
 }

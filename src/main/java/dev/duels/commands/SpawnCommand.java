@@ -16,8 +16,9 @@ public class SpawnCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        dev.duels.managers.ConfigManager cm = plugin.getConfigManager();
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "Only players can use this command!");
+            sender.sendMessage(cm.prefixed("general.players-only", "Only players can use this command!"));
             return true;
         }
 
@@ -39,8 +40,8 @@ public class SpawnCommand implements CommandExecutor {
             if (ffaSess != null && ffaSess.alive.contains(uuid)) {
                 // Spieler ist noch alive → eliminate und in Spectator setzen
                 plugin.getPartyFFAManager().voluntaryLeave(player);
-                player.sendMessage(plugin.getPrefix()
-                        + "§7You left the match. Use §e/spawn §7again to return to spawn.");
+                player.sendMessage(cm.prefixed("spawn.left-match",
+                        "&7You left the match. Use &e/spawn &7again to return to spawn."));
                 return true;
             }
             // Spieler ist bereits tot/spectator → Spectator stoppen

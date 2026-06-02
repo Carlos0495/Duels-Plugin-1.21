@@ -28,11 +28,11 @@ public class KitEditCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
         if (args.length < 2 || !args[0].equalsIgnoreCase("edit")) {
-            player.sendMessage(plugin.getPrefix() + "§eUsage: §7/dkit edit <kitName>");
+            player.sendMessage(plugin.getConfigManager().prefixed("kitedit.usage", "&eUsage: &7/dkit edit <kitName>"));
             return true;
         }
 
@@ -45,7 +45,7 @@ public class KitEditCommand implements CommandExecutor, TabCompleter {
         String kitId = sb.toString().trim().replace("\"", "");
 
         if (!plugin.getKitManager().kitExists(kitId)) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: §f" + kitId);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: &f{kit}", java.util.Map.of("kit", kitId)));
             return true;
         }
 

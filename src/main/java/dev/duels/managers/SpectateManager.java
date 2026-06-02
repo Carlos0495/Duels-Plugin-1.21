@@ -66,8 +66,7 @@ public class SpectateManager {
             existing.targetId = target.getUniqueId();
             existing.matchKey = computeMatchKey(target);
             spectator.teleport(target.getLocation());
-            spectator.sendMessage(plugin.getPrefix()
-                    + "§7Now spectating §e" + target.getName() + "§7.");
+            spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.now-spectating", "&7Now spectating &e{player}&7.", java.util.Map.of("player", target.getName())));
             return null;
         }
 
@@ -100,8 +99,9 @@ public class SpectateManager {
                 }
             }, delay);
         }
-        spectator.sendMessage(plugin.getPrefix() + "§7Spectating §e"
-                + target.getName() + "§7. Use §e/spectate stop §7or §e/spawn §7to leave.");
+        spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.start",
+                "&7Spectating &e{player}&7. Use &e/spectate stop &7or &e/spawn &7to leave.",
+                java.util.Map.of("player", target.getName())));
         return null;
     }
 
@@ -127,7 +127,7 @@ public class SpectateManager {
         if (anchor != null && anchor.isOnline()) {
             dead.teleport(anchor.getLocation());
         }
-        dead.sendMessage(plugin.getPrefix() + "§7You are now spectating the FFA. Last alive wins.");
+        dead.sendMessage(plugin.getConfigManager().prefixed("spectate.ffa-auto", "&7You are now spectating the FFA. Last alive wins."));
     }
 
     /** Beendet den Spectate-Modus: Inv/GameMode zurücksetzen, ab in die Lobby. */
@@ -149,7 +149,7 @@ public class SpectateManager {
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (sp.isOnline()) plugin.getPlayerManager().setupPlayerInventory(sp);
         }, 2L);
-        spectator.sendMessage(plugin.getPrefix() + "§7You stopped spectating.");
+        spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.stop", "&7You stopped spectating."));
     }
 
     /** Wird beim Quit aufgerufen, damit wir keinen toten State liegen lassen. */

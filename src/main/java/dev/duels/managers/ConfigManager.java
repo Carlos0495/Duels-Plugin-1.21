@@ -16,10 +16,12 @@ public class ConfigManager {
     private FileConfiguration playersConfig;
     private FileConfiguration kitsConfig;
     private FileConfiguration arenaConfig;
+    private FileConfiguration messagesConfig;
 
     private File playersFile;
     private File kitsFile;
     private File arenaFile;
+    private File messagesFile;
 
     public ConfigManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -55,8 +57,48 @@ public class ConfigManager {
         }
         arenaConfig = YamlConfiguration.loadConfiguration(arenaFile);
 
+        // Messages config — eigene Datei, alle Nachrichten editierbar.
+        loadMessagesConfig();
+
         // Default Werte setzen
         setDefaults();
+    }
+
+    /**
+     * Lädt {@code messages.yml}. Erstellt die Datei aus der gebündelten
+     * Ressource falls nicht vorhanden und merged fehlende Keys aus der
+     * Ressource nach (so bekommen bestehende Server neue Nachrichten-Keys
+     * automatisch, ohne ihre Datei löschen zu müssen).
+     */
+    public void loadMessagesConfig() {
+        messagesFile = new File(plugin.getDataFolder(), "messages.yml");
+        if (!messagesFile.exists()) {
+            createDefaultFile(messagesFile, "messages.yml");
+        }
+        messagesConfig = YamlConfiguration.loadConfiguration(messagesFile);
+
+        // Fehlende Keys aus der gebündelten Ressource nachmergen.
+        try (InputStream in = plugin.getResource("messages.yml")) {
+            if (in != null) {
+                FileConfiguration bundled = YamlConfiguration.loadConfiguration(
+                        new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+                boolean changed = false;
+                for (String key : bundled.getKeys(true)) {
+                    if (bundled.isConfigurationSection(key)) continue;
+                    if (!messagesConfig.contains(key)) {
+                        messagesConfig.set(key, bundled.get(key));
+                        changed = true;
+                    }
+                }
+                if (changed) messagesConfig.save(messagesFile);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Could not merge messages.yml defaults: " + e.getMessage());
+        }
+    }
+
+    public void reloadMessagesConfigFromDisk() {
+        loadMessagesConfig();
     }
     public void reloadPlayersConfig() {
         if (playersFile == null) {
@@ -253,7 +295,101 @@ public class ConfigManager {
         if (!mainConfig.contains("worlds.kit-edit"))
             { mainConfig.set("worlds.kit-edit", java.util.Arrays.asList("world")); dirty = true; }
 
+        // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
+        // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
+        // (auch nicht Barrier) fliegen. Leute im normalen, offiziellen
+        // SPECTATOR-GameMode (die kein Match zuschauen) sind NICHT betroffen.
+        if (!mainConfig.contains("spectator.block-collision"))
+            { mainConfig.set("spectator.block-collision", true); dirty = true; }
+
+        // Anti-Glitch: verhindert dass Spieler sich durch konfigurierte Blöcke
+        // glitchen (z.B. mit Ender-Pearls durch Wände). Der Pearl-Teleport wird
+        // dann abgebrochen und der Spieler bleibt an seiner Position.
+        //   enabled : an/aus
+        //   scope   : DUELS  = nur in Duel/FFA/Team-Matches
+        //             GLOBAL = überall
+        //   mode    : BLACKLIST = nur die unter 'blocks' gelisteten Blöcke blocken
+        //             WHITELIST = nur durch die unter 'blocks' gelisteten Blöcke
+        //                         darf man durch, ALLE anderen werden geblockt
+        //             ALL       = durch ALLE Blöcke wird geblockt
+        //             NONE      = nichts wird geblockt (aus)
+        //   blocks  : Liste von Material-Namen (für BLACKLIST/WHITELIST)
+        if (!mainConfig.contains("anti-glitch.enabled"))
+            { mainConfig.set("anti-glitch.enabled", true); dirty = true; }
+        if (!mainConfig.contains("anti-glitch.scope"))
+            { mainConfig.set("anti-glitch.scope", "DUELS"); dirty = true; }
+        if (!mainConfig.contains("anti-glitch.mode"))
+            { mainConfig.set("anti-glitch.mode", "BLACKLIST"); dirty = true; }
+        if (!mainConfig.contains("anti-glitch.blocks"))
+            { mainConfig.set("anti-glitch.blocks",
+                    java.util.Arrays.asList("BARRIER", "BEDROCK")); dirty = true; }
+
+        // Ranglisten-Placeholder (%duels_<kategorie>_<platz>%).
+        //   format : Format einer kompletten Zeile. Platzhalter:
+        //            {rank} {name} {value} {category}
+        //   empty  : Text wenn kein Spieler auf dem Platz existiert
+        //   <kategorie>-name : Anzeigename der Kategorie für {category}
+        if (!mainConfig.contains("leaderboard.format"))
+            { mainConfig.set("leaderboard.format", "&e#{rank} &f{name} &8- &a{value}"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.empty"))
+            { mainConfig.set("leaderboard.empty", "&7---"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.kills"))   { mainConfig.set("leaderboard.names.kills", "Kills"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.deaths"))  { mainConfig.set("leaderboard.names.deaths", "Deaths"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.wins"))    { mainConfig.set("leaderboard.names.wins", "Wins"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.losses"))  { mainConfig.set("leaderboard.names.losses", "Losses"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.coins"))   { mainConfig.set("leaderboard.names.coins", "Coins"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.kd"))      { mainConfig.set("leaderboard.names.kd", "K/D"); dirty = true; }
+        if (!mainConfig.contains("leaderboard.names.winrate")) { mainConfig.set("leaderboard.names.winrate", "Win Rate"); dirty = true; }
+
         if (dirty) plugin.saveConfig();
+    }
+
+    /** @return true wenn Match-Spectator-Block-Kollision aktiv ist. */
+    public boolean isSpectatorBlockCollision() {
+        return mainConfig == null || mainConfig.getBoolean("spectator.block-collision", true);
+    }
+
+    public boolean isAntiGlitchEnabled() {
+        if (mainConfig == null) return false;
+        if (!mainConfig.getBoolean("anti-glitch.enabled", true)) return false;
+        String mode = mainConfig.getString("anti-glitch.mode", "BLACKLIST");
+        return !"NONE".equalsIgnoreCase(mode);
+    }
+
+    /** @return "GLOBAL" oder "DUELS". */
+    public String getAntiGlitchScope() {
+        if (mainConfig == null) return "DUELS";
+        return mainConfig.getString("anti-glitch.scope", "DUELS");
+    }
+
+    /**
+     * Prüft ob man durch das angegebene Material laut Anti-Glitch-Config
+     * NICHT hindurch darf (geblockt). Berücksichtigt mode + blocks.
+     */
+    public boolean isAntiGlitchBlocked(org.bukkit.Material material) {
+        if (material == null || mainConfig == null) return false;
+        String mode = mainConfig.getString("anti-glitch.mode", "BLACKLIST");
+        if (mode == null) mode = "BLACKLIST";
+        switch (mode.toUpperCase()) {
+            case "NONE": return false;
+            case "ALL":  return true;
+            case "WHITELIST": {
+                // Nur durch gelistete Blöcke erlaubt → alle anderen geblockt.
+                java.util.List<String> list = mainConfig.getStringList("anti-glitch.blocks");
+                for (String s : list) {
+                    if (s != null && s.equalsIgnoreCase(material.name())) return false;
+                }
+                return true;
+            }
+            case "BLACKLIST":
+            default: {
+                java.util.List<String> list = mainConfig.getStringList("anti-glitch.blocks");
+                for (String s : list) {
+                    if (s != null && s.equalsIgnoreCase(material.name())) return true;
+                }
+                return false;
+            }
+        }
     }
 
     /**
@@ -274,12 +410,16 @@ public class ConfigManager {
     }
 
     /**
-     * Liest eine konfigurierbare Message aus der config.yml. Unterstützt
-     * &amp;-Farbcodes (werden zu §) und einfache Platzhalter
-     * ({@code {key}}) aus der übergebenen Map.
+     * Liest eine konfigurierbare Message. Reihenfolge: zuerst
+     * {@code messages.yml} (Key = path), dann {@code config.yml}
+     * ({@code messages.<path>}) für Abwärtskompatibilität, sonst der
+     * übergebene Fallback. Unterstützt &amp;-Farbcodes und {@code {key}}
+     * Platzhalter aus der Map.
      */
     public String getMessage(String path, String fallback, java.util.Map<String, String> placeholders) {
-        String raw = mainConfig.getString("messages." + path, fallback);
+        String raw = null;
+        if (messagesConfig != null) raw = messagesConfig.getString(path);
+        if (raw == null && mainConfig != null) raw = mainConfig.getString("messages." + path);
         if (raw == null) raw = fallback != null ? fallback : "";
         if (placeholders != null) {
             for (java.util.Map.Entry<String, String> e : placeholders.entrySet()) {
@@ -292,6 +432,17 @@ public class ConfigManager {
     public String getMessage(String path, String fallback) {
         return getMessage(path, fallback, null);
     }
+
+    /** Wie {@link #getMessage}, aber mit vorangestelltem Plugin-Prefix. */
+    public String prefixed(String path, String fallback, java.util.Map<String, String> placeholders) {
+        return plugin.getPrefix() + getMessage(path, fallback, placeholders);
+    }
+
+    public String prefixed(String path, String fallback) {
+        return prefixed(path, fallback, null);
+    }
+
+    public FileConfiguration getMessagesConfig() { return messagesConfig; }
 
     /**
      * Wird beim Plugin-Disable aufgerufen. Wir speichern hier ausschließlich

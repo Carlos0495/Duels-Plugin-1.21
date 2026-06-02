@@ -22,18 +22,18 @@ public class SpectateCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
         if (args.length == 0) {
-            player.sendMessage(plugin.getPrefix() + "§eUsage: §7/spectate <player> §7or §7/spectate stop");
+            player.sendMessage(plugin.getConfigManager().prefixed("spectate.usage", "&eUsage: &7/spectate <player> &7or &7/spectate stop"));
             return true;
         }
 
         if (args[0].equalsIgnoreCase("stop") || args[0].equalsIgnoreCase("leave") || args[0].equalsIgnoreCase("quit")) {
             if (!plugin.getSpectateManager().isSpectating(player.getUniqueId())) {
-                player.sendMessage(plugin.getPrefix() + "§cYou are not spectating anyone.");
+                player.sendMessage(plugin.getConfigManager().prefixed("spectate.not-spectating", "&cYou are not spectating anyone."));
                 return true;
             }
             plugin.getSpectateManager().stop(player);
@@ -42,13 +42,13 @@ public class SpectateCommand implements CommandExecutor, TabCompleter {
 
         Player target = Bukkit.getPlayerExact(args[0]);
         if (target == null || !target.isOnline()) {
-            player.sendMessage(plugin.getPrefix() + "§cPlayer not found: §f" + args[0]);
+            player.sendMessage(plugin.getConfigManager().prefixed("general.player-not-found", "&cPlayer not found: &f{player}", java.util.Map.of("player", args[0])));
             return true;
         }
 
         String error = plugin.getSpectateManager().spectate(player, target);
         if (error != null) {
-            player.sendMessage(plugin.getPrefix() + "§c" + error);
+            player.sendMessage(plugin.getConfigManager().prefixed("spectate.error", "&c{error}", java.util.Map.of("error", error)));
         }
         return true;
     }

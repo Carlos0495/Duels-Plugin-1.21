@@ -21,12 +21,12 @@ public class SetStatsCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("duels.admin")) {
-            sender.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.no-permission", "&cYou don't have permission!"));
             return true;
         }
 
         if (args.length != 2) {
-            sender.sendMessage(plugin.getPrefix() + "§7Usage: §c/" + label + " <player|all> <amount>");
+            sender.sendMessage(plugin.getConfigManager().prefixed("admin.stats-usage", "&7Usage: &c/{label} <player|all> <amount>", java.util.Map.of("label", label)));
             return true;
         }
 
@@ -36,7 +36,7 @@ public class SetStatsCommand implements CommandExecutor {
         try {
             amount = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
-            sender.sendMessage(plugin.getPrefix() + "§cInvalid amount!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("admin.invalid-amount", "&cInvalid amount!"));
             return true;
         }
 
@@ -47,7 +47,7 @@ public class SetStatsCommand implements CommandExecutor {
         if (targetArg.equalsIgnoreCase("all")) {
             List<UUID> targets = collectAllKnownPlayerUUIDs();
             if (targets.isEmpty()) {
-                sender.sendMessage(plugin.getPrefix() + "§cNo players found in players.yml!");
+                sender.sendMessage(plugin.getConfigManager().prefixed("admin.no-players-file", "&cNo players found in players.yml!"));
                 return true;
             }
             int n = 0;
@@ -59,8 +59,9 @@ public class SetStatsCommand implements CommandExecutor {
                     n++;
                 } catch (Throwable ignored) {}
             }
-            sender.sendMessage(plugin.getPrefix() + "§a" + capitalize(statType) + " §7set to §e"
-                    + amount + " §7for §e" + n + " §7player(s) §8(online + offline).");
+            sender.sendMessage(plugin.getConfigManager().prefixed("admin.stats-set-all",
+                    "&a{stat} &7set to &e{amount} &7for &e{count} &7player(s) &8(online + offline).",
+                    java.util.Map.of("stat", capitalize(statType), "amount", String.valueOf(amount), "count", String.valueOf(n))));
             return true;
         }
 
@@ -75,14 +76,15 @@ public class SetStatsCommand implements CommandExecutor {
             } catch (Throwable ignored) {}
         }
         if (targetUUID == null) {
-            sender.sendMessage(plugin.getPrefix() + "§cPlayer not found!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("stats.player-not-found", "&cPlayer not found!"));
             return true;
         }
 
         plugin.getPlayerManager().setStat(targetUUID, statType, amount);
 
-        sender.sendMessage(plugin.getPrefix() + "§a" + capitalize(statType)
-                + " §7of §e" + targetArg + " §7set to §e" + amount + "§7.");
+        sender.sendMessage(plugin.getConfigManager().prefixed("admin.stats-set",
+                "&a{stat} &7of &e{player} &7set to &e{amount}&7.",
+                java.util.Map.of("stat", capitalize(statType), "player", targetArg, "amount", String.valueOf(amount))));
 
         org.bukkit.entity.Player targetPlayer = Bukkit.getPlayer(targetUUID);
         if (targetPlayer != null) {

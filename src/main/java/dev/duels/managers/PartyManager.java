@@ -150,9 +150,9 @@ public class PartyManager {
             Player p = Bukkit.getPlayer(m);
             if (p != null && p.isOnline()) {
                 if (m.equals(party.getLeader())) {
-                    p.sendMessage(plugin.getPrefix() + "§cYou disbanded your party.");
+                    p.sendMessage(plugin.getConfigManager().prefixed("party.disbanded-self", "&cYou disbanded your party."));
                 } else {
-                    p.sendMessage(plugin.getPrefix() + "§cThe party was disbanded.");
+                    p.sendMessage(plugin.getConfigManager().prefixed("party.disbanded", "&cThe party was disbanded."));
                 }
                 // Switch back to lobby hotbar
                 plugin.getHotbarManager().applyMode(p, HotbarManager.MODE_LOBBY);
@@ -181,10 +181,10 @@ public class PartyManager {
         }
 
         party.removeMember(uuid);
-        player.sendMessage(plugin.getPrefix() + "§7You left the party.");
+        player.sendMessage(plugin.getConfigManager().prefixed("party.left", "&7You left the party."));
         plugin.getHotbarManager().applyMode(player, HotbarManager.MODE_LOBBY);
 
-        broadcast(party, "§7" + player.getName() + " §eleft the party.");
+        broadcast(party, plugin.getConfigManager().getMessage("party.broadcast-left", "&7{player} &eleft the party.", java.util.Map.of("player", player.getName())));
         return true;
     }
 
@@ -199,11 +199,11 @@ public class PartyManager {
 
         Player t = Bukkit.getPlayer(target);
         if (t != null && t.isOnline()) {
-            t.sendMessage(plugin.getPrefix() + "§cYou were kicked from the party.");
+            t.sendMessage(plugin.getConfigManager().prefixed("party.kicked", "&cYou were kicked from the party."));
             plugin.getHotbarManager().applyMode(t, HotbarManager.MODE_LOBBY);
         }
 
-        broadcast(party, "§7" + (t != null ? t.getName() : target.toString()) + " §cwas kicked.");
+        broadcast(party, plugin.getConfigManager().getMessage("party.broadcast-kicked", "&7{player} &cwas kicked.", java.util.Map.of("player", (t != null ? t.getName() : target.toString()))));
         return true;
     }
 
@@ -213,16 +213,16 @@ public class PartyManager {
             party = createParty(leader);
             // Give leader hotbar
             plugin.getHotbarManager().applyMode(leader, HotbarManager.MODE_PARTY_LEADER);
-            leader.sendMessage(plugin.getPrefix() + "§dParty §7opened. Use §e/party invite <player>§7 or the hotbar items.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.opened", "&dParty &7opened. Use &e/party invite <player>&7 or the hotbar items."));
         }
 
         if (party.getMembers().contains(target.getUniqueId())) {
-            leader.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " is already in your party.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.already-in-your-party", "&c{player} is already in your party.", java.util.Map.of("player", target.getName())));
             return false;
         }
 
         if (party.size() >= getMaxSize(leader)) {
-            leader.sendMessage(plugin.getPrefix() + "§cYour party is full (max " + getMaxSize(leader) + ").");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.full-leader", "&cYour party is full (max {max}).", java.util.Map.of("max", String.valueOf(getMaxSize(leader)))));
             return false;
         }
 
@@ -236,10 +236,10 @@ public class PartyManager {
                 .hoverEvent(HoverEvent.showText(Component.text("/party deny " + leader.getName())))
                 .clickEvent(ClickEvent.runCommand("/party deny " + leader.getName()));
 
-        target.sendMessage(plugin.getPrefix() + "§d" + leader.getName() + " §7invited you to their party.");
+        target.sendMessage(plugin.getConfigManager().prefixed("party.invited-target", "&d{player} &7invited you to their party.", java.util.Map.of("player", leader.getName())));
         target.sendMessage(Component.text(plugin.getPrefix()).append(accept).append(Component.text("  ")).append(deny));
 
-        leader.sendMessage(plugin.getPrefix() + "§7Invite sent to §f" + target.getName() + "§7.");
+        leader.sendMessage(plugin.getConfigManager().prefixed("party.invite-sent", "&7Invite sent to &f{player}&7.", java.util.Map.of("player", target.getName())));
 
         int timeoutSec = plugin.getConfigManager().getMainConfig().getInt("party.invite-timeout-seconds", 60);
         UUID targetId = target.getUniqueId();
@@ -259,13 +259,13 @@ public class PartyManager {
         Player leader = Bukkit.getPlayer(leaderId);
         Player target = Bukkit.getPlayer(targetId);
         if (leader != null && leader.isOnline() && target != null) {
-            leader.sendMessage(plugin.getPrefix() + "§7Invite to §f" + target.getName() + " §cexpired.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.invite-expired", "&7Invite to &f{player} &cexpired.", java.util.Map.of("player", target.getName())));
         }
     }
 
     public boolean acceptInvite(Player target, String leaderName) {
         if (!isInAllowedWorld(target)) {
-            target.sendMessage(plugin.getPrefix() + "§cYou can only join parties in the lobby world.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.only-lobby-join", "&cYou can only join parties in the lobby world."));
             return false;
         }
         Player leader = (leaderName == null || leaderName.isEmpty()) ? null : Bukkit.getPlayer(leaderName);
@@ -273,7 +273,7 @@ public class PartyManager {
 
         Set<UUID> invitingLeaders = pendingInvites.get(target.getUniqueId());
         if (invitingLeaders == null || invitingLeaders.isEmpty()) {
-            target.sendMessage(plugin.getPrefix() + "§cYou have no pending invites.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.no-pending-invites", "&cYou have no pending invites."));
             return false;
         }
 
@@ -282,32 +282,32 @@ public class PartyManager {
             if (invitingLeaders.size() == 1) {
                 leaderId = invitingLeaders.iterator().next();
             } else {
-                target.sendMessage(plugin.getPrefix() + "§cSpecify whose invite: /party accept <player>");
+                target.sendMessage(plugin.getConfigManager().prefixed("party.specify-invite", "&cSpecify whose invite: /party accept <player>"));
                 return false;
             }
         }
 
         if (!invitingLeaders.contains(leaderId)) {
-            target.sendMessage(plugin.getPrefix() + "§cNo invite from that player.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.no-invite-from", "&cNo invite from that player."));
             return false;
         }
 
         Party party = parties.get(leaderId);
         if (party == null) {
             invitingLeaders.remove(leaderId);
-            target.sendMessage(plugin.getPrefix() + "§cThat party no longer exists.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.no-longer-exists", "&cThat party no longer exists."));
             return false;
         }
 
         // Check if player is already in another party
         if (isInParty(target.getUniqueId())) {
-            target.sendMessage(plugin.getPrefix() + "§cYou are already in a party. Leave it first.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.already-in-leave-first", "&cYou are already in a party. Leave it first."));
             return false;
         }
 
         Player leaderPlayer = Bukkit.getPlayer(leaderId);
         if (party.size() >= (leaderPlayer != null ? getMaxSize(leaderPlayer) : 15)) {
-            target.sendMessage(plugin.getPrefix() + "§cThat party is full.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.full", "&cThat party is full."));
             return false;
         }
 
@@ -321,7 +321,7 @@ public class PartyManager {
         // Switch hotbar
         plugin.getHotbarManager().applyMode(target, HotbarManager.MODE_PARTY_MEMBER);
 
-        broadcast(party, "§a" + target.getName() + " §7joined the party!");
+        broadcast(party, plugin.getConfigManager().getMessage("party.broadcast-joined", "&a{player} &7joined the party!", java.util.Map.of("player", target.getName())));
         return true;
     }
 
@@ -331,7 +331,7 @@ public class PartyManager {
 
         Set<UUID> invitingLeaders = pendingInvites.get(target.getUniqueId());
         if (invitingLeaders == null || invitingLeaders.isEmpty()) {
-            target.sendMessage(plugin.getPrefix() + "§cNo pending invites.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.no-pending-invites-short", "&cNo pending invites."));
             return false;
         }
 
@@ -339,7 +339,7 @@ public class PartyManager {
             leaderId = invitingLeaders.iterator().next();
         }
         if (leaderId == null || !invitingLeaders.contains(leaderId)) {
-            target.sendMessage(plugin.getPrefix() + "§cNo invite from that player.");
+            target.sendMessage(plugin.getConfigManager().prefixed("party.no-invite-from", "&cNo invite from that player."));
             return false;
         }
 
@@ -347,9 +347,9 @@ public class PartyManager {
         if (party != null) party.removeInvite(target.getUniqueId());
         invitingLeaders.remove(leaderId);
 
-        target.sendMessage(plugin.getPrefix() + "§7Invite denied.");
+        target.sendMessage(plugin.getConfigManager().prefixed("party.invite-denied", "&7Invite denied."));
         Player lp = Bukkit.getPlayer(leaderId);
-        if (lp != null) lp.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " denied your invite.");
+        if (lp != null) lp.sendMessage(plugin.getConfigManager().prefixed("party.invite-denied-leader", "&c{player} denied your invite.", java.util.Map.of("player", target.getName())));
         return true;
     }
 
@@ -373,19 +373,19 @@ public class PartyManager {
     public boolean joinPublic(Player joiner, Player leader) {
         Party party = parties.get(leader.getUniqueId());
         if (party == null || !party.isPublic()) {
-            joiner.sendMessage(plugin.getPrefix() + "§cThat party is not public.");
+            joiner.sendMessage(plugin.getConfigManager().prefixed("party.not-public", "&cThat party is not public."));
             return false;
         }
         if (!isInAllowedWorld(joiner)) {
-            joiner.sendMessage(plugin.getPrefix() + "§cYou can only join parties in the lobby world.");
+            joiner.sendMessage(plugin.getConfigManager().prefixed("party.only-lobby-join", "&cYou can only join parties in the lobby world."));
             return false;
         }
         if (isInParty(joiner.getUniqueId())) {
-            joiner.sendMessage(plugin.getPrefix() + "§cYou are already in a party.");
+            joiner.sendMessage(plugin.getConfigManager().prefixed("party.already-in", "&cYou are already in a party."));
             return false;
         }
         if (party.size() >= getMaxSize(leader)) {
-            joiner.sendMessage(plugin.getPrefix() + "§cThat party is full.");
+            joiner.sendMessage(plugin.getConfigManager().prefixed("party.full", "&cThat party is full."));
             return false;
         }
 
@@ -394,18 +394,18 @@ public class PartyManager {
         party.addMember(joiner.getUniqueId());
         memberToLeader.put(joiner.getUniqueId(), leader.getUniqueId());
         plugin.getHotbarManager().applyMode(joiner, HotbarManager.MODE_PARTY_MEMBER);
-        broadcast(party, "§a" + joiner.getName() + " §7joined the public party!");
+        broadcast(party, plugin.getConfigManager().getMessage("party.broadcast-joined-public", "&a{player} &7joined the public party!", java.util.Map.of("player", joiner.getName())));
         return true;
     }
 
     public boolean togglePublic(Player leader) {
         if (!leader.hasPermission(PERM_PUBLIC)) {
-            leader.sendMessage(plugin.getPrefix() + "§cYou don't have permission for public parties.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.no-public-permission", "&cYou don't have permission for public parties."));
             return false;
         }
         Party party = parties.get(leader.getUniqueId());
         if (party == null) {
-            leader.sendMessage(plugin.getPrefix() + "§cYou don't have a party. Use /party create first.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.no-party-create-first", "&cYou don't have a party. Use /party create first."));
             return false;
         }
         // Cooldown
@@ -415,7 +415,7 @@ public class PartyManager {
         Long last = publicToggleCooldown.get(leader.getUniqueId());
         if (last != null && (now - last) < cooldownSec * 1000L) {
             int remaining = (int) ((cooldownSec * 1000L - (now - last)) / 1000) + 1;
-            leader.sendMessage(plugin.getPrefix() + "§cPlease wait §f" + remaining + "s §cbefore toggling again.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.public-cooldown", "&cPlease wait &f{seconds}s &cbefore toggling again.", java.util.Map.of("seconds", String.valueOf(remaining))));
             return false;
         }
         publicToggleCooldown.put(leader.getUniqueId(), now);
@@ -423,9 +423,9 @@ public class PartyManager {
         party.setPublic(!party.isPublic());
         if (party.isPublic()) {
             announceInChat(party, leader);
-            leader.sendMessage(plugin.getPrefix() + "§7Party is now §apublic§7.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.now-public", "&7Party is now &apublic&7."));
         } else {
-            leader.sendMessage(plugin.getPrefix() + "§7Party is now §cprivate§7.");
+            leader.sendMessage(plugin.getConfigManager().prefixed("party.now-private", "&7Party is now &cprivate&7."));
         }
         return true;
     }
@@ -490,7 +490,7 @@ public class PartyManager {
             parties.put(newLeaderId, moved);
             Player np = Bukkit.getPlayer(newLeaderId);
             if (np != null && np.isOnline()) {
-                np.sendMessage(plugin.getPrefix() + "§dYou are now the §fparty leader§d.");
+                np.sendMessage(plugin.getConfigManager().prefixed("party.now-leader", "&dYou are now the &fparty leader&d."));
                 // Hotbar nur ändern wenn der Spieler NICHT in einem aktiven
                 // Spiel ist (User-Bug: "kit des neuen leaders wird mit
                 // hotbaritems ersetzt während eines spiels").
@@ -501,7 +501,7 @@ public class PartyManager {
                     plugin.getHotbarManager().applyMode(np, HotbarManager.MODE_PARTY_LEADER);
                 }
             }
-            broadcast(moved, "§7Leader left. §d" + (np != null ? np.getName() : newLeaderId.toString()) + " §7is now the leader.");
+            broadcast(moved, plugin.getConfigManager().getMessage("party.broadcast-new-leader", "&7Leader left. &d{player} &7is now the leader.", java.util.Map.of("player", (np != null ? np.getName() : newLeaderId.toString()))));
         } else {
             party.removeMember(uuid);
             broadcast(party, "§7" + Bukkit.getOfflinePlayer(uuid).getName() + " §edisconnected.");
@@ -522,7 +522,7 @@ public class PartyManager {
     public boolean joinPublicByName(Player joiner, String leaderName) {
         Player leader = Bukkit.getPlayer(leaderName);
         if (leader == null) {
-            joiner.sendMessage(plugin.getPrefix() + "§cPlayer not found: " + leaderName);
+            joiner.sendMessage(plugin.getConfigManager().prefixed("general.player-not-found", "&cPlayer not found: &f{player}", java.util.Map.of("player", leaderName)));
             return false;
         }
         return joinPublic(joiner, leader);

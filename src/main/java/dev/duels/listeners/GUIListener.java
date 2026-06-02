@@ -90,18 +90,18 @@ public class GUIListener implements Listener {
             String msg = event.getMessage().trim();
             if (msg.equalsIgnoreCase("cancel")) {
                 plugin.getGuiManager().consumePendingCustomBestOf(uuid);
-                player.sendMessage(plugin.getPrefix() + "§7Custom rounds cancelled.");
+                player.sendMessage(plugin.getConfigManager().prefixed("duel.custom-rounds-cancelled", "&7Custom rounds cancelled."));
                 return;
             }
             int n;
             try {
                 n = Integer.parseInt(msg);
             } catch (NumberFormatException ex) {
-                player.sendMessage(plugin.getPrefix() + "§cNot a number. Try again, or §ccancel§c.");
+                player.sendMessage(plugin.getConfigManager().prefixed("duel.not-a-number", "&cNot a number. Try again, or &ccancel&c."));
                 return;
             }
             if (n < 1 || n > 100) {
-                player.sendMessage(plugin.getPrefix() + "§cValue must be between 1 and 100.");
+                player.sendMessage(plugin.getConfigManager().prefixed("duel.value-range", "&cValue must be between 1 and 100."));
                 return;
             }
             plugin.getGuiManager().consumePendingCustomBestOf(uuid);
@@ -119,14 +119,14 @@ public class GUIListener implements Listener {
         String msg = event.getMessage().trim();
         if (msg.equalsIgnoreCase("cancel")) {
             awaitingStatsSearch.remove(uuid);
-            player.sendMessage(plugin.getPrefix() + "§7Search cancelled.");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.search-cancelled", "&7Search cancelled."));
             return;
         }
 
         UUID targetUuid = plugin.getPlayerManager().getUUIDFromName(msg);
         if (targetUuid == null) {
-            player.sendMessage(plugin.getPrefix() + "§cPlayer not found: §7" + msg);
-            player.sendMessage(plugin.getPrefix() + "§7Try again or type §ccancel§7.");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.player-not-found", "&cPlayer not found: &7{player}", java.util.Map.of("player", msg)));
+            player.sendMessage(plugin.getConfigManager().prefixed("general.try-again-cancel", "&7Try again or type &ccancel&7."));
             return;
         }
 
@@ -140,12 +140,12 @@ public class GUIListener implements Listener {
     private void sendCustomDuelRequest(Player sender, UUID targetId, String kitId, int firstTo) {
         Player target = Bukkit.getPlayer(targetId);
         if (target == null || !target.isOnline()) {
-            sender.sendMessage(plugin.getPrefix() + "§cTarget player is offline.");
+            sender.sendMessage(plugin.getConfigManager().prefixed("duel.target-offline", "&cTarget player is offline."));
             return;
         }
         String arenaName = plugin.getArenaManager().reserveRandomFreeArenaName();
         if (arenaName == null) {
-            sender.sendMessage(plugin.getPrefix() + "§cNo free arena available!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.no-free-arena", "&cNo free arena available!"));
             return;
         }
         DuelRequest request = new DuelRequest(
@@ -156,8 +156,9 @@ public class GUIListener implements Listener {
                 firstTo
         );
         plugin.getDuelManager().addDuelRequest(targetId, request);
-        sender.sendMessage(plugin.getPrefix() + "§7Sent duel request to §c" + target.getName()
-                + " §7| Kit: §e" + kitId + " §7| First to §f" + firstTo);
+        sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-sent-firstto",
+                "&7Sent duel request to &c{player} &7| Kit: &e{kit} &7| First to &f{value}",
+                java.util.Map.of("player", target.getName(), "kit", kitId, "value", String.valueOf(firstTo))));
     }
 
     @EventHandler
@@ -269,7 +270,7 @@ public class GUIListener implements Listener {
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
 
                 awaitingStatsSearch.add(player.getUniqueId());
-                player.sendMessage(plugin.getPrefix() + "§7Type a player name in chat. §7or Type §ccancel");
+                player.sendMessage(plugin.getConfigManager().prefixed("general.type-player-name", "&7Type a player name in chat. &7or Type &ccancel"));
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
                 return;
             }
@@ -365,7 +366,7 @@ public class GUIListener implements Listener {
         }
 
         if (bestOf == null || kitId == null || kitId.isEmpty() || targetStr == null || targetStr.isEmpty()) {
-            player.sendMessage(plugin.getPrefix() + "§cMissing duel data (bestof/kit/target).");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.missing-data", "&cMissing duel data (bestof/kit/target)."));
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -375,7 +376,7 @@ public class GUIListener implements Listener {
         try {
             targetUuid = UUID.fromString(targetStr);
         } catch (IllegalArgumentException ex) {
-            player.sendMessage(plugin.getPrefix() + "§cInvalid target data.");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.invalid-target", "&cInvalid target data."));
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -383,7 +384,7 @@ public class GUIListener implements Listener {
 
         Player target = Bukkit.getPlayer(targetUuid);
         if (target == null || !target.isOnline()) {
-            player.sendMessage(plugin.getPrefix() + "§cTarget player is offline.");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.target-offline", "&cTarget player is offline."));
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -392,7 +393,7 @@ public class GUIListener implements Listener {
         // Arena auswählen
         String arenaName = plugin.getArenaManager().reserveRandomFreeArenaName();
         if (arenaName == null) {
-            player.sendMessage(plugin.getPrefix() + "§cNo free arena available!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.no-free-arena", "&cNo free arena available!"));
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -412,8 +413,9 @@ public class GUIListener implements Listener {
         plugin.getGuiManager().closeGUI(player.getUniqueId());
 
         // Optional: feedback
-        player.sendMessage(plugin.getPrefix() + "§7Sent duel request to §c" + target.getName()
-                + " §7| Kit: §e" + kitId + " §7| Best of §f" + bestOf);
+        player.sendMessage(plugin.getConfigManager().prefixed("duel.request-sent-bestof",
+                "&7Sent duel request to &c{player} &7| Kit: &e{kit} &7| Best of &f{value}",
+                java.util.Map.of("player", target.getName(), "kit", kitId, "value", String.valueOf(bestOf))));
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
     }
 
@@ -469,7 +471,7 @@ public class GUIListener implements Listener {
                 return;
             }
             if (pdc.has(plugin.getGuiManager().getArmorTrimLockedKey(), PersistentDataType.BYTE)) {
-                player.sendMessage(plugin.getPrefix() + "§cYou don't have permission to use armor trims.");
+                player.sendMessage(plugin.getConfigManager().prefixed("armortrim.use-no-permission", "&cYou don't have permission to use armor trims."));
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
                 return;
             }
@@ -489,7 +491,7 @@ public class GUIListener implements Listener {
 
             String kitId = getEditLayoutKitId(top); // liest Slot 45
             if (kitId == null) {
-                player.sendMessage(plugin.getPrefix() + "§cCould not detect kit id for this layout.");
+                player.sendMessage(plugin.getConfigManager().prefixed("layout.no-kit-id", "&cCould not detect kit id for this layout."));
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
                 return;
@@ -505,7 +507,7 @@ public class GUIListener implements Listener {
                 plugin.getKitManager().saveCustomLayout(player.getUniqueId(), kitId, layout);
                 String kitDisplay = plugin.getKitManager().getKitDisplayName(kitId);
 
-                player.sendMessage(plugin.getPrefix() + "§7Inventory layout for kit §r" + kitDisplay + " §asaved!");
+                player.sendMessage(plugin.getConfigManager().prefixed("layout.saved", "&7Inventory layout for kit &r{kit} &asaved!", java.util.Map.of("kit", kitDisplay)));
                 player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
 
                 player.closeInventory();
@@ -517,7 +519,7 @@ public class GUIListener implements Listener {
                 String kitDisplay = plugin.getKitManager().getKitDisplayName(kitId);
 
                 plugin.getKitManager().deleteCustomLayout(player.getUniqueId(), kitId);
-                player.sendMessage(plugin.getPrefix() + "§7Inventory layout for kit §r" + kitDisplay + " §a reset to default!");
+                player.sendMessage(plugin.getConfigManager().prefixed("layout.reset", "&7Inventory layout for kit &r{kit} &a reset to default!", java.util.Map.of("kit", kitDisplay)));
                 player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
 
                 player.closeInventory();
@@ -599,13 +601,13 @@ public class GUIListener implements Listener {
 
         String targetName = extractTargetFromLore(meta.getLore());
         if (targetName == null) {
-            player.sendMessage(plugin.getPrefix() + "§cCould not find target player!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.could-not-find-target", "&cCould not find target player!"));
             return;
         }
 
         Player target = Bukkit.getPlayerExact(targetName);
         if (target == null || !target.isOnline()) {
-            player.sendMessage(plugin.getPrefix() + "§cTarget player not found or offline!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.target-not-found", "&cTarget player not found or offline!"));
             return;
         }
 
@@ -619,7 +621,7 @@ public class GUIListener implements Listener {
 // Arena auswählen
         String arenaName = plugin.getArenaManager().reserveRandomFreeArenaName();
         if (arenaName == null) {
-            player.sendMessage(plugin.getPrefix() + "§cNo free arena available!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.no-free-arena", "&cNo free arena available!"));
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             return;
@@ -641,8 +643,9 @@ public class GUIListener implements Listener {
 
         /*
         player.closeInventory();
-        player.sendMessage(plugin.getPrefix() + "§7Sending duel request to §c" + target.getName() +
-                "§7 with kit §e" + kitId + "§7 (Best of " + defaultBestOf + ")");
+        player.sendMessage(plugin.getConfigManager().prefixed("duel.sending-request",
+                "&7Sending duel request to &c{player}&7 with kit &e{kit}&7 (Best of {value})",
+                java.util.Map.of("player", target.getName(), "kit", kitId, "value", String.valueOf(defaultBestOf))));
         plugin.getGuiManager().closeGUI(player.getUniqueId());
         */
 
@@ -687,7 +690,7 @@ public class GUIListener implements Listener {
 
         if (isGuiItem(clicked, "settings-gui.auto-fly-name")) {
             if (!player.hasPermission("duels.fly")) {
-                player.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+                player.sendMessage(plugin.getConfigManager().prefixed("general.no-permission", "&cYou don't have permission!"));
                 return;
             }
 
@@ -701,7 +704,7 @@ public class GUIListener implements Listener {
                 Long last = flyCooldown.get(player.getUniqueId());
                 if (last != null && (now - last) < cooldownSec * 1000L) {
                     int remaining = (int) ((cooldownSec * 1000L - (now - last)) / 1000) + 1;
-                    player.sendMessage(plugin.getPrefix() + "§cPlease wait §f" + remaining + "s §cbefore enabling fly again.");
+                    player.sendMessage(plugin.getConfigManager().prefixed("fly.cooldown", "&cPlease wait &f{seconds}s &cbefore enabling fly again.", java.util.Map.of("seconds", String.valueOf(remaining))));
                     return;
                 }
                 flyCooldown.put(player.getUniqueId(), now);
@@ -709,7 +712,7 @@ public class GUIListener implements Listener {
 
             plugin.getPlayerManager().setAutoFly(player.getUniqueId(), newValue);
 
-            player.sendMessage(plugin.getPrefix() + "§7Auto Fly is now " + (newValue ? "§aENABLED" : "§cDISABLED"));
+            player.sendMessage(plugin.getConfigManager().prefixed("fly.auto-toggle", "&7Auto Fly is now {state}", java.util.Map.of("state", newValue ? "&aENABLED" : "&cDISABLED")));
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
 
             plugin.getPlayerManager().applyLobbyFly(player);
@@ -857,7 +860,7 @@ public class GUIListener implements Listener {
         var partyMgr = plugin.getPartyManager();
         var party = partyMgr.getPartyByLeader(player.getUniqueId());
         if (party == null) {
-            player.sendMessage(plugin.getPrefix() + "§cYou are no longer a party leader.");
+            player.sendMessage(plugin.getConfigManager().prefixed("party.no-longer-leader", "&cYou are no longer a party leader."));
             player.closeInventory();
             return;
         }
@@ -927,14 +930,14 @@ public class GUIListener implements Listener {
             switch (pendingAction) {
                 case "DUEL_ONE" -> {
                     if (memberId == null) {
-                        player.sendMessage(plugin.getPrefix() + "§cMissing target.");
+                        player.sendMessage(plugin.getConfigManager().prefixed("duel.missing-target", "&cMissing target."));
                         return;
                     }
                     try {
                         UUID targetId = UUID.fromString(memberId);
                         Player target = Bukkit.getPlayer(targetId);
                         if (target == null) {
-                            player.sendMessage(plugin.getPrefix() + "§cTarget is offline.");
+                            player.sendMessage(plugin.getConfigManager().prefixed("duel.target-offline-short", "&cTarget is offline."));
                             return;
                         }
                         plugin.getDuelManager().startPartyDuelOne(player, target, kitId, bestOf);
@@ -953,9 +956,9 @@ public class GUIListener implements Listener {
                     }
                     String err = plugin.getPartyFFAManager().start(party, kitId, members);
                     if (err != null) {
-                        player.sendMessage(plugin.getPrefix() + "§c" + err);
+                        player.sendMessage(plugin.getConfigManager().prefixed("general.error", "&c{error}", java.util.Map.of("error", err)));
                     } else {
-                        plugin.getPartyManager().broadcast(party, "§6FFA Arena §7started!");
+                        plugin.getPartyManager().broadcast(party, plugin.getConfigManager().getMessage("ffa.arena-started", "&6FFA Arena &7started!"));
                     }
                     player.closeInventory();
                 }
@@ -970,7 +973,7 @@ public class GUIListener implements Listener {
                         else if (t == 2) t2.add(p);
                     }
                     if (t1.isEmpty() || t2.isEmpty()) {
-                        player.sendMessage(plugin.getPrefix() + "§cBoth teams must have at least one player.");
+                        player.sendMessage(plugin.getConfigManager().prefixed("team.need-players", "&cBoth teams must have at least one player."));
                         return;
                     }
                     // Team-vs-Team läuft jetzt als EIN Match auf EINER Arena
@@ -980,7 +983,7 @@ public class GUIListener implements Listener {
                     String err = plugin.getPartyFFAManager()
                             .startTeams(party, kitId, t1, t2);
                     if (err != null) {
-                        player.sendMessage(plugin.getPrefix() + "§c" + err);
+                        player.sendMessage(plugin.getConfigManager().prefixed("general.error", "&c{error}", java.util.Map.of("error", err)));
                     } else {
                         plugin.getPartyManager().broadcast(party,
                                 "§bTeam vs Team §7started §b" + t1.size() + "v" + t2.size() + "§7.");

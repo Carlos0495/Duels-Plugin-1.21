@@ -155,6 +155,56 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     return list;
 }
 
+/**
+ * Liefert die nach {@code category} absteigend sortierte Rangliste aller
+ * bekannten Spieler. Unterstützte Kategorien: kills, deaths, wins, losses,
+ * coins, kd, winrate. Bei Gleichstand wird alphabetisch nach Name sortiert.
+ */
+public List<PlayerData> getLeaderboard(String category) {
+    List<PlayerData> all = getAllPlayerDataSnapshot();
+    final String cat = category == null ? "kills" : category.toLowerCase();
+    all.sort((a, b) -> {
+        double av = leaderboardValue(a, cat);
+        double bv = leaderboardValue(b, cat);
+        if (Double.compare(bv, av) != 0) return Double.compare(bv, av);
+        String an = a.getName() == null ? "" : a.getName();
+        String bn = b.getName() == null ? "" : b.getName();
+        return an.compareToIgnoreCase(bn);
+    });
+    return all;
+}
+
+private double leaderboardValue(PlayerData pd, String cat) {
+    switch (cat) {
+        case "deaths":  return pd.getDeaths();
+        case "wins":    return pd.getWins();
+        case "losses":  return pd.getLosses();
+        case "coins":   return pd.getCoins();
+        case "kd":      return pd.getDeaths() == 0 ? pd.getKills() : (double) pd.getKills() / pd.getDeaths();
+        case "winrate": {
+            int total = pd.getWins() + pd.getLosses();
+            return total == 0 ? 0.0 : ((double) pd.getWins() / total) * 100.0;
+        }
+        case "kills":
+        default:        return pd.getKills();
+    }
+}
+
+/** Formatiert den Ranglisten-Wert eines Spielers für die Anzeige. */
+public String formatLeaderboardValue(PlayerData pd, String category) {
+    String cat = category == null ? "kills" : category.toLowerCase();
+    switch (cat) {
+        case "kd":      return String.format(java.util.Locale.US, "%.2f",
+                pd.getDeaths() == 0 ? (double) pd.getKills() : (double) pd.getKills() / pd.getDeaths());
+        case "winrate": {
+            int total = pd.getWins() + pd.getLosses();
+            double wr = total == 0 ? 0.0 : ((double) pd.getWins() / total) * 100.0;
+            return String.format(java.util.Locale.US, "%.1f%%", wr);
+        }
+        default:        return String.valueOf((long) leaderboardValue(pd, cat));
+    }
+}
+
     public void setupPlayerInventory(Player player) {
         // In der Lobby-Welt: Hotbar setzen (HotbarManager.applyMode räumt
         // davor Slots 0-8 ab und schreibt die konfigurierten Items rein).
@@ -397,7 +447,7 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     public void teleportToSpawn(Player player) {
         Location spawn = plugin.getArenaManager().getSpawnLocation();
         if (spawn == null) {
-            player.sendMessage(plugin.getPrefix() + "§cSpawn has not been set yet!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.spawn-not-set", "&cSpawn has not been set yet!"));
             return;
         }
 

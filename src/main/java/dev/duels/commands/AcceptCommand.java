@@ -19,7 +19,7 @@ public class AcceptCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "§cOnly players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
@@ -27,27 +27,27 @@ public class AcceptCommand implements CommandExecutor {
         DuelRequest request = plugin.getDuelManager().getDuelRequest(player.getUniqueId());
 
         if (request == null) {
-            player.sendMessage(plugin.getPrefix() + "§cYou don't have any pending duel requests!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.no-pending-requests", "&cYou don't have any pending duel requests!"));
             return true;
         }
 
         int timeout = plugin.getConfigManager().getMainConfig().getInt("request-timeout", 30);
         if (request.isExpired(timeout)) {
             plugin.getDuelManager().removeDuelRequest(player.getUniqueId());
-            player.sendMessage(plugin.getPrefix() + "§cThis duel request has expired!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.request-expired", "&cThis duel request has expired!"));
             return true;
         }
 
         Player senderPlayer = Bukkit.getPlayer(request.getSender());
         if (senderPlayer == null || !senderPlayer.isOnline()) {
-            player.sendMessage(plugin.getPrefix() + "§cThe player who sent the request is no longer online!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.requester-offline", "&cThe player who sent the request is no longer online!"));
             plugin.getDuelManager().removeDuelRequest(player.getUniqueId());
             return true;
         }
 
         if (plugin.getDuelManager().isInDuel(senderPlayer.getUniqueId()) ||
                 plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            player.sendMessage(plugin.getPrefix() + "§cOne of you is already in a duel!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.one-already-in-duel", "&cOne of you is already in a duel!"));
             plugin.getDuelManager().removeDuelRequest(player.getUniqueId());
             return true;
         }

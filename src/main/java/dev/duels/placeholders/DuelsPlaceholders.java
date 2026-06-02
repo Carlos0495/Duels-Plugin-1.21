@@ -88,6 +88,14 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
             return resolveArmorTrimPlaceholder(player, lower);
         }
 
+        // Ranglisten-Placeholder: %duels_<kategorie>_<platz>% (Top 10).
+        //   %duels_kills_1%        → komplette Zeile (#1 Name - Wert)
+        //   %duels_coins_3_name%   → nur der Name auf Platz 3 (Coins)
+        //   %duels_winrate_1_value%→ nur der Wert auf Platz 1
+        // Kategorien: kills, deaths, wins, losses, coins, kd, winrate
+        String lbResult = resolveLeaderboardPlaceholder(lower);
+        if (lbResult != null) return lbResult;
+
         switch (lower) {
             case "status": {
                 Player on = player.getPlayer();
@@ -175,5 +183,52 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
         return trimQuery
                 ? plugin.getArmorTrimManager().getTrim(uuid, piece)
                 : plugin.getArmorTrimManager().getMaterial(uuid, piece);
+    }
+
+    private static final java.util.Set<String> LEADERBOARD_CATS = new java.util.HashSet<>(
+            java.util.Arrays.asList("kills", "deaths", "wins", "losses", "coins", "kd", "winrate"));
+
+    /**
+     * Löst Ranglisten-Placeholder auf: {@code <kategorie>_<platz>[_name|_value]}.
+     * Liefert {@code null} wenn es kein Ranglisten-Placeholder ist (damit der
+     * normale switch danach weiterläuft).
+     */
+    private String resolveLeaderboardPlaceholder(String lower) {
+        String[] parts = lower.split("_");
+        if (parts.length < 2) return null;
+        String cat = parts[0];
+        if (!LEADERBOARD_CATS.contains(cat)) return null;
+        int rank;
+        try {
+            rank = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        String field = parts.length >= 3 ? parts[2] : "line";
+
+        if (plugin.getPlayerManager() == null) return "";
+        org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
+        java.util.List<dev.duels.objects.PlayerData> lb =
+                plugin.getPlayerManager().getLeaderboard(cat);
+
+        if (rank < 1 || rank > lb.size()) {
+            if ("name".equals(field) || "value".equals(field)) return "";
+            return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                    cfg.getString("leaderboard.empty", "&7---"));
+        }
+
+        dev.duels.objects.PlayerData pd = lb.get(rank - 1);
+        String name = pd.getName() == null ? "Unknown" : pd.getName();
+        String value = plugin.getPlayerManager().formatLeaderboardValue(pd, cat);
+        if ("name".equals(field)) return name;
+        if ("value".equals(field)) return value;
+
+        String category = cfg.getString("leaderboard.names." + cat, cat);
+        String fmt = cfg.getString("leaderboard.format", "&e#{rank} &f{name} &8- &a{value}");
+        fmt = fmt.replace("{rank}", String.valueOf(rank))
+                 .replace("{name}", name)
+                 .replace("{value}", value)
+                 .replace("{category}", category);
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&', fmt);
     }
 }

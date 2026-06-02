@@ -185,10 +185,11 @@ public class PartyFFAManager {
             p.setFoodLevel(20);
             p.setSaturation(20f);
             if (graceSeconds > 0) {
-                p.sendMessage(plugin.getPrefix() + "§6Party FFA §7started! §ePvP enabled in "
-                        + graceSeconds + "s§7. §fLast one alive wins.");
+                p.sendMessage(plugin.getConfigManager().prefixed("ffa.started-grace",
+                        "&6Party FFA &7started! &ePvP enabled in {seconds}s&7. &fLast one alive wins.",
+                        java.util.Map.of("seconds", String.valueOf(graceSeconds))));
             } else {
-                p.sendMessage(plugin.getPrefix() + "§6Party FFA §7started! §fLast one alive wins.");
+                p.sendMessage(plugin.getConfigManager().prefixed("ffa.started", "&6Party FFA &7started! &fLast one alive wins."));
             }
         }
 
@@ -201,7 +202,7 @@ public class PartyFFAManager {
                         session.graceTask.cancel();
                         session.graceTask = null;
                     }
-                    broadcastToSession(session, "§a§lGO! §7PvP is now enabled.");
+                    broadcastToSession(session, plugin.getConfigManager().getMessage("ffa.go-pvp-enabled", "&a&lGO! &7PvP is now enabled."));
                     showTitleToSession(session, "§a§lGO!", "§7PvP enabled", 0, 30, 10);
                     return;
                 }
@@ -210,7 +211,7 @@ public class PartyFFAManager {
                     // Title-Countdown jede Sekunde (User-Wunsch).
                     showTitleToSession(session, "§e§l" + secLeft, "§7PvP in §6" + secLeft + "s", 0, 25, 5);
                     if (secLeft <= 5 || secLeft == 10) {
-                        broadcastToSession(session, "§ePvP in §6" + secLeft + "s§7...");
+                        broadcastToSession(session, plugin.getConfigManager().getMessage("ffa.pvp-countdown", "&ePvP in &6{seconds}s&7...", java.util.Map.of("seconds", String.valueOf(secLeft))));
                     }
                 }
                 session.graceTicksLeft -= 20;
@@ -345,9 +346,9 @@ public class PartyFFAManager {
             }, 2L);
             String teamColor = t == 1 ? "§b" : "§c";
             String teamName = t == 1 ? "Team 1" : "Team 2";
-            p.sendMessage(plugin.getPrefix() + teamColor + "§l" + teamName + " §7on " + reservedArena.getName());
-            p.sendMessage(plugin.getPrefix() + "§bTeam 1: §7" + t1Names);
-            p.sendMessage(plugin.getPrefix() + "§cTeam 2: §7" + t2Names);
+            p.sendMessage(plugin.getConfigManager().prefixed("team.match-header", "{color}&l{team} &7on {arena}", java.util.Map.of("color", teamColor, "team", teamName, "arena", reservedArena.getName())));
+            p.sendMessage(plugin.getConfigManager().prefixed("team.team1-list", "&bTeam 1: &7{players}", java.util.Map.of("players", t1Names.toString())));
+            p.sendMessage(plugin.getConfigManager().prefixed("team.team2-list", "&cTeam 2: &7{players}", java.util.Map.of("players", t2Names.toString())));
             // Blindness während Countdown (wie Duel)
             p.addPotionEffect(new org.bukkit.potion.PotionEffect(
                     org.bukkit.potion.PotionEffectType.BLINDNESS, 60, 1, false, false));
@@ -569,7 +570,7 @@ public class PartyFFAManager {
             // Alle Mitglieder des Gewinnerteams (auch tote zählen für Stats —
             // sie waren im Team, das gewonnen hat, daher Win + Coins)
             String winningName = winningTeam == 1 ? "§bTeam 1" : "§cTeam 2";
-            broadcastToSession(session, "§6§lWinner: " + winningName);
+            broadcastToSession(session, plugin.getConfigManager().getMessage("ffa.winner", "&6&lWinner: {player}", java.util.Map.of("player", winningName)));
             for (UUID u : session.allParticipants) {
                 Player p = Bukkit.getPlayer(u);
                 int t = session.getTeam(u);
@@ -584,7 +585,7 @@ public class PartyFFAManager {
                     plugin.getPlayerManager().addStat(u, "wins", 1);
                     plugin.getPlayerManager().addStat(u, "coins", coinReward);
                     if (p != null && p.isOnline()) {
-                        p.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(Team win reward)");
+                        p.sendMessage(plugin.getConfigManager().prefixed("team.coin-reward", "&e+&6{coins} &ecoins &7(Team win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
                     }
                 } else if (t > 0) {
                     if (p != null && p.isOnline()) {
@@ -604,7 +605,7 @@ public class PartyFFAManager {
                 playerToSession.remove(winnerId);
             }
             if (winner != null) {
-                broadcastToSession(session, "§6§lWinner: §e" + winner.getName());
+                broadcastToSession(session, plugin.getConfigManager().getMessage("ffa.winner-named", "&6&lWinner: &e{player}", java.util.Map.of("player", winner.getName())));
                 final Player win = winner;
                 java.util.Map<String,String> phF = java.util.Map.of("winner", win.getName());
                 win.sendTitle(
@@ -623,7 +624,7 @@ public class PartyFFAManager {
                 }
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-                win.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(FFA win reward)");
+                win.sendMessage(plugin.getConfigManager().prefixed("ffa.coin-reward", "&e+&6{coins} &ecoins &7(FFA win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
             }
         }
 

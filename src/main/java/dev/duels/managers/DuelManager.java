@@ -120,12 +120,14 @@ public class DuelManager {
                 Player sender = Bukkit.getPlayer(req.getSender());
                 Player target = Bukkit.getPlayer(entry.getKey());
                 if (sender != null && sender.isOnline()) {
-                    sender.sendMessage(plugin.getPrefix() + "§7Your duel request to §e"
-                            + (target != null ? target.getName() : "player") + " §7expired.");
+                    sender.sendMessage(plugin.getConfigManager().prefixed("duel.your-request-expired",
+                            "&7Your duel request to &e{player} &7expired.",
+                            java.util.Map.of("player", target != null ? target.getName() : "player")));
                 }
                 if (target != null && target.isOnline()) {
-                    target.sendMessage(plugin.getPrefix() + "§7Duel request from §e"
-                            + (sender != null ? sender.getName() : "player") + " §7expired.");
+                    target.sendMessage(plugin.getConfigManager().prefixed("duel.request-from-expired",
+                            "&7Duel request from &e{player} &7expired.",
+                            java.util.Map.of("player", sender != null ? sender.getName() : "player")));
                 }
                 it.remove();
             }
@@ -159,8 +161,8 @@ public class DuelManager {
             // fallback (shouldn't happen often)
             arena = plugin.getArenaManager().getRandomAvailableArenaForKit(request.getKitName());
             if (arena == null) {
-                player1.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
-                player2.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
+                player1.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-available", "&cNo available arena for this kit!"));
+                player2.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-available", "&cNo available arena for this kit!"));
                 return;
             }
             arena.setInUse(true);
@@ -243,13 +245,13 @@ public class DuelManager {
         clearChat(p2);
         String kitDisplay = plugin.getKitManager().getKitDisplayName(session.getKitName());
 
-        p1.sendMessage(plugin.getPrefix() + "§aDuel started §7against §c" + p2.getName() + "!");
-        p1.sendMessage(plugin.getPrefix() + "§7Kit: §r" + kitDisplay + " §7| Arena: §b" + session.getArenaName());
-        p1.sendMessage(plugin.getPrefix() + "§dMatch: §fBest of " + session.getBestOf() + " §7(need " + session.requiredWins() + " wins)");
+        p1.sendMessage(plugin.getConfigManager().prefixed("duel.started", "&aDuel started &7against &c{player}!", java.util.Map.of("player", p2.getName())));
+        p1.sendMessage(plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", session.getArenaName())));
+        p1.sendMessage(plugin.getConfigManager().prefixed("duel.match-info", "&dMatch: &fBest of {bestof} &7(need {wins} wins)", java.util.Map.of("bestof", String.valueOf(session.getBestOf()), "wins", String.valueOf(session.requiredWins()))));
 
-        p2.sendMessage(plugin.getPrefix() + "§aDuel started §7against §c" + p1.getName() + "!");
-        p2.sendMessage(plugin.getPrefix() + "§7Kit: §r" + kitDisplay  + " §7| Arena: §b" + session.getArenaName());
-        p2.sendMessage(plugin.getPrefix() + "§dMatch: §fBest of " + session.getBestOf() + " §7(need " + session.requiredWins() + " wins)");
+        p2.sendMessage(plugin.getConfigManager().prefixed("duel.started", "&aDuel started &7against &c{player}!", java.util.Map.of("player", p1.getName())));
+        p2.sendMessage(plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", session.getArenaName())));
+        p2.sendMessage(plugin.getConfigManager().prefixed("duel.match-info", "&dMatch: &fBest of {bestof} &7(need {wins} wins)", java.util.Map.of("bestof", String.valueOf(session.getBestOf()), "wins", String.valueOf(session.requiredWins()))));
     }
 
     private void startDuelCountdown(Player p1, Player p2, DuelSession session) {
@@ -284,8 +286,8 @@ public class DuelManager {
 
                     p1.sendMessage("");
                     p2.sendMessage("");
-                    p1.sendMessage(plugin.getPrefix() + "§a§lFIGHT! §7Round §f#1");
-                    p2.sendMessage(plugin.getPrefix() + "§a§lFIGHT! §7Round §f#1");
+                    p1.sendMessage(plugin.getConfigManager().prefixed("duel.fight-round", "&a&lFIGHT! &7Round &f#{round}", java.util.Map.of("round", "1")));
+                    p2.sendMessage(plugin.getConfigManager().prefixed("duel.fight-round", "&a&lFIGHT! &7Round &f#{round}", java.util.Map.of("round", "1")));
 
                     frozenPlayers.remove(p1.getUniqueId());
                     frozenPlayers.remove(p2.getUniqueId());
@@ -339,8 +341,8 @@ public class DuelManager {
 
         String scoreFormat = "§7" + n1 + " §8(§f" + session.getWinsP1() + " §7- §f" + session.getWinsP2() + "§8) §7" + n2;
 
-        winner.sendMessage(plugin.getPrefix() + "§aYou won §7round §f#" + session.getRound() + " §8| " + scoreFormat);
-        dead.sendMessage(plugin.getPrefix() + "§cYou lost §7round §f#" + session.getRound() + " §8| " + scoreFormat);
+        winner.sendMessage(plugin.getConfigManager().prefixed("duel.round-won", "&aYou won &7round &f#{round} &8| {score}", java.util.Map.of("round", String.valueOf(session.getRound()), "score", scoreFormat)));
+        dead.sendMessage(plugin.getConfigManager().prefixed("duel.round-lost", "&cYou lost &7round &f#{round} &8| {score}", java.util.Map.of("round", String.valueOf(session.getRound()), "score", scoreFormat)));
 
         // Match over?
         if (session.getWinsP1() >= session.requiredWins() || session.getWinsP2() >= session.requiredWins()) {
@@ -492,8 +494,8 @@ public class DuelManager {
 
                     p1.sendMessage("");
                     p2.sendMessage("");
-                    p1.sendMessage(plugin.getPrefix() + "§a§lFIGHT! §7Round §f#" + session.getRound());
-                    p2.sendMessage(plugin.getPrefix() + "§a§lFIGHT! §7Round §f#" + session.getRound());
+                    p1.sendMessage(plugin.getConfigManager().prefixed("duel.fight-round", "&a&lFIGHT! &7Round &f#{round}", java.util.Map.of("round", String.valueOf(session.getRound()))));
+                    p2.sendMessage(plugin.getConfigManager().prefixed("duel.fight-round", "&a&lFIGHT! &7Round &f#{round}", java.util.Map.of("round", String.valueOf(session.getRound()))));
 
                     frozenPlayers.remove(p1.getUniqueId());
                     frozenPlayers.remove(p2.getUniqueId());
@@ -533,7 +535,7 @@ public class DuelManager {
             if (winner != null) {
                 int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-                winner.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+                winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
             }
             Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
 
@@ -586,8 +588,8 @@ public class DuelManager {
 
         // Nachrichten
         if (winner != null) {
-            winner.sendMessage(plugin.getPrefix() + "§aYou won the duel §7by timeout!");
-            loser.sendMessage(plugin.getPrefix() + "§cYou lost the duel §7by timeout.");
+            winner.sendMessage(plugin.getConfigManager().prefixed("duel.won-timeout", "&aYou won the duel &7by timeout!"));
+            loser.sendMessage(plugin.getConfigManager().prefixed("duel.lost-timeout", "&cYou lost the duel &7by timeout."));
             String scoreFmt = "§7" + w1 + " §7- §7" + w2 + " §7(by timeout)";
             java.util.Map<String,String> phTO = java.util.Map.of("score", scoreFmt);
             winner.sendTitle(
@@ -611,11 +613,11 @@ public class DuelManager {
             // Coins für Match-Sieg
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-            winner.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+            winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
         } else {
             // Draw
-            p1.sendMessage(plugin.getPrefix() + "§eDuel ended in a draw §7(time ran out).");
-            p2.sendMessage(plugin.getPrefix() + "§eDuel ended in a draw §7(time ran out).");
+            p1.sendMessage(plugin.getConfigManager().prefixed("duel.draw", "&eDuel ended in a draw &7(time ran out)."));
+            p2.sendMessage(plugin.getConfigManager().prefixed("duel.draw", "&eDuel ended in a draw &7(time ran out)."));
         }
 
         Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
@@ -770,8 +772,8 @@ public class DuelManager {
                 + " §7- §f" + session.getWinsP2() + "§8) §7" + p2.getName();
         p1.sendTitle("§e§lTime up!", "§7Round §f" + currentRound + " §7draw", 0, 40, 10);
         p2.sendTitle("§e§lTime up!", "§7Round §f" + currentRound + " §7draw", 0, 40, 10);
-        p1.sendMessage(plugin.getPrefix() + "§eRound §f#" + currentRound + " §eended in a draw §7(time up) §8| " + scoreFormat);
-        p2.sendMessage(plugin.getPrefix() + "§eRound §f#" + currentRound + " §eended in a draw §7(time up) §8| " + scoreFormat);
+        p1.sendMessage(plugin.getConfigManager().prefixed("duel.round-draw", "&eRound &f#{round} &eended in a draw &7(time up) &8| {score}", java.util.Map.of("round", String.valueOf(currentRound), "score", scoreFormat)));
+        p2.sendMessage(plugin.getConfigManager().prefixed("duel.round-draw", "&eRound &f#{round} &eended in a draw &7(time up) &8| {score}", java.util.Map.of("round", String.valueOf(currentRound), "score", scoreFormat)));
 
         // Spieler sind beide am Leben → direkt zur Arena re-prepare.
         session.setRound(currentRound + 1);
@@ -793,21 +795,21 @@ public class DuelManager {
 
         // basic checks
         if (senderId.equals(target)) {
-            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cYou can't duel yourself.");
+            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.cannot-duel-self", "&cYou can't duel yourself."));
             return;
         }
         if (isInDuel(senderId) || isInDuel(target)) {
-            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cSomeone is already in a duel.");
+            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.someone-in-duel", "&cSomeone is already in a duel."));
             return;
         }
         // Party blockt Duel-Requests in beide Richtungen.
         if (plugin.getPartyManager() != null) {
             if (plugin.getPartyManager().isInParty(senderId)) {
-                if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cYou are in a party. Leave it to send duel requests.");
+                if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.you-in-party", "&cYou are in a party. Leave it to send duel requests."));
                 return;
             }
             if (plugin.getPartyManager().isInParty(target)) {
-                if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cThat player is in a party.");
+                if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.target-in-party", "&cThat player is in a party."));
                 return;
             }
         }
@@ -816,7 +818,7 @@ public class DuelManager {
         Long last = lastRequestMs.get(senderId);
         if (last != null && (now - last) < REQUEST_COOLDOWN_MS) {
             long leftSec = (REQUEST_COOLDOWN_MS - (now - last) + 999) / 1000;
-            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cWait §f" + leftSec + "s §cbefore sending another request.");
+            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-cooldown", "&cWait &f{seconds}s &cbefore sending another request.", java.util.Map.of("seconds", String.valueOf(leftSec))));
             return;
         }
         lastRequestMs.put(senderId, now);
@@ -831,8 +833,8 @@ public class DuelManager {
         // Arena jetzt auswählen und RESERVIEREN (gefiltert nach erlaubten Kits)
         Arena chosen = plugin.getArenaManager().getRandomAvailableArenaForKit(request.getKitName());
         if (chosen == null) {
-            if (sender != null) sender.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
-            if (receiver != null) receiver.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
+            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
+            if (receiver != null) receiver.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
             return;
         }
         chosen.setInUse(true);
@@ -852,17 +854,16 @@ public class DuelManager {
 
         // sender feedback
         if (sender != null && sender.isOnline()) {
-            sender.sendMessage("\n" + plugin.getPrefix() + "§aDuel request sent to §e" + (receiver != null ? receiver.getName() : "player") + "\n" +
-                    plugin.getPrefix() + "§7Kit: §r" + kitDisplay + "§7 | Arena: §b" + chosen.getName() + "§7\n" +
-                    plugin.getPrefix() + "§7Best of §f" + stored.getBestOf());
+            sender.sendMessage("\n" + plugin.getConfigManager().prefixed("duel.request-sent-to", "&aDuel request sent to &e{player}", java.util.Map.of("player", receiver != null ? receiver.getName() : "player")) + "\n" +
+                    plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", chosen.getName())) + "\n" +
+                    plugin.getConfigManager().prefixed("duel.best-of", "&7Best of &f{bestof}", java.util.Map.of("bestof", String.valueOf(stored.getBestOf()))));
         }
 
         // receiver message
         if (receiver != null && receiver.isOnline()) {
-            receiver.sendMessage("\n" + plugin.getPrefix() + "§e" + (sender != null ? sender.getName() : "Someone") +
-                    " §7challenged you!\n" +
-                    plugin.getPrefix() + "§7Kit: §r" + kitDisplay + "§7 | Arena: §b" + chosen.getName() + "§7\n" +
-                    plugin.getPrefix() + "§7Best of §f" + stored.getBestOf());
+            receiver.sendMessage("\n" + plugin.getConfigManager().prefixed("duel.challenged-you", "&e{player} &7challenged you!", java.util.Map.of("player", sender != null ? sender.getName() : "Someone")) + "\n" +
+                    plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", chosen.getName())) + "\n" +
+                    plugin.getConfigManager().prefixed("duel.best-of", "&7Best of &f{bestof}", java.util.Map.of("bestof", String.valueOf(stored.getBestOf()))));
 
             receiver.playSound(receiver.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
 
@@ -889,7 +890,7 @@ public class DuelManager {
     public void acceptDuelRequest(Player target) {
         DuelRequest request = duelRequests.remove(target.getUniqueId());
         if (request == null) {
-            target.sendMessage(plugin.getPrefix() + "§cNo pending duel request.");
+            target.sendMessage(plugin.getConfigManager().prefixed("duel.no-pending", "&cNo pending duel request."));
             return;
         }
         int timeoutSec = plugin.getConfigManager().getMainConfig()
@@ -897,17 +898,17 @@ public class DuelManager {
         if (timeoutSec > 0 && request.isExpired(timeoutSec)) {
             Arena a = plugin.getArenaManager().getArena(request.getArenaName());
             if (a != null) a.setInUse(false);
-            target.sendMessage(plugin.getPrefix() + "§cDuel request expired.");
+            target.sendMessage(plugin.getConfigManager().prefixed("duel.request-expired-short", "&cDuel request expired."));
             return;
         }
         Player sender = Bukkit.getPlayer(request.getSender());
         if (sender == null || !sender.isOnline()) {
-            target.sendMessage(plugin.getPrefix() + "§cRequester is offline.");
+            target.sendMessage(plugin.getConfigManager().prefixed("duel.requester-offline-short", "&cRequester is offline."));
             return;
         }
 
         if (isInDuel(sender.getUniqueId()) || isInDuel(target.getUniqueId())) {
-            target.sendMessage(plugin.getPrefix() + "§cSomeone is already in a duel.");
+            target.sendMessage(plugin.getConfigManager().prefixed("duel.someone-in-duel", "&cSomeone is already in a duel."));
             return;
         }
 
@@ -918,15 +919,15 @@ public class DuelManager {
     public void denyDuelRequest(Player target) {
         DuelRequest request = duelRequests.remove(target.getUniqueId());
         if (request == null) {
-            target.sendMessage(plugin.getPrefix() + "§cNo pending duel request.");
+            target.sendMessage(plugin.getConfigManager().prefixed("duel.no-pending", "&cNo pending duel request."));
             return;
         }
 
         Player sender = Bukkit.getPlayer(request.getSender());
         if (sender != null && sender.isOnline()) {
-            sender.sendMessage(plugin.getPrefix() + "§cYour duel request was denied.");
+            sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-denied", "&cYour duel request was denied."));
         }
-        target.sendMessage(plugin.getPrefix() + "§7Request denied.");
+        target.sendMessage(plugin.getConfigManager().prefixed("duel.denied", "&7Request denied."));
         Arena a = plugin.getArenaManager().getArena(request.getArenaName());
         if (a != null) a.setInUse(false);
     }
@@ -961,7 +962,7 @@ public class DuelManager {
 
         // Opponent benachrichtigen
         if (opponent != null && opponent.isOnline()) {
-            opponent.sendMessage(plugin.getPrefix() + "§cYour opponent disconnected! You win!");
+            opponent.sendMessage(plugin.getConfigManager().prefixed("duel.opponent-disconnected", "&cYour opponent disconnected! You win!"));
 
             // Stats für Gegner
             plugin.getPlayerManager().addStat(opponentUUID, "wins", 1);
@@ -970,7 +971,7 @@ public class DuelManager {
             // Coins für Match-Sieg (Disconnect-Forfeit)
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
-            opponent.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+            opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
 
             // Stats für disconnected Spieler
             plugin.getPlayerManager().addStat(playerUUID, "losses", 1);
@@ -998,7 +999,7 @@ public class DuelManager {
         DuelSession session = activeDuels.get(playerUUID);
 
         if (session == null) {
-            player.sendMessage(plugin.getPrefix() + "§cYou are not in a duel!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.not-in-duel", "&cYou are not in a duel!"));
             return;
         }
 
@@ -1006,10 +1007,10 @@ public class DuelManager {
         Player opponent = Bukkit.getPlayer(opponentUUID);
 
         // Nachrichten senden
-        player.sendMessage(plugin.getPrefix() + "§cYou forfeited the duel! §7This counts as a loss.");
+        player.sendMessage(plugin.getConfigManager().prefixed("duel.forfeited", "&cYou forfeited the duel! &7This counts as a loss."));
 
         if (opponent != null && opponent.isOnline()) {
-            opponent.sendMessage(plugin.getPrefix() + "§a" + player.getName() + " §7forfeited the duel! §aYou win!");
+            opponent.sendMessage(plugin.getConfigManager().prefixed("duel.opponent-forfeited", "&a{player} &7forfeited the duel! &aYou win!", java.util.Map.of("player", player.getName())));
         }
 
         // Stats aktualisieren
@@ -1021,7 +1022,7 @@ public class DuelManager {
             plugin.getPlayerManager().addStat(opponentUUID, "kills", 1);
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
-            if (opponent.isOnline()) opponent.sendMessage(plugin.getPrefix() + "§e+§6" + coinReward + " §ecoins §7(win reward)");
+            if (opponent.isOnline()) opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
         }
 
         // Arena zurücksetzen
@@ -1141,8 +1142,8 @@ public class DuelManager {
 
             Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
             if (arena == null) {
-                a.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit; skipping pair.");
-                b.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit; skipping pair.");
+                a.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-skip", "&cNo available arena for this kit; skipping pair."));
+                b.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-skip", "&cNo available arena for this kit; skipping pair."));
                 continue;
             }
             arena.setInUse(true);
@@ -1162,13 +1163,13 @@ public class DuelManager {
     public boolean startPartyDuelOne(Player a, Player b, String kitName, int bestOf) {
         if (a == null || b == null || !a.isOnline() || !b.isOnline()) return false;
         if (isInDuel(a.getUniqueId()) || isInDuel(b.getUniqueId())) {
-            a.sendMessage(plugin.getPrefix() + "§cOne of you is already in a duel.");
+            a.sendMessage(plugin.getConfigManager().prefixed("duel.one-already-in-duel", "&cOne of you is already in a duel."));
             return false;
         }
         Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
         if (arena == null) {
-            a.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
-            b.sendMessage(plugin.getPrefix() + "§cNo available arena for this kit!");
+            a.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-available", "&cNo available arena for this kit!"));
+            b.sendMessage(plugin.getConfigManager().prefixed("duel.no-arena-available", "&cNo available arena for this kit!"));
             return false;
         }
         arena.setInUse(true);

@@ -232,6 +232,17 @@ public class PlayerListener implements Listener {
                         player.teleport(target.getLocation());
                         return;
                     }
+                    // Block-Kollision für Match-Spectator: sie sollen NICHT
+                    // durch Blöcke (auch Barrier) fliegen können. Leute im
+                    // normalen SPECTATOR-GameMode (kein Match) sind hier nicht
+                    // erfasst, weil sie nicht in der SpectateManager-Map sind.
+                    if (plugin.getConfigManager().isSpectatorBlockCollision()) {
+                        Location to = event.getTo();
+                        if (to != null && isInsideSolid(to)) {
+                            event.setTo(event.getFrom());
+                            return;
+                        }
+                    }
                     // Arena-Corners des Targets als Grenze nutzen.
                     dev.duels.objects.Arena specArena = null;
                     if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
@@ -254,6 +265,17 @@ public class PlayerListener implements Listener {
                 }
             }
         }
+    }
+
+    /**
+     * Prüft ob die Position (Füße oder Kopf) in einem nicht-passierbaren
+     * Block liegt. Barrier zählt als nicht-passierbar.
+     */
+    private boolean isInsideSolid(Location loc) {
+        if (loc == null || loc.getWorld() == null) return false;
+        org.bukkit.block.Block feet = loc.getBlock();
+        org.bukkit.block.Block head = feet.getRelative(0, 1, 0);
+        return !feet.isPassable() || !head.isPassable();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -316,7 +338,7 @@ public class PlayerListener implements Listener {
         event.setCancelled(true);
 
         if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
-            player.sendMessage(plugin.getPrefix() + "§c" + target.getName() + " is already in a duel.");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.target-in-duel", "&c{player} is already in a duel.", java.util.Map.of("player", target.getName())));
             return;
         }
         plugin.getGuiManager().openDuelGUI(player, target);
@@ -344,7 +366,7 @@ public class PlayerListener implements Listener {
                         plugin.getQueueManager().joinQueue(player, lastKit);
                         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
                     } else {
-                        player.sendMessage(plugin.getPrefix() + "§cNo last queue kit saved yet!");
+                        player.sendMessage(plugin.getConfigManager().prefixed("queue.no-last-kit", "&cNo last queue kit saved yet!"));
                     }
                 }
                 Bukkit.getScheduler().runTaskLater(plugin,
@@ -366,26 +388,26 @@ public class PlayerListener implements Listener {
             }
             case "PARTY_CREATE" -> {
                 if (plugin.getPartyManager().isInParty(player.getUniqueId())) {
-                    player.sendMessage(plugin.getPrefix() + "§cYou are already in a party.");
+                    player.sendMessage(plugin.getConfigManager().prefixed("party.already-in", "&cYou are already in a party."));
                 } else {
                     plugin.getPartyManager().createParty(player);
                     plugin.getHotbarManager().applyMode(player,
                             dev.duels.managers.HotbarManager.MODE_PARTY_LEADER);
-                    player.sendMessage(plugin.getPrefix()
-                            + "§dParty §7created! Use §e/party invite <player> §7to invite players.");
+                    player.sendMessage(plugin.getConfigManager().prefixed("party.created",
+                            "&dParty &7created! Use &e/party invite <player> &7to invite players."));
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1.2f);
                 }
             }
             case "PARTY_MENU" -> {
                 if (!plugin.getPartyManager().isLeader(player.getUniqueId())) {
-                    player.sendMessage(plugin.getPrefix() + "§cOnly the leader can open this menu.");
+                    player.sendMessage(plugin.getConfigManager().prefixed("party.only-leader-menu", "&cOnly the leader can open this menu."));
                     return;
                 }
                 plugin.getGuiManager().openPartyMenu(player);
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
             }
             case "PARTY_INVITE" -> {
-                player.sendMessage(plugin.getPrefix() + "§7Usage: §e/party invite <player>");
+                player.sendMessage(plugin.getConfigManager().prefixed("party.usage-invite-alt", "&7Usage: &e/party invite <player>"));
             }
             case "PARTY_PUBLIC" -> {
                 plugin.getPartyManager().togglePublic(player);
@@ -440,7 +462,7 @@ public class PlayerListener implements Listener {
                 Bukkit.getScheduler().runTaskLater(plugin,
                         () -> plugin.getPlayerManager().refreshQueueSlotItem(player), 1L);
             } else {
-                player.sendMessage(plugin.getPrefix() + "§cNo last queue kit saved yet!");
+                player.sendMessage(plugin.getConfigManager().prefixed("queue.no-last-kit", "&cNo last queue kit saved yet!"));
             }
             return;
         }
@@ -564,8 +586,7 @@ public class PlayerListener implements Listener {
 
         if (!allowed) {
             event.setCancelled(true);
-            spectator.sendMessage(plugin.getPrefix()
-                    + "§cYou can only teleport to players in your match.");
+            spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.tp-only-match", "&cYou can only teleport to players in your match."));
         }
     }
 }

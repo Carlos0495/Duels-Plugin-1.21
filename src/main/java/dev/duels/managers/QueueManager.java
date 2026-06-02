@@ -19,7 +19,7 @@ public class QueueManager {
 
     public void joinQueue(Player player, String kitName) {
         if (!plugin.getKitManager().kitExists(kitName)) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: " + kitName);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: {kit}", java.util.Map.of("kit", kitName)));
             return;
         }
 
@@ -30,7 +30,7 @@ public class QueueManager {
         // betreten zu können. Standard: nur die Lobby-Welt (die Welt, in
         // der /setspawn gesetzt wurde) ist erlaubt.
         if (!isAllowedWorld(player)) {
-            player.sendMessage(plugin.getPrefix() + "§cYou can only queue from the lobby world.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.only-lobby", "&cYou can only queue from the lobby world."));
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1f, 1f);
             return;
         }
@@ -38,7 +38,7 @@ public class QueueManager {
         // Spieler in einer Party können keine Queues betreten — sie sollen
         // ausschließlich über das Party-Menü duellieren (User-Wunsch).
         if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) {
-            player.sendMessage(plugin.getPrefix() + "§cYou can't join a queue while in a party. Leave the party first.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.in-party", "&cYou can't join a queue while in a party. Leave the party first."));
             return;
         }
 
@@ -51,7 +51,7 @@ public class QueueManager {
             queue.addLast(uuid);
             lastQueueKit.put(uuid, kitName);
             String kitDisplay = plugin.getKitManager().getKitDisplayName(kitName);
-            player.sendMessage(plugin.getPrefix() + "§aQueued §7for kit §r" + kitDisplay + "§7.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.joined", "&aQueued &7for kit &r{kit}&7.", java.util.Map.of("kit", kitDisplay)));
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
         }
 
@@ -64,7 +64,7 @@ public class QueueManager {
         boolean wasInQueue = leaveAllQueues(uuid);
 
         if (wasInQueue) {
-            player.sendMessage(plugin.getPrefix() + "§cLeft §7queue.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.left", "&cLeft &7queue."));
             player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 1f, 0.8f);
         }
 
@@ -144,8 +144,8 @@ public class QueueManager {
         // Arena holen (nach erlaubtem Kit gefiltert)
         dev.duels.objects.Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
         if (arena == null) {
-            player1.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
-            player2.sendMessage(plugin.getPrefix() + "§cNo arena available for this kit!");
+            player1.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
+            player2.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
             joinQueue(player1, kitName);
             joinQueue(player2, kitName);
             return;

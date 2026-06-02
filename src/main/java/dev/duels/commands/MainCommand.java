@@ -1,6 +1,7 @@
 package dev.duels.commands;
 
 import dev.duels.DuelsPlugin;
+import dev.duels.managers.ConfigManager;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -16,9 +17,10 @@ public class MainCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        dev.duels.managers.ConfigManager cm = plugin.getConfigManager();
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             if (!sender.hasPermission("duels.reload")) {
-                sender.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+                sender.sendMessage(cm.prefixed("general.no-permission", "&cYou don't have permission!"));
                 return true;
             }
 
@@ -32,7 +34,7 @@ public class MainCommand implements CommandExecutor {
                 || args[0].equalsIgnoreCase("editlayout")
                 || args[0].equalsIgnoreCase("kitlayout"))) {
             if (!(sender instanceof Player p)) {
-                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                sender.sendMessage(cm.prefixed("general.requires-player", "&cThis command requires a player."));
                 return true;
             }
             plugin.getGuiManager().openEditLayoutsGUI(p);
@@ -47,7 +49,7 @@ public class MainCommand implements CommandExecutor {
             // /duels armortrim clear <player|all> — Admin-Befehl
             if (args.length >= 3 && args[1].equalsIgnoreCase("clear")) {
                 if (!sender.hasPermission("duels.admin")) {
-                    sender.sendMessage(plugin.getPrefix() + "§cNo permission.");
+                    sender.sendMessage(cm.prefixed("general.no-permission", "&cNo permission."));
                     return true;
                 }
                 String targetArg = args[2];
@@ -57,7 +59,8 @@ public class MainCommand implements CommandExecutor {
                         clearTrimsForPlayer(op);
                         count++;
                     }
-                    sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + count + " §7players.");
+                    sender.sendMessage(cm.prefixed("armortrim.cleared-all", "&7Cleared armor trims for &f{count} &7players.",
+                            java.util.Map.of("count", String.valueOf(count))));
                 } else {
                     Player target = org.bukkit.Bukkit.getPlayerExact(targetArg);
                     if (target == null) {
@@ -67,24 +70,27 @@ public class MainCommand implements CommandExecutor {
                             for (dev.duels.managers.ArmorTrimManager.Piece piece : dev.duels.managers.ArmorTrimManager.Piece.values()) {
                                 plugin.getArmorTrimManager().clearPiece(offUuid, piece);
                             }
-                            sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + targetArg + " §7(offline).");
+                            sender.sendMessage(cm.prefixed("armortrim.cleared-offline", "&7Cleared armor trims for &f{player} &7(offline).",
+                                    java.util.Map.of("player", targetArg)));
                         } else {
-                            sender.sendMessage(plugin.getPrefix() + "§cPlayer not found: §f" + targetArg);
+                            sender.sendMessage(cm.prefixed("general.player-not-found", "&cPlayer not found: &f{player}",
+                                    java.util.Map.of("player", targetArg)));
                         }
                         return true;
                     }
                     clearTrimsForPlayer(target);
-                    sender.sendMessage(plugin.getPrefix() + "§7Cleared armor trims for §f" + target.getName() + "§7.");
+                    sender.sendMessage(cm.prefixed("armortrim.cleared-player", "&7Cleared armor trims for &f{player}&7.",
+                            java.util.Map.of("player", target.getName())));
                 }
                 return true;
             }
 
             if (!(sender instanceof Player p)) {
-                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                sender.sendMessage(cm.prefixed("general.requires-player", "&cThis command requires a player."));
                 return true;
             }
             if (!p.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
-                p.sendMessage(plugin.getPrefix() + "§cYou don't have permission to use armor trims.");
+                p.sendMessage(cm.prefixed("armortrim.no-permission", "&cYou don't have permission to use armor trims."));
                 return true;
             }
             plugin.getGuiManager().openArmorTrimGUI(p);
@@ -93,44 +99,44 @@ public class MainCommand implements CommandExecutor {
 
         if (args.length > 0 && args[0].equalsIgnoreCase("setpartyffaspawn")) {
             if (!sender.hasPermission("duels.admin")) {
-                sender.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+                sender.sendMessage(cm.prefixed("general.no-permission", "&cYou don't have permission!"));
                 return true;
             }
             if (!(sender instanceof Player p)) {
-                sender.sendMessage(plugin.getPrefix() + "§cThis command requires a player.");
+                sender.sendMessage(cm.prefixed("general.requires-player", "&cThis command requires a player."));
                 return true;
             }
             plugin.getArenaManager().setPartyFFASpawn(p.getLocation());
-            p.sendMessage(plugin.getPrefix() + "§aParty-FFA spawn set to your current location.");
+            p.sendMessage(cm.prefixed("admin.partyffa-spawn-set", "&aParty-FFA spawn set to your current location."));
             return true;
         }
 
         // Hilfe anzeigen
-        sender.sendMessage(plugin.getPrefix() + "§aDuels Plugin by Ryhox.");
-        sender.sendMessage("§3Commands:");
-        sender.sendMessage("§c/duels reload §8- §7Reload the plugin configuration");
-        sender.sendMessage("§c/spawn §8- §7Teleport to spawn");
-        sender.sendMessage("§c/stats [player] §8- §7Check stats");
-        sender.sendMessage("§c/duel <player> §8- §7Challenge a player to a duel");
-        sender.sendMessage("§c/kits §8- §7View available kits");
-        sender.sendMessage("§c/accept §8- §7Accept a pending duel request");
-        sender.sendMessage("§c/ping <player> §8- §7Check ping");
-        sender.sendMessage("§c/previewkit <kitname> §8- §7Preview a kit in your inventory");
-        sender.sendMessage("§c/queue join <kit> §8- §7Join a queue");
-        sender.sendMessage("§c/queue gui §8- §7Open the kit GUI");
-        sender.sendMessage("§c/queue leave §8- §7Leave a queue");
-        sender.sendMessage("§c/duels invlayout §8- §7Edit your per-kit inventory layout");
-        sender.sendMessage("§c/duels armortrim §8- §7Open the armor trim editor (needs duels.armortrim)");
+        sender.sendMessage(plugin.getConfigManager().prefixed("admin.plugin-info", "&aDuels Plugin by Ryhox."));
+        sender.sendMessage(cm.getMessage("help.header", "&3Commands:"));
+        sender.sendMessage(cm.getMessage("help.reload", "&c/duels reload &8- &7Reload the plugin configuration"));
+        sender.sendMessage(cm.getMessage("help.spawn", "&c/spawn &8- &7Teleport to spawn"));
+        sender.sendMessage(cm.getMessage("help.stats", "&c/stats [player] &8- &7Check stats"));
+        sender.sendMessage(cm.getMessage("help.duel", "&c/duel <player> &8- &7Challenge a player to a duel"));
+        sender.sendMessage(cm.getMessage("help.kits", "&c/kits &8- &7View available kits"));
+        sender.sendMessage(cm.getMessage("help.accept", "&c/accept &8- &7Accept a pending duel request"));
+        sender.sendMessage(cm.getMessage("help.ping", "&c/ping <player> &8- &7Check ping"));
+        sender.sendMessage(cm.getMessage("help.previewkit", "&c/previewkit <kitname> &8- &7Preview a kit in your inventory"));
+        sender.sendMessage(cm.getMessage("help.queue-join", "&c/queue join <kit> &8- &7Join a queue"));
+        sender.sendMessage(cm.getMessage("help.queue-gui", "&c/queue gui &8- &7Open the kit GUI"));
+        sender.sendMessage(cm.getMessage("help.queue-leave", "&c/queue leave &8- &7Leave a queue"));
+        sender.sendMessage(cm.getMessage("help.invlayout", "&c/duels invlayout &8- &7Edit your per-kit inventory layout"));
+        sender.sendMessage(cm.getMessage("help.armortrim", "&c/duels armortrim &8- &7Open the armor trim editor (needs duels.armortrim)"));
 
         if (sender.hasPermission("duels.admin")) {
-            sender.sendMessage("§c/setspawn §8- §7Set spawn location");
-            sender.sendMessage("§c/duels setpartyffaspawn §8- §7Set Party-FFA arena spawn");
-            sender.sendMessage("§c/setkills <player> <amount> §8- §7Set player kills");
-            sender.sendMessage("§c/setdeaths <player> <amount> §8- §7Set player deaths");
-            sender.sendMessage("§c/setwins <player> <amount> §8- §7Set player wins");
-            sender.sendMessage("§c/setlosses <player> <amount> §8- §7Set player losses");
-            sender.sendMessage("§c/addkit <name> <preview_item> §8- §7Create a new kit");
-            sender.sendMessage("§c/arenacreate §8- §7Create and manage arenas");
+            sender.sendMessage(cm.getMessage("help.setspawn", "&c/setspawn &8- &7Set spawn location"));
+            sender.sendMessage(cm.getMessage("help.setpartyffaspawn", "&c/duels setpartyffaspawn &8- &7Set Party-FFA arena spawn"));
+            sender.sendMessage(cm.getMessage("help.setkills", "&c/setkills <player> <amount> &8- &7Set player kills"));
+            sender.sendMessage(cm.getMessage("help.setdeaths", "&c/setdeaths <player> <amount> &8- &7Set player deaths"));
+            sender.sendMessage(cm.getMessage("help.setwins", "&c/setwins <player> <amount> &8- &7Set player wins"));
+            sender.sendMessage(cm.getMessage("help.setlosses", "&c/setlosses <player> <amount> &8- &7Set player losses"));
+            sender.sendMessage(cm.getMessage("help.addkit", "&c/addkit <name> <preview_item> &8- &7Create a new kit"));
+            sender.sendMessage(cm.getMessage("help.arenacreate", "&c/arenacreate &8- &7Create and manage arenas"));
         }
 
         return true;
@@ -170,7 +176,7 @@ public class MainCommand implements CommandExecutor {
             } catch (Throwable ignored) {}
         }
 
-        sender.sendMessage(plugin.getPrefix() + "§7Plugin configuration §a§lreloaded!");
+        sender.sendMessage(plugin.getConfigManager().prefixed("admin.reloaded", "&7Plugin configuration &a&lreloaded!"));
         plugin.getLogger().info("Duels plugin reloaded by " + sender.getName());
     }
 
@@ -179,6 +185,6 @@ public class MainCommand implements CommandExecutor {
         for (dev.duels.managers.ArmorTrimManager.Piece piece : dev.duels.managers.ArmorTrimManager.Piece.values()) {
             plugin.getArmorTrimManager().clearPiece(uuid, piece);
         }
-        target.sendMessage(plugin.getPrefix() + "§7Your armor trims have been §ccleared §7by an admin.");
+        target.sendMessage(plugin.getConfigManager().prefixed("armortrim.cleared-by-admin", "&7Your armor trims have been &ccleared &7by an admin."));
     }
 }
