@@ -324,32 +324,40 @@ public class DuelListener implements Listener {
                 || plugin.getPartyFFAManager().isParticipant(uuid);
         if (!"GLOBAL".equalsIgnoreCase(scope) && !inMatch) return;
 
-        org.bukkit.Location from = event.getFrom();
+        final org.bukkit.Location from = event.getFrom();
         org.bukkit.Location to = event.getTo();
         if (from == null || to == null || from.getWorld() == null
                 || to.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
             return;
         }
-        // Zwei Fälle abdecken:
-        // 1) Der Pearl-Pfad geht durch einen geblockten Block (diagonaler Wurf).
-        // 2) Die Ziel-Position klebt direkt an einem geblockten Block / klippt
-        //    hinein (z.B. Pearl gerade nach unten vor einer Wand). Hier ist der
-        //    Pfad vertikal und kreuzt die Wand nie, aber die Bounding-Box am
-        //    Ziel überlappt die Wand -> Minecraft schiebt den Spieler durch.
-        org.bukkit.util.Vector clipPush = destinationClipPushback(to);
-        if (pathCrossesBlockedBlock(from, to) || clipPush != null) {
+        // Fall 1: Der Pearl-Pfad geht direkt durch einen geblockten Block
+        // (diagonaler Wurf durch die Wand). Schon zum Event-Zeitpunkt erkennbar
+        // -> Teleport abbrechen und ein Stück zurückstoßen.
+        if (pathCrossesBlockedBlock(from, to)) {
             event.setCancelled(true);
-            // Bevorzugt horizontal vom geblockten Block wegstoßen; sonst zurück
-            // Richtung 'from' (verhindert dass man direkt an der Wand klebt).
-            org.bukkit.util.Vector back = clipPush;
-            if (back == null) {
-                back = from.toVector().subtract(to.toVector());
-            }
+            org.bukkit.util.Vector back = from.toVector().subtract(to.toVector());
             if (back.lengthSquared() > 0.0001) {
                 back.normalize().multiply(0.4).setY(0.2);
                 p.setVelocity(back);
             }
+            return;
         }
+        // Fall 2: An die Wand ran-tpn ist ERLAUBT. Wer aber vor einer Wand eine
+        // Pearl gerade nach unten wirft, wird von Minecraft durch die Wand
+        // geschoben (Ejection). Das passiert erst NACH dem Teleport. Deshalb
+        // prüfen wir 1 Tick später die tatsächliche Position: liegt zwischen
+        // Start (from) und der echten End-Position ein geblockter Block, ist
+        // der Spieler durchgeglitcht -> zurück nach 'from'. Ein normales
+        // Andocken an die Wand (gleiche Seite) kreuzt nichts und bleibt erlaubt.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!p.isOnline()) return;
+            org.bukkit.Location now = p.getLocation();
+            if (now.getWorld() == null || !now.getWorld().equals(from.getWorld())) return;
+            if (pathCrossesBlockedBlock(from, now)) {
+                p.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                p.teleport(from);
+            }
+        }, 1L);
     }
 
     /**
@@ -392,50 +400,6 @@ public class DuelListener implements Listener {
                 || plugin.getConfigManager().isAntiGlitchBlocked(head);
     }
 
-    /**
-     * Prüft ob die Spieler-Bounding-Box an der Ziel-Position {@code to} einen
-     * geblockten Block überlappt (d.h. der Spieler klebt an / klippt in eine
-     * Wand). Das fängt den Exploit ab, bei dem man vor einer Wand eine Pearl
-     * gerade nach unten wirft: der TP-Pfad ist vertikal und kreuzt die Wand
-     * nie, aber die Ziel-Box überlappt sie und Minecraft schiebt den Spieler
-     * hindurch.
-     *
-     * @return horizontaler Vektor weg vom geblockten Block (Pushback), oder
-     *         {@code null} wenn keine Überlappung vorliegt.
-     */
-    private org.bukkit.util.Vector destinationClipPushback(org.bukkit.Location to) {
-        org.bukkit.World world = to.getWorld();
-        if (world == null) return null;
-        final double r = 0.31; // halbe Spielerbreite (0.6) + kleine Epsilon
-        double[] xs = { to.getX() - r, to.getX() + r };
-        double[] zs = { to.getZ() - r, to.getZ() + r };
-        // Fuß-, Mittel- und Kopfhöhe der Bounding-Box (Spieler ~1.8 hoch).
-        double[] ys = { to.getY() + 0.1, to.getY() + 0.9, to.getY() + 1.7 };
-        org.bukkit.util.Vector push = new org.bukkit.util.Vector(0, 0, 0);
-        boolean clipped = false;
-        for (double x : xs) {
-            for (double z : zs) {
-                for (double y : ys) {
-                    int bx = org.bukkit.Location.locToBlock(x);
-                    int by = org.bukkit.Location.locToBlock(y);
-                    int bz = org.bukkit.Location.locToBlock(z);
-                    org.bukkit.Material m = world.getBlockAt(bx, by, bz).getType();
-                    if (plugin.getConfigManager().isAntiGlitchBlocked(m)) {
-                        clipped = true;
-                        // Vom Block-Zentrum weg (horizontal) Richtung Spieler.
-                        push.add(new org.bukkit.util.Vector(
-                                to.getX() - (bx + 0.5), 0, to.getZ() - (bz + 0.5)));
-                    }
-                }
-            }
-        }
-        if (!clipped) return null;
-        if (push.lengthSquared() < 0.0001) {
-            // Spieler genau mittig im Block: irgendeine horizontale Richtung.
-            push = new org.bukkit.util.Vector(1, 0, 0);
-        }
-        return push;
-    }
 
     @EventHandler
     public void onBedEnter(PlayerBedEnterEvent event) {
