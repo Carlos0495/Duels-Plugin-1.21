@@ -251,12 +251,17 @@ public class DuelManager {
         clearChat(p2);
         String kitDisplay = plugin.getKitManager().getKitDisplayName(session.getKitName());
 
+        // Kit/Arena-Zeile: Map nur anzeigen wenn in config aktiviert.
+        String startKitArena = plugin.getConfigManager().isShowMapInRequest()
+                ? plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", session.getArenaName()))
+                : plugin.getConfigManager().prefixed("duel.kit-only", "&7Kit: &r{kit}", java.util.Map.of("kit", kitDisplay));
+
         p1.sendMessage(plugin.getConfigManager().prefixed("duel.started", "&aDuel started &7against &c{player}!", java.util.Map.of("player", p2.getName())));
-        p1.sendMessage(plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", session.getArenaName())));
+        p1.sendMessage(startKitArena);
         p1.sendMessage(plugin.getConfigManager().prefixed("duel.match-info", "&dMatch: &fBest of {bestof} &7(need {wins} wins)", java.util.Map.of("bestof", String.valueOf(session.getBestOf()), "wins", String.valueOf(session.requiredWins()))));
 
         p2.sendMessage(plugin.getConfigManager().prefixed("duel.started", "&aDuel started &7against &c{player}!", java.util.Map.of("player", p1.getName())));
-        p2.sendMessage(plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", session.getArenaName())));
+        p2.sendMessage(startKitArena);
         p2.sendMessage(plugin.getConfigManager().prefixed("duel.match-info", "&dMatch: &fBest of {bestof} &7(need {wins} wins)", java.util.Map.of("bestof", String.valueOf(session.getBestOf()), "wins", String.valueOf(session.requiredWins()))));
     }
 
