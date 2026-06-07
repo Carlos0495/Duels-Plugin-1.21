@@ -800,7 +800,7 @@ public class GUIManager {
                 "§7Wins: §a" + wins,
                 "§7Losses: §c" + losses,
                 "§7Win Rate: §b" + winrate,
-                "§7Coins: §e" + coins
+                "§7" + plugin.getConfigManager().getCurrencyName() + ": §e" + coins
         ));
         head.setItemMeta(headMeta);
         inv.setItem(13, head);
@@ -823,7 +823,7 @@ public class GUIManager {
     }
     private ItemStack createTop5Item(Player viewer, StatsSort sort) {
         List<String> lore = new ArrayList<>();
-        lore.add("§7Sorted: §b" + sort.label() + " §7(click to change)");
+        lore.add("§7Sorted: §b" + sortLabel(sort) + " §7(click to change)");
         lore.add("");
 
         List<dev.duels.objects.PlayerData> all = plugin.getPlayerManager().getAllPlayerDataSnapshot();
@@ -896,6 +896,12 @@ public class GUIManager {
         };
     }
 
+    /** Label einer Sort-Kategorie; COINS nutzt den konfigurierbaren Währungsnamen. */
+    private String sortLabel(StatsSort sort) {
+        if (sort == StatsSort.COINS) return plugin.getConfigManager().getCurrencyName();
+        return sort.label();
+    }
+
     private StatsSort nextSort(StatsSort current) {
         StatsSort[] vals = StatsSort.values();
         int i = (current.ordinal() + 1) % vals.length;
@@ -948,7 +954,7 @@ public class GUIManager {
                 "§7Wins: §a" + wins,
                 "§7Losses: §c" + losses,
                 "§7Winrate: §b" + winrate,
-                "§7Coins: §e" + coins
+                "§7" + plugin.getConfigManager().getCurrencyName() + ": §e" + coins
         ));
 
         head.setItemMeta(meta);

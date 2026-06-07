@@ -155,7 +155,7 @@ public class ConfigManager {
                     "",
                     "§a☻ §7ᴏɴʟɪɴᴇ §a%online%",
                     "§6🏹 §7ɪɴ ᴅᴜᴇʟѕ §6%playing%",
-                    "§e🪙 §7ᴄᴏɪɴѕ §e%coins%",
+                    "§e🪙 §7%currency% §e%coins%",
                     "",
                     "§2🗡 §7ᴋɪʟʟѕ §2%kills%",
                     "§c☠ §7ᴅᴇᴀᴛʜѕ §c%deaths%",
@@ -179,7 +179,7 @@ public class ConfigManager {
                     if (lines.get(i) != null && lines.get(i).contains("%playing%")) { insertAt = i + 1; break; }
                 }
                 if (insertAt < 0) insertAt = Math.min(3, lines.size());
-                lines.add(insertAt, "§e🪙 §7ᴄᴏɪɴѕ §e%coins%");
+                lines.add(insertAt, "§e🪙 §7%currency% §e%coins%");
                 mainConfig.set("scoreboard-lines", lines);
                 dirty = true;
             }
@@ -341,12 +341,119 @@ public class ConfigManager {
         if (!mainConfig.contains("leaderboard.names.kd"))      { mainConfig.set("leaderboard.names.kd", "K/D"); dirty = true; }
         if (!mainConfig.contains("leaderboard.names.winrate")) { mainConfig.set("leaderboard.names.winrate", "Win Rate"); dirty = true; }
 
+        // Per-Duel Chat-Filter. Wenn aktiv, sehen Spieler in einem Duel/FFA/
+        // Team-Match nur noch den Chat ihrer Match-Gegner/Mitspieler; ihre
+        // eigenen Nachrichten gehen ebenfalls nur ans Match. So bleibt der
+        // globale Chat sauber.
+        //   duel.chat-isolated : an/aus für laufende Matches (default an)
+        // Pro-Welt eigener (isolierter) Chat: Spieler in diesen Welten chatten
+        // nur mit anderen Spielern in DERSELBEN Welt.
+        //   chat.per-world-worlds : Liste von Welt-Namen mit isoliertem Chat
+        //   chat.lobby-isolated   : eigener Chat nur für die Lobby-Welt(en)
+        if (!mainConfig.contains("chat.duel-isolated"))
+            { mainConfig.set("chat.duel-isolated", true); dirty = true; }
+        if (!mainConfig.contains("chat.lobby-isolated"))
+            { mainConfig.set("chat.lobby-isolated", false); dirty = true; }
+        if (!mainConfig.contains("chat.per-world-worlds"))
+            { mainConfig.set("chat.per-world-worlds", new java.util.ArrayList<String>()); dirty = true; }
+
+        // Tablist-Filter: wer im Duel/FFA/Team ist, sieht im TAB nur seine
+        // Gegner/Mitspieler. Default AUS.
+        //   tablist.duel-filter      : an/aus (default aus)
+        //   tablist.per-world-worlds : in diesen Welten sieht man nur Spieler
+        //                              derselben Welt im TAB
+        if (!mainConfig.contains("tablist.duel-filter"))
+            { mainConfig.set("tablist.duel-filter", false); dirty = true; }
+        if (!mainConfig.contains("tablist.per-world-worlds"))
+            { mainConfig.set("tablist.per-world-worlds", new java.util.ArrayList<String>()); dirty = true; }
+
+        // Währungsname: was statt "Coins" überall angezeigt wird (Scoreboard,
+        // Vergleich, Nachrichten via {currency}, Placeholder %duels_currency%,
+        // Leaderboard-Kategorie). Beliebiger Text möglich (z.B. "Elo").
+        if (!mainConfig.contains("currency.name"))
+            { mainConfig.set("currency.name", "Coins"); dirty = true; }
+
+        // Auto-Disable bei fehlender Permission (config-toggle):
+        //   fly      : kein duels.fly → Fly automatisch aus
+        //   armortrim: kein Armortrim-Recht → Trims werden entfernt
+        if (!mainConfig.contains("permissions.auto-disable-fly"))
+            { mainConfig.set("permissions.auto-disable-fly", true); dirty = true; }
+        if (!mainConfig.contains("permissions.auto-disable-armortrim"))
+            { mainConfig.set("permissions.auto-disable-armortrim", true); dirty = true; }
+
+        // Duel-Einladung: ob die Map/Arena in der Benachrichtigung steht.
+        if (!mainConfig.contains("duel.show-map-in-request"))
+            { mainConfig.set("duel.show-map-in-request", true); dirty = true; }
+
         if (dirty) plugin.saveConfig();
+    }
+
+    /** @return konfigurierbarer Währungsname (default "Coins"). */
+    public String getCurrencyName() {
+        if (mainConfig == null) return "Coins";
+        String s = mainConfig.getString("currency.name", "Coins");
+        return (s == null || s.trim().isEmpty()) ? "Coins" : s;
+    }
+
+    /** @return true wenn Fly bei fehlender Permission automatisch aus ist. */
+    public boolean isAutoDisableFly() {
+        return mainConfig != null && mainConfig.getBoolean("permissions.auto-disable-fly", true);
+    }
+
+    /** @return true wenn Armortrims bei fehlender Permission entfernt werden. */
+    public boolean isAutoDisableArmortrim() {
+        return mainConfig != null && mainConfig.getBoolean("permissions.auto-disable-armortrim", true);
+    }
+
+    /** @return true wenn die Map in der Duel-Einladung angezeigt wird. */
+    public boolean isShowMapInRequest() {
+        return mainConfig == null || mainConfig.getBoolean("duel.show-map-in-request", true);
     }
 
     /** @return true wenn Match-Spectator-Block-Kollision aktiv ist. */
     public boolean isSpectatorBlockCollision() {
         return mainConfig == null || mainConfig.getBoolean("spectator.block-collision", true);
+    }
+
+    // ---- Chat-Filter ----
+
+    /** @return true wenn Chat in laufenden Matches isoliert sein soll. */
+    public boolean isDuelChatIsolated() {
+        return mainConfig != null && mainConfig.getBoolean("chat.duel-isolated", true);
+    }
+
+    /** @return true wenn die Lobby-Welt(en) eigenen, isolierten Chat haben. */
+    public boolean isLobbyChatIsolated() {
+        return mainConfig != null && mainConfig.getBoolean("chat.lobby-isolated", false);
+    }
+
+    /** @return Welt-Namen (lowercase) mit eigenem, isoliertem Chat. */
+    public java.util.Set<String> getPerWorldChatWorlds() {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        if (mainConfig != null) {
+            for (String w : mainConfig.getStringList("chat.per-world-worlds")) {
+                if (w != null && !w.trim().isEmpty()) set.add(w.trim().toLowerCase());
+            }
+        }
+        return set;
+    }
+
+    // ---- Tablist-Filter ----
+
+    /** @return true wenn TAB im Match nur Gegner/Mitspieler zeigt (default aus). */
+    public boolean isDuelTablistFilter() {
+        return mainConfig != null && mainConfig.getBoolean("tablist.duel-filter", false);
+    }
+
+    /** @return Welt-Namen (lowercase) mit eigenem, gefiltertem TAB. */
+    public java.util.Set<String> getPerWorldTablistWorlds() {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        if (mainConfig != null) {
+            for (String w : mainConfig.getStringList("tablist.per-world-worlds")) {
+                if (w != null && !w.trim().isEmpty()) set.add(w.trim().toLowerCase());
+            }
+        }
+        return set;
     }
 
     public boolean isAntiGlitchEnabled() {
@@ -425,6 +532,11 @@ public class ConfigManager {
             for (java.util.Map.Entry<String, String> e : placeholders.entrySet()) {
                 raw = raw.replace("{" + e.getKey() + "}", e.getValue() == null ? "" : e.getValue());
             }
+        }
+        // Globaler {currency}-Platzhalter (konfigurierbarer Währungsname,
+        // z.B. "Coins" oder "Elo") — in JEDER Nachricht verfügbar.
+        if (raw.indexOf("{currency}") >= 0) {
+            raw = raw.replace("{currency}", getCurrencyName());
         }
         return org.bukkit.ChatColor.translateAlternateColorCodes('&', raw);
     }

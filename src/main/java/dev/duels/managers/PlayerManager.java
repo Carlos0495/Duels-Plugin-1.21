@@ -364,15 +364,69 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
 
         boolean hidden = isHidden(viewer.getUniqueId());
 
+        // Tablist-/Sicht-Filter bestimmen (Match-Filter hat Vorrang vor
+        // Welt-Filter). Match-Peers (Gegner/Mitspieler) sind IMMER sichtbar,
+        // damit Duelisten sich gegenseitig sehen — unabhängig von Toggles.
+        java.util.Set<UUID> peers = getMatchPeers(viewer.getUniqueId());
+        var cfg = plugin.getConfigManager();
+        boolean duelFilter = cfg.isDuelTablistFilter() && peers != null;
+        boolean sameWorldOnly = !duelFilter && viewer.getWorld() != null
+                && cfg.getPerWorldTablistWorlds().contains(viewer.getWorld().getName().toLowerCase());
+
         for (Player other : Bukkit.getOnlinePlayers()) {
             if (other.equals(viewer)) continue;
 
-            if (hidden) {
-                viewer.hidePlayer(plugin, other);
+            boolean show;
+            if (peers != null && peers.contains(other.getUniqueId())) {
+                show = true;
+            } else if (hidden) {
+                show = false;
+            } else if (duelFilter) {
+                show = false;
+            } else if (sameWorldOnly) {
+                show = other.getWorld() != null && other.getWorld().equals(viewer.getWorld());
             } else {
+                show = true;
+            }
+
+            if (show) {
                 viewer.showPlayer(plugin, other);
+            } else {
+                viewer.hidePlayer(plugin, other);
             }
         }
+    }
+
+    /** Wendet {@link #applyVisibility(Player)} für alle Online-Spieler an. */
+    public void refreshAllVisibility() {
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            applyVisibility(viewer);
+        }
+    }
+
+    /**
+     * Liefert die "Match-Peers" eines Spielers (alle Teilnehmer seines
+     * aktuellen Duel-/FFA-/Team-Matches inkl. ihm selbst) oder {@code null},
+     * wenn er in keinem Match ist. Wird für Chat- und Tablist-Filter genutzt.
+     */
+    public java.util.Set<UUID> getMatchPeers(UUID uuid) {
+        if (uuid == null) return null;
+        if (plugin.getDuelManager().isInDuel(uuid)) {
+            dev.duels.objects.DuelSession s = plugin.getDuelManager().getDuelSession(uuid);
+            if (s != null) {
+                java.util.Set<UUID> set = new java.util.HashSet<>();
+                set.add(s.getPlayer1());
+                set.add(s.getPlayer2());
+                return set;
+            }
+        }
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) {
+            dev.duels.managers.PartyFFAManager.FFASession s =
+                    plugin.getPartyFFAManager().getSession(uuid);
+            if (s != null) return new java.util.HashSet<>(s.allParticipants);
+        }
+        return null;
     }
 
 
@@ -507,7 +561,7 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
             return;
         }
 
-        if (!player.hasPermission("duels.fly")) {
+        if (plugin.getConfigManager().isAutoDisableFly() && !player.hasPermission("duels.fly")) {
             player.setFlying(false);
             player.setAllowFlight(false);
             return;
@@ -688,6 +742,40 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
     public void setAutoFly(UUID uuid, boolean value) {
         autoFly.put(uuid, value);
         savePlayerData(uuid);
+    }
+
+    /**
+     * Setzt den Autofly-Status und persistiert ihn direkt in players.yml —
+     * funktioniert auch für OFFLINE-Spieler (deren PlayerData nicht geladen ist).
+     */
+    public void setAutoFlyPersistent(UUID uuid, boolean value) {
+        autoFly.put(uuid, value);
+        String key = uuid.toString();
+        plugin.getConfigManager().getPlayersConfig().set(key + ".autofly", value);
+        plugin.getConfigManager().savePlayersConfig();
+    }
+
+    /**
+     * Setzt permission-basierte Defaults durch: ohne {@code duels.fly} wird
+     * Fly aus, ohne Armortrim-Permission werden die Armortrims entfernt —
+     * jeweils nur wenn der entsprechende Config-Toggle aktiv ist.
+     */
+    public void enforcePermissionDefaults(Player player) {
+        if (player == null) return;
+        var cm = plugin.getConfigManager();
+        if (cm.isAutoDisableFly() && !player.hasPermission("duels.fly")) {
+            player.setFlying(false);
+            player.setAllowFlight(false);
+            autoFly.put(player.getUniqueId(), false);
+        }
+        if (cm.isAutoDisableArmortrim()
+                && plugin.getArmorTrimManager() != null
+                && !player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
+            for (dev.duels.managers.ArmorTrimManager.Piece piece
+                    : dev.duels.managers.ArmorTrimManager.Piece.values()) {
+                plugin.getArmorTrimManager().clearPiece(player.getUniqueId(), piece);
+            }
+        }
     }
 
     private boolean isValidUUID(String string) {

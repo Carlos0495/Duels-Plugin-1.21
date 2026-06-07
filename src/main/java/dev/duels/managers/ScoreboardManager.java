@@ -215,7 +215,8 @@ public class ScoreboardManager {
                 .replace("%opponentwins%", String.valueOf(oppWins))
                 .replace("%alive%", String.valueOf(aliveCount))
                 .replace("%yourteam%", String.valueOf(yourTeamAlive))
-                .replace("%enemyteam%", String.valueOf(enemyTeamAlive));
+                .replace("%enemyteam%", String.valueOf(enemyTeamAlive))
+                .replace("%currency%", plugin.getConfigManager().getCurrencyName());
     }
 
     private String getEmptyLineId(int index) {

@@ -13,6 +13,8 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.*;
 import org.bukkit.event.entity.ItemSpawnEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 
 public class ArenaListener implements Listener {
 
@@ -75,6 +77,70 @@ public class ArenaListener implements Listener {
         BlockVector vector = new BlockVector(
                 event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
         arena.addPlayerPlacedBlock(vector);
+    }
+
+    /**
+     * Wasser/Lava per Eimer platzieren erzeugt KEIN BlockPlaceEvent, sondern
+     * ein PlayerBucketEmptyEvent — die Flüssigkeits-Quelle wurde dadurch bisher
+     * nie als player-placed getrackt und blieb beim Arena-Reset stehen (bzw.
+     * floss nach dem Reset wieder nach → "flaches Wasser"). Hier tracken wir
+     * den Quell-Block, damit der Reset ihn zu Luft zurücksetzt.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onBucketEmpty(PlayerBucketEmptyEvent event) {
+        Player player = event.getPlayer();
+        if (player.getGameMode() == GameMode.CREATIVE) return;
+
+        boolean inDuel = plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA  = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
+
+        Block b = event.getBlock();
+        if (b == null) return;
+        Location loc = b.getLocation();
+        Arena arena = resolveArenaForPlayer(player, loc);
+        if (arena == null) return;
+
+        BlockVector v = new BlockVector(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+        // Nur tracken wenn der Original-Block hier nicht festgelegt ist
+        // (sonst übernimmt der Snapshot-Restore den korrekten Originalzustand).
+        if (!arena.getOriginalBlocks().containsKey(v)) {
+            arena.addPlayerPlacedBlock(v);
+        }
+    }
+
+    /**
+     * Schöpft ein Spieler eine ORIGINAL-Flüssigkeit (z.B. einen legitimen
+     * Wasser-See der Arena) mit dem Eimer ab, würde sie beim Reset fehlen.
+     * Wir merken uns daher den Originalzustand, damit der Reset ihn
+     * wiederherstellt.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onBucketFill(PlayerBucketFillEvent event) {
+        Player player = event.getPlayer();
+        if (player.getGameMode() == GameMode.CREATIVE) return;
+
+        boolean inDuel = plugin.getDuelManager().isInDuel(player.getUniqueId());
+        boolean inFFA  = plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
+        if (!inDuel && !inFFA) return;
+
+        Block b = event.getBlock();
+        if (b == null) return;
+        Location loc = b.getLocation();
+        Arena arena = resolveArenaForPlayer(player, loc);
+        if (arena == null) return;
+
+        BlockVector v = new BlockVector(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
+        if (arena.isPlayerPlacedBlock(v)) {
+            // War vom Spieler platzierte Flüssigkeit → einfach aus dem
+            // Tracking nehmen, Reset muss nichts tun.
+            arena.removePlayerPlacedBlock(v);
+        } else if (!arena.getOriginalBlocks().containsKey(v)) {
+            try { arena.getOriginalBlocks().put(v, b.getBlockData().clone()); }
+            catch (Throwable ignored) {}
+        }
     }
 
     /**
@@ -201,11 +267,14 @@ public class ArenaListener implements Listener {
         Location to = event.getToBlock().getLocation();
         Arena arena = findActiveArenaNear(to);
         if (arena == null) return;
-        // Nur tracken wenn der Ziel-Block leer war (sonst wird er gleich
-        // wieder als Snapshot oder original-Block restored).
+        // Tracken wenn der Ziel-Block leer ODER bereits Flüssigkeit war
+        // (fließendes Wasser/Lava breitet sich über mehrere Level aus — auch
+        // diese Ziel-Blöcke müssen beim Reset entfernt werden, sonst bleibt
+        // "flaches Wasser" stehen).
         org.bukkit.Material toMat = event.getToBlock().getType();
-        if (toMat.isAir()) {
-            BlockVector v = new BlockVector(to.getBlockX(), to.getBlockY(), to.getBlockZ());
+        BlockVector v = new BlockVector(to.getBlockX(), to.getBlockY(), to.getBlockZ());
+        if ((toMat.isAir() || toMat == org.bukkit.Material.WATER || toMat == org.bukkit.Material.LAVA)
+                && !arena.getOriginalBlocks().containsKey(v)) {
             arena.addPlayerPlacedBlock(v);
         }
     }

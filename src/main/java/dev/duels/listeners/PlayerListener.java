@@ -34,6 +34,9 @@ public class PlayerListener implements Listener {
         plugin.getPlayerManager().loadPlayerData(uuid);
         plugin.getPlayerManager().getPlayerData(uuid).setName(player.getName());
 
+        // Permission-basierte Defaults (Fly/Armortrims) durchsetzen.
+        plugin.getPlayerManager().enforcePermissionDefaults(player);
+
         forceLobbyState(player);
 
         Location spawn = plugin.getArenaManager().getSpawnLocation();
@@ -93,8 +96,9 @@ public class PlayerListener implements Listener {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (plugin.getDuelManager().isInDuel(uuid)) {
                     forceRoundState(player);
-                    plugin.getKitManager().giveKit(player,
-                            plugin.getDuelManager().getDuelSession(uuid).getKitName());
+                    String kitName = plugin.getDuelManager().getDuelSession(uuid).getKitName();
+                    plugin.getKitManager().giveKit(player, kitName);
+                    plugin.getKitManager().applyKitStartEffects(player, kitName);
                 }
             }, 1L);
             return;
@@ -116,6 +120,52 @@ public class PlayerListener implements Listener {
         }, 2L);
     }
 
+    /**
+     * Chat-Filter: isoliert den Chat für Spieler in Matches und für Welten
+     * mit eigenem Chat (per-world / Lobby). Wir verändern nur die Empfänger
+     * des Events — wir canceln NICHT und überschreiben das Format NICHT,
+     * damit Chat-/DeathMessage-Plugins weiter funktionieren.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onChatFilter(AsyncPlayerChatEvent event) {
+        Player sender = event.getPlayer();
+        UUID uuid = sender.getUniqueId();
+        var cfg = plugin.getConfigManager();
+
+        java.util.Set<UUID> allowed = null; // null = kein Filter
+
+        // 1) Match-Chat-Isolation (höchste Priorität).
+        if (cfg.isDuelChatIsolated()) {
+            java.util.Set<UUID> peers = plugin.getPlayerManager().getMatchPeers(uuid);
+            if (peers != null) {
+                allowed = new java.util.HashSet<>(peers);
+            }
+        }
+
+        // 2) Per-Welt / Lobby isolierter Chat (nur wenn nicht schon Match-Filter).
+        if (allowed == null && sender.getWorld() != null) {
+            String world = sender.getWorld().getName().toLowerCase();
+            boolean perWorld = cfg.getPerWorldChatWorlds().contains(world);
+            boolean lobby = cfg.isLobbyChatIsolated()
+                    && plugin.getPlayerManager().isInLobbyWorld(sender);
+            if (perWorld || lobby) {
+                allowed = new java.util.HashSet<>();
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.getWorld() != null
+                            && p.getWorld().getName().equalsIgnoreCase(sender.getWorld().getName())) {
+                        allowed.add(p.getUniqueId());
+                    }
+                }
+            }
+        }
+
+        if (allowed == null) return; // kein Filter aktiv
+
+        allowed.add(uuid); // Sender sieht seine eigene Nachricht immer
+        final java.util.Set<UUID> finalAllowed = allowed;
+        event.getRecipients().removeIf(r -> !finalAllowed.contains(r.getUniqueId()));
+    }
+
     @EventHandler
     public void onChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
@@ -126,6 +176,9 @@ public class PlayerListener implements Listener {
         // setupPlayerInventory entscheidet selbst (basierend auf der neuen
         // Welt) ob Hotbar gesetzt oder Inventar geleert wird.
         plugin.getPlayerManager().setupPlayerInventory(player);
+        // Per-Welt Tablist-Filter neu berechnen (für alle, da auch andere
+        // den Welt-Wechsler ein-/ausblenden müssen).
+        plugin.getPlayerManager().refreshAllVisibility();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -232,14 +285,18 @@ public class PlayerListener implements Listener {
                         player.teleport(target.getLocation());
                         return;
                     }
-                    // Block-Kollision für Match-Spectator: sie sollen NICHT
-                    // durch Blöcke (auch Barrier) fliegen können. Leute im
-                    // normalen SPECTATOR-GameMode (kein Match) sind hier nicht
-                    // erfasst, weil sie nicht in der SpectateManager-Map sind.
+                    // Block-Kollision für Match-Spectator: sie dürfen aus einem
+                    // Block RAUS fliegen (z.B. wenn sie in der FFA in einem
+                    // Block gestorben sind), aber nicht in einen Block REIN.
+                    // -> Bewegung nur abbrechen wenn das Ziel in einem Block
+                    //    liegt UND die Startposition NICHT in einem Block lag.
+                    // Leute im normalen SPECTATOR-GameMode (kein Match) sind
+                    // hier nicht erfasst (nicht in der SpectateManager-Map).
                     if (plugin.getConfigManager().isSpectatorBlockCollision()) {
                         Location to = event.getTo();
-                        if (to != null && isInsideSolid(to)) {
-                            event.setTo(event.getFrom());
+                        Location from = event.getFrom();
+                        if (to != null && isInsideSolid(to) && !isInsideSolid(from)) {
+                            event.setTo(from);
                             return;
                         }
                     }

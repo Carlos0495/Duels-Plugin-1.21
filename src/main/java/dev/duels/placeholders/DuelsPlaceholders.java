@@ -131,6 +131,7 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                         org.bukkit.ChatColor.translateAlternateColorCodes('&', duelSym)).trim();
                 return "";
             }
+            case "currency": return plugin.getConfigManager().getCurrencyName();
             case "coins":  return String.valueOf(plugin.getPlayerManager().getStat(player.getUniqueId(), "coins"));
             case "wins":   return String.valueOf(plugin.getPlayerManager().getStat(player.getUniqueId(), "wins"));
             case "losses": return String.valueOf(plugin.getPlayerManager().getStat(player.getUniqueId(), "losses"));
@@ -224,6 +225,11 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
         if ("value".equals(field)) return value;
 
         String category = cfg.getString("leaderboard.names." + cat, cat);
+        // Coins-Kategorie folgt dem konfigurierbaren Währungsnamen, sofern der
+        // Nutzer den Leaderboard-Namen nicht manuell überschrieben hat.
+        if ("coins".equals(cat) && (category == null || category.equalsIgnoreCase("Coins"))) {
+            category = plugin.getConfigManager().getCurrencyName();
+        }
         String fmt = cfg.getString("leaderboard.format", "&e#{rank} &f{name} &8- &a{value}");
         fmt = fmt.replace("{rank}", String.valueOf(rank))
                  .replace("{name}", name)

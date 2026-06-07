@@ -161,6 +161,8 @@ public class MainCommand implements CommandExecutor {
 
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
             plugin.getScoreboardManager().updateScoreboard(player);
+            // Permission-basierte Defaults (Fly/Armortrims) erneut durchsetzen.
+            plugin.getPlayerManager().enforcePermissionDefaults(player);
             // Re-apply Lobby-Hotbar an alle Lobby-Spieler, damit gelöschte
             // Hotbar-Items sofort weg sind und neue erscheinen.
             try {

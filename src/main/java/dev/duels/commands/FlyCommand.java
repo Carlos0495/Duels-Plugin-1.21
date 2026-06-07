@@ -45,17 +45,30 @@ public class FlyCommand implements CommandExecutor {
                         java.util.Map.of("count", String.valueOf(count))));
             } else {
                 Player target = org.bukkit.Bukkit.getPlayerExact(targetArg);
-                if (target == null) {
-                    player.sendMessage(cm.prefixed("general.player-not-found", "&cPlayer not found: &f{player}",
-                            java.util.Map.of("player", targetArg)));
-                    return true;
+                if (target != null) {
+                    // Online-Spieler
+                    target.setFlying(false);
+                    target.setAllowFlight(false);
+                    plugin.getPlayerManager().setAutoFly(target.getUniqueId(), false);
+                    target.sendMessage(cm.prefixed("fly.disabled-by-admin", "&7Fly: &cOFF &8(disabled by admin)"));
+                    player.sendMessage(cm.prefixed("fly.disabled-other", "&7Disabled fly for &f{player}&7.",
+                            java.util.Map.of("player", target.getName())));
+                } else {
+                    // Offline-Spieler: UUID auflösen und persistent setzen.
+                    @SuppressWarnings("deprecation")
+                    org.bukkit.OfflinePlayer off = org.bukkit.Bukkit.getOfflinePlayer(targetArg);
+                    if (off == null || (!off.hasPlayedBefore()
+                            && !plugin.getConfigManager().getPlayersConfig()
+                                    .contains(off.getUniqueId().toString()))) {
+                        player.sendMessage(cm.prefixed("general.player-not-found", "&cPlayer not found: &f{player}",
+                                java.util.Map.of("player", targetArg)));
+                        return true;
+                    }
+                    plugin.getPlayerManager().setAutoFlyPersistent(off.getUniqueId(), false);
+                    player.sendMessage(cm.prefixed("fly.disabled-other-offline",
+                            "&7Disabled fly for &f{player} &8(offline, applies on rejoin).",
+                            java.util.Map.of("player", off.getName() != null ? off.getName() : targetArg)));
                 }
-                target.setFlying(false);
-                target.setAllowFlight(false);
-                plugin.getPlayerManager().setAutoFly(target.getUniqueId(), false);
-                target.sendMessage(cm.prefixed("fly.disabled-by-admin", "&7Fly: &cOFF &8(disabled by admin)"));
-                player.sendMessage(cm.prefixed("fly.disabled-other", "&7Disabled fly for &f{player}&7.",
-                        java.util.Map.of("player", target.getName())));
             }
             return true;
         }

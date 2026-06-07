@@ -184,6 +184,7 @@ public class PartyFFAManager {
             p.setHealth(p.getMaxHealth());
             p.setFoodLevel(20);
             p.setSaturation(20f);
+            plugin.getKitManager().applyKitStartEffects(p, kitName);
             if (graceSeconds > 0) {
                 p.sendMessage(plugin.getConfigManager().prefixed("ffa.started-grace",
                         "&6Party FFA &7started! &ePvP enabled in {seconds}s&7. &fLast one alive wins.",
@@ -192,6 +193,9 @@ public class PartyFFAManager {
                 p.sendMessage(plugin.getConfigManager().prefixed("ffa.started", "&6Party FFA &7started! &fLast one alive wins."));
             }
         }
+
+        // Tablist-Filter (falls aktiv) für alle neu berechnen.
+        plugin.getPlayerManager().refreshAllVisibility();
 
         // Grace-Countdown-Task: zeigt 10/5/4/3/2/1 → GO! Im Anschluss
         // wird graceTicksLeft auf 0 gesetzt; Damage-Pfad checkt das.
@@ -333,6 +337,7 @@ public class PartyFFAManager {
             p.setHealth(p.getMaxHealth());
             p.setFoodLevel(20);
             p.setSaturation(20f);
+            plugin.getKitManager().applyKitStartEffects(p, kitName);
             // Team-Label überm Kopf via TextDisplay (umgeht TAB-Plugin-
             // Override-Probleme mit Scoreboard-Teams). 2 Ticks Delay,
             // damit der Teleport im neuen World/Pos sauber durch ist.
@@ -355,6 +360,9 @@ public class PartyFFAManager {
             // Freeze für die Countdown-Dauer
             frozenFFAPlayers.add(u);
         }
+
+        // Tablist-Filter (falls aktiv) für alle neu berechnen.
+        plugin.getPlayerManager().refreshAllVisibility();
 
         // 3-Sekunden Duel-Style Countdown (statt 10s FFA-Grace).
         // Spieler sind frozen via frozenFFAPlayers — PlayerListener#onMove
@@ -585,7 +593,7 @@ public class PartyFFAManager {
                     plugin.getPlayerManager().addStat(u, "wins", 1);
                     plugin.getPlayerManager().addStat(u, "coins", coinReward);
                     if (p != null && p.isOnline()) {
-                        p.sendMessage(plugin.getConfigManager().prefixed("team.coin-reward", "&e+&6{coins} &ecoins &7(Team win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+                        p.sendMessage(plugin.getConfigManager().prefixed("team.coin-reward", "&e+&6{coins} &e{currency} &7(Team win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
                     }
                 } else if (t > 0) {
                     if (p != null && p.isOnline()) {
@@ -624,7 +632,7 @@ public class PartyFFAManager {
                 }
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "wins", 1);
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-                win.sendMessage(plugin.getConfigManager().prefixed("ffa.coin-reward", "&e+&6{coins} &ecoins &7(FFA win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+                win.sendMessage(plugin.getConfigManager().prefixed("ffa.coin-reward", "&e+&6{coins} &e{currency} &7(FFA win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
             }
         }
 
@@ -692,6 +700,10 @@ public class PartyFFAManager {
             }, 2L);
         }
         sessionsByLeader.remove(session.leaderId);
+
+        // Sicht/Tablist wiederherstellen (Match-Peers sind jetzt aufgelöst).
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> plugin.getPlayerManager().refreshAllVisibility(), 3L);
 
         // Multi-Map FFA: reservierte Arena freigeben + Entities killen +
         // Snapshot-Restore. Dadurch können andere Parties die Arena

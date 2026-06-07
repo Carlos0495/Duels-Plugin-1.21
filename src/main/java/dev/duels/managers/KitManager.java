@@ -116,6 +116,37 @@ public class KitManager {
             kit.setDurationSeconds(kitsSection.getInt(kitId + ".duration-seconds", 0));
             kit.setUntilDeath(kitsSection.getBoolean(kitId + ".until-death", false));
 
+            // Pro-Kit Saturation beim Duel-Start, angegeben in "Keulen"
+            //   saturation: -1  → Default (volle Saturation, 20)
+            //   saturation: 3   → 3 Keulen (= 6 Saturation-Punkte), 0.5er
+            //                      Schritte erlaubt (0.5 Keule = 1 Punkt).
+            // Beim ersten Laden wird der Default (-1) in kits.yml geschrieben.
+            boolean wroteExtra = false;
+            if (!kitsSection.contains(kitId + ".saturation")) {
+                kitsSection.set(kitId + ".saturation", -1);
+                wroteExtra = true;
+            }
+            // Pro-Kit Auto-Potions beim Duel-Start. Format pro Eintrag:
+            //   "TYPE:LEVEL:SEKUNDEN"  (LEVEL 1-basiert; SEKUNDEN optional,
+            //   weglassen = ganzes Match). Beispiel: "SPEED:2:30", "REGENERATION:1".
+            if (!kitsSection.contains(kitId + ".potions")) {
+                kitsSection.set(kitId + ".potions", new java.util.ArrayList<String>());
+                wroteExtra = true;
+            }
+            if (wroteExtra) {
+                plugin.getConfigManager().saveKitsConfig();
+            }
+            kit.setStartSaturation(kitsSection.getDouble(kitId + ".saturation", -1));
+            kit.getStartEffects().clear();
+            for (String entry : kitsSection.getStringList(kitId + ".potions")) {
+                org.bukkit.potion.PotionEffect eff = parsePotionEffect(entry);
+                if (eff != null) {
+                    kit.getStartEffects().add(eff);
+                } else if (entry != null && !entry.trim().isEmpty()) {
+                    plugin.getLogger().warning("Kit '" + kitId + "': bad potion entry: " + entry);
+                }
+            }
+
             // Items laden
             if (kitsSection.contains(kitId + ".items")) {
                 ConfigurationSection itemsSection = kitsSection.getConfigurationSection(kitId + ".items");
@@ -263,6 +294,34 @@ public class KitManager {
         player.updateInventory();
     }
 
+    /**
+     * Wendet die Pro-Kit Start-Effekte an: Saturation (in "Keulen", -1 = voll)
+     * und Auto-Potions. Wird beim Duel-/FFA-/Team-Start aufgerufen (NICHT beim
+     * Kit-Preview, damit Vorschau-Inventare keine Effekte vergeben).
+     */
+    public void applyKitStartEffects(Player player, String kitId) {
+        if (player == null) return;
+        Kit kit = kits.get(kitId);
+        if (kit == null) return;
+
+        // Saturation: -1 = Default (voll = 20). Sonst Keulen * 2 = Punkte,
+        // geclamped auf [0, 20].
+        double sat = kit.getStartSaturation();
+        if (sat >= 0) {
+            float points = (float) (sat * 2.0);
+            if (points < 0f) points = 0f;
+            if (points > 20f) points = 20f;
+            player.setSaturation(points);
+        }
+
+        // Auto-Potions anwenden.
+        for (org.bukkit.potion.PotionEffect eff : kit.getStartEffects()) {
+            if (eff != null) {
+                player.addPotionEffect(eff, true);
+            }
+        }
+    }
+
     public void giveKitPreview(Player player, String kitId) {
         Kit kit = kits.get(kitId);
         if (kit == null) {
@@ -402,6 +461,42 @@ public class KitManager {
         return s.replace('§', '&');
     }
 
+    /**
+     * Parst einen Auto-Potion-Eintrag im Format "TYPE:LEVEL:SEKUNDEN".
+     * LEVEL ist 1-basiert (1 = Stufe I → amplifier 0). SEKUNDEN ist optional;
+     * fehlt es (oder <= 0), gilt der Effekt quasi das ganze Match (sehr lange
+     * Dauer). Gibt {@code null} zurück, wenn der Eintrag ungültig ist.
+     */
+    private static org.bukkit.potion.PotionEffect parsePotionEffect(String entry) {
+        if (entry == null) return null;
+        String s = entry.trim();
+        if (s.isEmpty()) return null;
+        String[] parts = s.split(":");
+        if (parts.length == 0) return null;
+
+        org.bukkit.potion.PotionEffectType type =
+                org.bukkit.potion.PotionEffectType.getByName(parts[0].trim().toUpperCase());
+        if (type == null) return null;
+
+        int level = 1;
+        if (parts.length >= 2) {
+            try { level = Integer.parseInt(parts[1].trim()); } catch (NumberFormatException ignored) {}
+        }
+        if (level < 1) level = 1;
+        int amplifier = level - 1;
+
+        int durationTicks;
+        if (parts.length >= 3) {
+            int seconds = 0;
+            try { seconds = Integer.parseInt(parts[2].trim()); } catch (NumberFormatException ignored) {}
+            durationTicks = seconds > 0 ? seconds * 20 : 1000000;
+        } else {
+            durationTicks = 1000000; // ganzes Match
+        }
+        // ambient=false, particles=true, icon=true (Standard-Darstellung)
+        return new org.bukkit.potion.PotionEffect(type, durationTicks, amplifier, false, true, true);
+    }
+
     public static class Kit {
         private final String id; // clean id / config key
         private String displayName; // colored
@@ -424,6 +519,11 @@ public class KitManager {
         private int durationSeconds = 0;
         private boolean untilDeath = false;
 
+        // Pro-Kit Saturation beim Start (in "Keulen"; -1 = Default/voll).
+        private double startSaturation = -1;
+        // Pro-Kit Auto-Potions beim Start.
+        private final java.util.List<org.bukkit.potion.PotionEffect> startEffects = new java.util.ArrayList<>();
+
         public Kit(String id) {
             this.id = id;
             this.previewMaterial = Material.DIAMOND_SWORD;
@@ -433,6 +533,10 @@ public class KitManager {
         public void setDurationSeconds(int v) { this.durationSeconds = v; }
         public boolean isUntilDeath() { return untilDeath; }
         public void setUntilDeath(boolean b) { this.untilDeath = b; }
+
+        public double getStartSaturation() { return startSaturation; }
+        public void setStartSaturation(double v) { this.startSaturation = v; }
+        public java.util.List<org.bukkit.potion.PotionEffect> getStartEffects() { return startEffects; }
 
         public String getId() { return id; }
 

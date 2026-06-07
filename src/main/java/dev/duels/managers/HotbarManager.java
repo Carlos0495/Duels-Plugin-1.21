@@ -82,6 +82,11 @@ public class HotbarManager {
             writeDefaultsPartyMember(main);
             dirty = true;
         }
+        // Migration: Settings-Item in Party-Modi nachrüsten (für Fly-Toggle &
+        // andere Settings in der Party). Nur einfügen wenn noch nicht da und
+        // der Slot frei ist.
+        if (addSettingsToPartyMode(main, "hotbar.party-leader.")) dirty = true;
+        if (addSettingsToPartyMode(main, "hotbar.party-member.")) dirty = true;
         if (dirty) plugin.saveConfig();
 
         modes.put(MODE_LOBBY, readMode(main, MODE_LOBBY));
@@ -285,6 +290,12 @@ public class HotbarManager {
         main.set(base + "party-leave.lore", Arrays.asList(
                 "&7Disband your party."));
         main.set(base + "party-leave.action", ACTION_PARTY_LEAVE);
+
+        main.set(base + "settings.slot", 7);
+        main.set(base + "settings.material", "REPEATER");
+        main.set(base + "settings.name", "&cѕᴇᴛᴛɪɴɢѕ &7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
+        main.set(base + "settings.lore", Arrays.asList("&7All kind of settings (e.g. fly)"));
+        main.set(base + "settings.action", ACTION_SETTINGS);
     }
 
     private void writeDefaultsPartyMember(org.bukkit.configuration.file.FileConfiguration main) {
@@ -302,5 +313,45 @@ public class HotbarManager {
         main.set(base + "party-leave.name", "&cʟᴇᴀᴠᴇ ᴘᴀʀᴛʏ &7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
         main.set(base + "party-leave.lore", Arrays.asList("&7Leave your party."));
         main.set(base + "party-leave.action", ACTION_PARTY_LEAVE);
+
+        main.set(base + "settings.slot", 7);
+        main.set(base + "settings.material", "REPEATER");
+        main.set(base + "settings.name", "&cѕᴇᴛᴛɪɴɢѕ &7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
+        main.set(base + "settings.lore", Arrays.asList("&7All kind of settings (e.g. fly)"));
+        main.set(base + "settings.action", ACTION_SETTINGS);
+    }
+
+    /**
+     * Fügt einem bereits existierenden Party-Hotbar-Modus das Settings-Item
+     * hinzu, falls es fehlt. Sucht einen freien Slot (bevorzugt 7).
+     * @return true wenn etwas geändert wurde.
+     */
+    private boolean addSettingsToPartyMode(org.bukkit.configuration.file.FileConfiguration main, String base) {
+        ConfigurationSection sec = main.getConfigurationSection(base.substring(0, base.length() - 1));
+        if (sec == null) return false; // wird von writeDefaults* abgedeckt
+        // Schon vorhanden? (per Action SETTINGS prüfen, Name egal)
+        for (String key : sec.getKeys(false)) {
+            ConfigurationSection item = sec.getConfigurationSection(key);
+            if (item != null && ACTION_SETTINGS.equalsIgnoreCase(item.getString("action", ""))) {
+                return false;
+            }
+        }
+        // Belegte Slots sammeln.
+        java.util.Set<Integer> used = new java.util.HashSet<>();
+        for (String key : sec.getKeys(false)) {
+            ConfigurationSection item = sec.getConfigurationSection(key);
+            if (item != null) used.add(item.getInt("slot", -1));
+        }
+        int slot = !used.contains(7) ? 7 : -1;
+        if (slot < 0) {
+            for (int i = 0; i <= 8; i++) { if (!used.contains(i)) { slot = i; break; } }
+        }
+        if (slot < 0) return false; // Hotbar voll, nichts tun
+        main.set(base + "settings.slot", slot);
+        main.set(base + "settings.material", "REPEATER");
+        main.set(base + "settings.name", "&cѕᴇᴛᴛɪɴɢѕ &7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
+        main.set(base + "settings.lore", Arrays.asList("&7All kind of settings (e.g. fly)"));
+        main.set(base + "settings.action", ACTION_SETTINGS);
+        return true;
     }
 }

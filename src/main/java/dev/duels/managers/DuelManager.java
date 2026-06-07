@@ -230,6 +230,10 @@ public class DuelManager {
         plugin.getKitManager().giveKit(p1, session.getKitName());
         plugin.getKitManager().giveKit(p2, session.getKitName());
 
+        // Pro-Kit Start-Effekte (Saturation + Auto-Potions).
+        plugin.getKitManager().applyKitStartEffects(p1, session.getKitName());
+        plugin.getKitManager().applyKitStartEffects(p2, session.getKitName());
+
         // Teleportieren
         if (arena.getSpawn1() != null && arena.getSpawn2() != null) {
             p1.teleport(arena.getSpawn1());
@@ -238,6 +242,8 @@ public class DuelManager {
 
         // Tab-Liste anpassen
         plugin.getPlayerManager().applyDuelVisibility(p1, p2);
+        // Tablist-Filter (falls aktiv) für alle neu berechnen.
+        plugin.getPlayerManager().refreshAllVisibility();
 
 
         // Nachrichten senden
@@ -462,6 +468,7 @@ public class DuelManager {
 
         forceRoundState(player);
         plugin.getKitManager().giveKit(player, session.getKitName());
+        plugin.getKitManager().applyKitStartEffects(player, session.getKitName());
     }
 
     private void runRoundCountdown(DuelSession session, Player p1, Player p2) {
@@ -535,7 +542,7 @@ public class DuelManager {
             if (winner != null) {
                 int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
                 plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-                winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+                winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &e{currency} &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
             }
             Arena arena = plugin.getArenaManager().getArena(session.getArenaName());
 
@@ -613,7 +620,7 @@ public class DuelManager {
             // Coins für Match-Sieg
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(winner.getUniqueId(), "coins", coinReward);
-            winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+            winner.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &e{currency} &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
         } else {
             // Draw
             p1.sendMessage(plugin.getConfigManager().prefixed("duel.draw", "&eDuel ended in a draw &7(time ran out)."));
@@ -852,17 +859,22 @@ public class DuelManager {
 
         String kitDisplay = plugin.getKitManager().getKitDisplayName(stored.getKitName());
 
+        // Kit/Arena-Zeile: Map nur anzeigen wenn in config aktiviert.
+        String kitArenaLine = plugin.getConfigManager().isShowMapInRequest()
+                ? plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", chosen.getName()))
+                : plugin.getConfigManager().prefixed("duel.kit-only", "&7Kit: &r{kit}", java.util.Map.of("kit", kitDisplay));
+
         // sender feedback
         if (sender != null && sender.isOnline()) {
             sender.sendMessage("\n" + plugin.getConfigManager().prefixed("duel.request-sent-to", "&aDuel request sent to &e{player}", java.util.Map.of("player", receiver != null ? receiver.getName() : "player")) + "\n" +
-                    plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", chosen.getName())) + "\n" +
+                    kitArenaLine + "\n" +
                     plugin.getConfigManager().prefixed("duel.best-of", "&7Best of &f{bestof}", java.util.Map.of("bestof", String.valueOf(stored.getBestOf()))));
         }
 
         // receiver message
         if (receiver != null && receiver.isOnline()) {
             receiver.sendMessage("\n" + plugin.getConfigManager().prefixed("duel.challenged-you", "&e{player} &7challenged you!", java.util.Map.of("player", sender != null ? sender.getName() : "Someone")) + "\n" +
-                    plugin.getConfigManager().prefixed("duel.kit-arena", "&7Kit: &r{kit} &7| Arena: &b{arena}", java.util.Map.of("kit", kitDisplay, "arena", chosen.getName())) + "\n" +
+                    kitArenaLine + "\n" +
                     plugin.getConfigManager().prefixed("duel.best-of", "&7Best of &f{bestof}", java.util.Map.of("bestof", String.valueOf(stored.getBestOf()))));
 
             receiver.playSound(receiver.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
@@ -971,7 +983,7 @@ public class DuelManager {
             // Coins für Match-Sieg (Disconnect-Forfeit)
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
-            opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+            opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &e{currency} &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
 
             // Stats für disconnected Spieler
             plugin.getPlayerManager().addStat(playerUUID, "losses", 1);
@@ -1022,7 +1034,7 @@ public class DuelManager {
             plugin.getPlayerManager().addStat(opponentUUID, "kills", 1);
             int coinReward = plugin.getConfigManager().getMainConfig().getInt("coins.win-reward", 10);
             plugin.getPlayerManager().addStat(opponentUUID, "coins", coinReward);
-            if (opponent.isOnline()) opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &ecoins &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
+            if (opponent.isOnline()) opponent.sendMessage(plugin.getConfigManager().prefixed("duel.coin-reward", "&e+&6{coins} &e{currency} &7(win reward)", java.util.Map.of("coins", String.valueOf(coinReward))));
         }
 
         // Arena zurücksetzen
