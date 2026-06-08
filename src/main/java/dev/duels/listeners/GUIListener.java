@@ -83,6 +83,40 @@ public class GUIListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // Custom Kit Name Eingabe.
+        if (plugin.getGuiManager().getPendingCustomKitName().containsKey(uuid)) {
+            event.setCancelled(true);
+            String msg = event.getMessage().trim();
+            if (msg.equalsIgnoreCase("cancel")) {
+                plugin.getGuiManager().getPendingCustomKitName().remove(uuid);
+                plugin.getGuiManager().getPendingCustomKitEditIndex().remove(uuid);
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.creation-cancelled", "&7Kit creation cancelled."));
+                return;
+            }
+            if (msg.length() > 32) {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.name-too-long", "&cName too long (max 32 chars). Try again or type &ccancel&c."));
+                return;
+            }
+            plugin.getGuiManager().getPendingCustomKitName().remove(uuid);
+            Integer editIdx = plugin.getGuiManager().getPendingCustomKitEditIndex().remove(uuid);
+            final String kitName = msg;
+            final int editIndex = editIdx != null ? editIdx : -1;
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (editIndex >= 0) {
+                    // Rename existing kit
+                    var ck = plugin.getCustomKitManager().getKit(uuid, editIndex);
+                    if (ck != null) {
+                        ck.setDisplayName(kitName);
+                        plugin.getCustomKitManager().updateKit(ck);
+                        player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.renamed", "&7Kit renamed to &e{name}.", java.util.Map.of("name", kitName)));
+                    }
+                } else {
+                    plugin.getGuiManager().beginNewKitBuilder(player, kitName);
+                }
+            });
+            return;
+        }
+
         // Custom-Round-Count Eingabe.
         GUIManager.PendingCustomBestOf pending = plugin.getGuiManager().peekPendingCustomBestOf(uuid);
         if (pending != null) {
@@ -211,6 +245,28 @@ public class GUIListener implements Listener {
         // Edit Layouts Selection GUI
         if (title.equals(GUIManager.EDIT_LAYOUTS_GUI_TITLE)) {
             handleEditLayoutsGUIClick(event, player, top, clickedInv);
+            return;
+        }
+
+        // Custom Kit GUIs
+        if (title.equals(GUIManager.CUSTOM_KIT_LIST_TITLE)) {
+            handleCustomKitListClick(event, player, top, clickedInv);
+            return;
+        }
+        if (title.startsWith(GUIManager.CUSTOM_KIT_BUILDER_PREFIX)) {
+            handleKitBuilderClick(event, player, top, clickedInv);
+            return;
+        }
+        if (title.equals(GUIManager.CUSTOM_KIT_ITEMS_TITLE)) {
+            handleItemPickerClick(event, player, top, clickedInv);
+            return;
+        }
+        if (title.equals(GUIManager.CUSTOM_KIT_ENCHANT_SELECT_TITLE)) {
+            handleEnchantSelectClick(event, player, top, clickedInv);
+            return;
+        }
+        if (title.startsWith(GUIManager.CUSTOM_KIT_ENCHANT_EDITOR_PREFIX)) {
+            handleEnchantEditorClick(event, player, top, clickedInv);
             return;
         }
 
@@ -574,6 +630,17 @@ public class GUIListener implements Listener {
 
         if (isGuiItem(clicked, "edit-layouts-gui.info")) return;
 
+        // Custom Kits button
+        String ckAction = meta.getPersistentDataContainer().getOrDefault(
+                plugin.getGuiManager().getCustomKitActionKey(), PersistentDataType.STRING, null);
+        if ("OPEN_LIST".equals(ckAction)) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openCustomKitListGUI(player), 2L);
+            return;
+        }
+
         String kitId = meta.getPersistentDataContainer().get(editKitKey, PersistentDataType.STRING);
         if (kitId == null || kitId.isEmpty()) return;
 
@@ -793,6 +860,19 @@ public class GUIListener implements Listener {
             return;
         }
 
+        // Kit Builder: allow drag in editable slots (0-40) only
+        if (title.startsWith(GUIManager.CUSTOM_KIT_BUILDER_PREFIX)) {
+            for (int rawSlot : event.getRawSlots()) {
+                if (rawSlot < event.getView().getTopInventory().getSize()) {
+                    if (rawSlot > 40) {
+                        event.setCancelled(true);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
+
         // Block drags in other plugin GUIs
         if (title.equals(GUIManager.QUEUE_GUI_TITLE)
                 || title.equals(GUIManager.BESTOF_GUI_TITLE)
@@ -800,7 +880,11 @@ public class GUIListener implements Listener {
                 || title.equals(GUIManager.DUEL_GUI_TITLE)
                 || title.equals(GUIManager.KITS_GUI_TITLE)
                 || title.equals(GUIManager.SETTINGS_GUI_TITLE)
-                || title.equals(GUIManager.STATS_GUI_TITLE)) {
+                || title.equals(GUIManager.STATS_GUI_TITLE)
+                || title.equals(GUIManager.CUSTOM_KIT_LIST_TITLE)
+                || title.equals(GUIManager.CUSTOM_KIT_ITEMS_TITLE)
+                || title.equals(GUIManager.CUSTOM_KIT_ENCHANT_SELECT_TITLE)
+                || title.startsWith(GUIManager.CUSTOM_KIT_ENCHANT_EDITOR_PREFIX)) {
             event.setCancelled(true);
         }
     }
@@ -830,6 +914,328 @@ public class GUIListener implements Listener {
             if (words.length > 0) return words[0];
         }
         return null;
+    }
+
+    // ===================== Custom Kit Handlers =====================
+
+    private void handleCustomKitListClick(InventoryClickEvent event, Player player,
+                                          Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+
+        var pdc = clicked.getItemMeta().getPersistentDataContainer();
+        String action = pdc.getOrDefault(
+                plugin.getGuiManager().getCustomKitActionKey(),
+                PersistentDataType.STRING, null);
+
+        // Close
+        if (clicked.getType() == Material.BARRIER) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            return;
+        }
+
+        if ("CREATE".equals(action)) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            // Ask for kit name via chat
+            plugin.getGuiManager().getPendingCustomKitName().put(player.getUniqueId(), true);
+            plugin.getGuiManager().getPendingCustomKitEditIndex().put(player.getUniqueId(), -1);
+            player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.enter-name",
+                    "&7Enter a name for your custom kit in chat. Type &ccancel &7to abort."));
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+            return;
+        }
+
+        if ("EDIT".equals(action)) {
+            Integer idx = pdc.get(plugin.getGuiManager().getCustomKitIndexKey(), PersistentDataType.INTEGER);
+            if (idx == null) return;
+
+            if (event.isShiftClick()) {
+                // Delete
+                plugin.getCustomKitManager().deleteKit(player.getUniqueId(), idx);
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.deleted", "&cCustom kit deleted."));
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
+                // Refresh
+                Bukkit.getScheduler().runTaskLater(plugin, () ->
+                        plugin.getGuiManager().openCustomKitListGUI(player), 2L);
+            } else {
+                // Edit
+                player.closeInventory();
+                plugin.getGuiManager().closeGUI(player.getUniqueId());
+                Bukkit.getScheduler().runTaskLater(plugin, () ->
+                        plugin.getGuiManager().beginEditKitBuilder(player, idx), 2L);
+            }
+        }
+    }
+
+    private void handleKitBuilderClick(InventoryClickEvent event, Player player,
+                                       Inventory top, Inventory clickedInv) {
+        int raw = event.getRawSlot();
+
+        // Block shift-click / number-key / drop / etc. to prevent item leaking
+        if (event.isShiftClick() || event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
+            event.setCancelled(true);
+            return;
+        }
+        switch (event.getClick()) {
+            case NUMBER_KEY, SWAP_OFFHAND, DOUBLE_CLICK, MIDDLE, DROP, CONTROL_DROP -> {
+                event.setCancelled(true);
+                return;
+            }
+            default -> {}
+        }
+
+        // Block clicks in player inventory (bottom)
+        if (clickedInv != null && clickedInv.equals(event.getView().getBottomInventory())) {
+            event.setCancelled(true);
+            return;
+        }
+
+        if (clickedInv != top) return;
+
+        // Editable slots: 0-40 (let Minecraft handle item moving)
+        if (raw >= 0 && raw <= 40) {
+            // Allow normal click behavior (place/pick items in these slots)
+            return;
+        }
+
+        // Everything below = buttons → cancel
+        event.setCancelled(true);
+
+        // Separators (41-44) — no action
+        if (raw >= 41 && raw <= 44) return;
+
+        // Info paper (45) — no action
+        if (raw == 45) return;
+
+        // Add Items button (46)
+        if (raw == 46) {
+            // Save current state first
+            plugin.getGuiManager().saveBuilderStateFromGUI(top, player.getUniqueId());
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openItemPickerGUI(player, 0), 2L);
+            return;
+        }
+
+        // Enchant button (47)
+        if (raw == 47) {
+            plugin.getGuiManager().saveBuilderStateFromGUI(top, player.getUniqueId());
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openEnchantSelectGUI(player), 2L);
+            return;
+        }
+
+        // Set Icon (48) — click with cursor item to set icon
+        if (raw == 48) {
+            ItemStack cursor = event.getCursor();
+            if (cursor != null && cursor.getType() != Material.AIR) {
+                var session = plugin.getGuiManager().getBuilderSessions().get(player.getUniqueId());
+                if (session != null) {
+                    session.icon = cursor.getType();
+                    player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.icon-set",
+                            "&7Kit icon set to &e{icon}", java.util.Map.of("icon", cursor.getType().name())));
+                    player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                    // Refresh builder
+                    plugin.getGuiManager().saveBuilderStateFromGUI(top, player.getUniqueId());
+                    player.closeInventory();
+                    plugin.getGuiManager().closeGUI(player.getUniqueId());
+                    Bukkit.getScheduler().runTaskLater(plugin, () ->
+                            plugin.getGuiManager().openKitBuilderGUI(player), 2L);
+                }
+            }
+            return;
+        }
+
+        // Save (51)
+        if (raw == 51) {
+            plugin.getGuiManager().saveBuilderStateFromGUI(top, player.getUniqueId());
+            if (plugin.getGuiManager().commitBuilderSession(player)) {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.saved",
+                        "&aCustom kit saved!"));
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+            }
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            plugin.getGuiManager().clearBuilderSession(player.getUniqueId());
+            return;
+        }
+
+        // Close (53)
+        if (raw == 53) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            plugin.getGuiManager().clearBuilderSession(player.getUniqueId());
+        }
+    }
+
+    private void handleItemPickerClick(InventoryClickEvent event, Player player,
+                                       Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        int raw = event.getRawSlot();
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType() == Material.AIR) return;
+
+        // Navigation buttons (check PDC)
+        if (clicked.hasItemMeta()) {
+            var pdc = clicked.getItemMeta().getPersistentDataContainer();
+            String action = pdc.getOrDefault(
+                    plugin.getGuiManager().getCustomKitActionKey(),
+                    PersistentDataType.STRING, null);
+
+            if ("PREV_PAGE".equals(action)) {
+                plugin.getGuiManager().openItemPickerGUI(player,
+                        Math.max(0, getItemPickerPage(player) - 1));
+                return;
+            }
+            if ("NEXT_PAGE".equals(action)) {
+                plugin.getGuiManager().openItemPickerGUI(player, getItemPickerPage(player) + 1);
+                return;
+            }
+            if ("BACK_TO_BUILDER".equals(action)) {
+                player.closeInventory();
+                plugin.getGuiManager().closeGUI(player.getUniqueId());
+                Bukkit.getScheduler().runTaskLater(plugin, () ->
+                        plugin.getGuiManager().openKitBuilderGUI(player), 2L);
+                return;
+            }
+        }
+
+        // Item slot (0-44) — add to kit builder
+        if (raw < 45 && clicked.getType() != Material.AIR) {
+            var session = plugin.getGuiManager().getBuilderSessions().get(player.getUniqueId());
+            if (session == null) return;
+
+            Material mat = clicked.getType();
+            // Find first free slot in builder (0-35)
+            int freeSlot = -1;
+            for (int i = 0; i < 36; i++) {
+                if (!session.items.containsKey(i)) { freeSlot = i; break; }
+            }
+            if (freeSlot < 0) {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.inventory-full",
+                        "&cKit inventory is full! Remove items first."));
+                return;
+            }
+
+            ItemStack added = new ItemStack(mat, mat.getMaxStackSize());
+            session.items.put(freeSlot, added);
+            player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.item-added",
+                    "&7Added &e{item} &7to slot {slot}.",
+                    java.util.Map.of("item", mat.name(), "slot", String.valueOf(freeSlot))));
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.2f);
+        }
+    }
+
+    private int getItemPickerPage(Player player) {
+        return plugin.getGuiManager().getItemPickerPage(player.getUniqueId());
+    }
+
+    private void handleEnchantSelectClick(InventoryClickEvent event, Player player,
+                                          Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+
+        var pdc = clicked.getItemMeta().getPersistentDataContainer();
+
+        // Back button
+        String action = pdc.getOrDefault(
+                plugin.getGuiManager().getCustomKitActionKey(),
+                PersistentDataType.STRING, null);
+        if ("BACK_TO_BUILDER".equals(action)) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openKitBuilderGUI(player), 2L);
+            return;
+        }
+
+        // Enchant slot selection
+        Integer slotKey = pdc.get(plugin.getGuiManager().getCustomKitEnchantSlotKey(), PersistentDataType.INTEGER);
+        if (slotKey != null) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openEnchantEditorGUI(player, slotKey), 2L);
+        }
+    }
+
+    private void handleEnchantEditorClick(InventoryClickEvent event, Player player,
+                                          Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+
+        var pdc = clicked.getItemMeta().getPersistentDataContainer();
+
+        // Done button
+        String action = pdc.getOrDefault(
+                plugin.getGuiManager().getCustomKitActionKey(),
+                PersistentDataType.STRING, null);
+        if ("ENCHANT_DONE".equals(action)) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    plugin.getGuiManager().openEnchantSelectGUI(player), 2L);
+            return;
+        }
+
+        // Enchantment click (increase/decrease level)
+        String enchKey = pdc.getOrDefault(
+                plugin.getGuiManager().getCustomKitEnchantKey(),
+                PersistentDataType.STRING, null);
+        if (enchKey == null) return;
+
+        var session = plugin.getGuiManager().getBuilderSessions().get(player.getUniqueId());
+        if (session == null) return;
+
+        int enchSlot = session.selectedEnchantSlot;
+        ItemStack target = session.items.get(enchSlot);
+        if (target == null) return;
+
+        org.bukkit.enchantments.Enchantment ench = org.bukkit.Registry.ENCHANTMENT.get(
+                org.bukkit.NamespacedKey.minecraft(enchKey));
+        if (ench == null) return;
+
+        int currentLevel = target.getEnchantmentLevel(ench);
+        int maxLevel = ench.getMaxLevel();
+
+        if (event.isRightClick()) {
+            // Decrease
+            if (currentLevel > 0) {
+                target.removeEnchantment(ench);
+                if (currentLevel > 1) {
+                    target.addUnsafeEnchantment(ench, currentLevel - 1);
+                }
+            }
+        } else {
+            // Increase
+            if (currentLevel < maxLevel) {
+                target.addUnsafeEnchantment(ench, currentLevel + 1);
+            }
+        }
+
+        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.5f, 1.2f);
+
+        // Refresh the enchant editor GUI
+        player.closeInventory();
+        plugin.getGuiManager().closeGUI(player.getUniqueId());
+        Bukkit.getScheduler().runTaskLater(plugin, () ->
+                plugin.getGuiManager().openEnchantEditorGUI(player, enchSlot), 2L);
     }
 
     // ----------------- Party GUIs -----------------
@@ -1007,6 +1413,15 @@ public class GUIListener implements Listener {
         if (title == null) return;
 
         if (title.startsWith(GUIManager.EDIT_LAYOUT_GUI_TITLE_PREFIX)) {
+            ItemStack cursor = event.getView().getCursor();
+            if (cursor != null && !cursor.getType().isAir()) {
+                event.getView().setCursor(null);
+            }
+            player.updateInventory();
+        }
+
+        // Kit Builder: clear cursor to prevent item leaking into real inventory
+        if (title.startsWith(GUIManager.CUSTOM_KIT_BUILDER_PREFIX)) {
             ItemStack cursor = event.getView().getCursor();
             if (cursor != null && !cursor.getType().isAir()) {
                 event.getView().setCursor(null);

@@ -25,6 +25,7 @@ public final class DuelsPlugin extends JavaPlugin {
     private PartyFFAManager partyFFAManager;
     private SpectateManager spectateManager;
     private TeamLabelManager teamLabelManager;
+    private CustomKitManager customKitManager;
 
     @Override
     public void onEnable() {
@@ -48,6 +49,7 @@ public final class DuelsPlugin extends JavaPlugin {
         partyFFAManager = new PartyFFAManager(this);
         spectateManager = new SpectateManager(this);
         teamLabelManager = new TeamLabelManager(this);
+        customKitManager = new CustomKitManager(this);
 
         // Konfigurationen laden
         configManager.loadAllConfigs();
@@ -60,6 +62,7 @@ public final class DuelsPlugin extends JavaPlugin {
         Bukkit.getScheduler().runTaskLater(this, () -> arenaManager.loadArenas(), 40L);
         kitManager.loadKits();
         playerManager.loadPlayerData();
+        customKitManager.load();
 
 
 
@@ -127,6 +130,7 @@ public final class DuelsPlugin extends JavaPlugin {
         if (teamLabelManager != null) teamLabelManager.clearAll();
         playerManager.saveAllData();
         configManager.saveAllConfigs();
+        if (customKitManager != null) customKitManager.save();
 
         getLogger().info("Duels plugin disabled!");
     }
@@ -229,6 +233,7 @@ public final class DuelsPlugin extends JavaPlugin {
     public GuiConfig getGuiConfig() { return guiConfig; }
     public ArmorTrimManager getArmorTrimManager() { return armorTrimManager; }
     public PartyManager getPartyManager() { return partyManager; }
+    public CustomKitManager getCustomKitManager() { return customKitManager; }
     public PartyFFAManager getPartyFFAManager() { return partyFFAManager; }
     public SpectateManager getSpectateManager() { return spectateManager; }
     public TeamLabelManager getTeamLabelManager() { return teamLabelManager; }

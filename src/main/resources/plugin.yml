@@ -171,3 +171,11 @@ permissions:
   duels.armortrim:
     description: Allows editing personal armor trims via /duels armortrim
     default: false
+
+  duels.customkit.tier1:
+    description: Allows creating up to 2 custom kits (party only)
+    default: false
+
+  duels.customkit.tier2:
+    description: Allows creating up to 4 custom kits (party only)
+    default: false

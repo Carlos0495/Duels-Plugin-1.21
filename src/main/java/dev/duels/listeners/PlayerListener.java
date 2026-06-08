@@ -36,6 +36,8 @@ public class PlayerListener implements Listener {
 
         // Permission-basierte Defaults (Fly/Armortrims) durchsetzen.
         plugin.getPlayerManager().enforcePermissionDefaults(player);
+        // Custom-Kit Permission-Limits durchsetzen.
+        if (plugin.getCustomKitManager() != null) plugin.getCustomKitManager().enforcePermissionLimits(player);
 
         forceLobbyState(player);
 

@@ -97,6 +97,18 @@ public class MainCommand implements CommandExecutor {
             return true;
         }
 
+        // /duels customkits -> öffnet Custom-Kit-Verwaltung
+        if (args.length > 0 && (args[0].equalsIgnoreCase("customkits")
+                || args[0].equalsIgnoreCase("customkit")
+                || args[0].equalsIgnoreCase("ckit"))) {
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage(cm.prefixed("general.requires-player", "&cThis command requires a player."));
+                return true;
+            }
+            plugin.getGuiManager().openCustomKitListGUI(p);
+            return true;
+        }
+
         if (args.length > 0 && args[0].equalsIgnoreCase("setpartyffaspawn")) {
             if (!sender.hasPermission("duels.admin")) {
                 sender.sendMessage(cm.prefixed("general.no-permission", "&cYou don't have permission!"));
@@ -127,6 +139,7 @@ public class MainCommand implements CommandExecutor {
         sender.sendMessage(cm.getMessage("help.queue-leave", "&c/queue leave &8- &7Leave a queue"));
         sender.sendMessage(cm.getMessage("help.invlayout", "&c/duels invlayout &8- &7Edit your per-kit inventory layout"));
         sender.sendMessage(cm.getMessage("help.armortrim", "&c/duels armortrim &8- &7Open the armor trim editor (needs duels.armortrim)"));
+        sender.sendMessage(cm.getMessage("help.customkits", "&c/duels customkits &8- &7Manage your custom kits (needs duels.customkit.tier1/tier2)"));
 
         if (sender.hasPermission("duels.admin")) {
             sender.sendMessage(cm.getMessage("help.setspawn", "&c/setspawn &8- &7Set spawn location"));
@@ -153,6 +166,9 @@ public class MainCommand implements CommandExecutor {
         plugin.getPartyManager().loadConfig();
         if (plugin.getGuiConfig() != null) plugin.getGuiConfig().load();
 
+        // Custom Kits neu laden
+        if (plugin.getCustomKitManager() != null) plugin.getCustomKitManager().load();
+
         // Placeholders neu beim TAB-Plugin registrieren — falls TAB inzwischen
         // gestartet ist oder seine eigene Placeholder-Map durch /tab reload
         // zurückgesetzt wurde, ist %duels_status% sonst weg.
@@ -163,6 +179,8 @@ public class MainCommand implements CommandExecutor {
             plugin.getScoreboardManager().updateScoreboard(player);
             // Permission-basierte Defaults (Fly/Armortrims) erneut durchsetzen.
             plugin.getPlayerManager().enforcePermissionDefaults(player);
+            // Custom-Kit Permission-Limits durchsetzen.
+            if (plugin.getCustomKitManager() != null) plugin.getCustomKitManager().enforcePermissionLimits(player);
             // Re-apply Lobby-Hotbar an alle Lobby-Spieler, damit gelöschte
             // Hotbar-Items sofort weg sind und neue erscheinen.
             try {

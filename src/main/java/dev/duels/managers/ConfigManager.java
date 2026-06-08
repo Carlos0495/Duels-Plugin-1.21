@@ -294,6 +294,8 @@ public class ConfigManager {
             { mainConfig.set("worlds.kit-preview", java.util.Arrays.asList("world")); dirty = true; }
         if (!mainConfig.contains("worlds.kit-edit"))
             { mainConfig.set("worlds.kit-edit", java.util.Arrays.asList("world")); dirty = true; }
+        if (!mainConfig.contains("worlds.custom-kit"))
+            { mainConfig.set("worlds.custom-kit", java.util.Arrays.asList("world")); dirty = true; }
 
         // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
         // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
@@ -384,6 +386,18 @@ public class ConfigManager {
         // Duel-Einladung: ob die Map/Arena in der Benachrichtigung steht.
         if (!mainConfig.contains("duel.show-map-in-request"))
             { mainConfig.set("duel.show-map-in-request", true); dirty = true; }
+
+        // Custom-Kit-System Defaults
+        if (!mainConfig.contains("custom-kits.enabled"))
+            { mainConfig.set("custom-kits.enabled", true); dirty = true; }
+        if (!mainConfig.contains("custom-kits.tiers.tier1.permission"))
+            { mainConfig.set("custom-kits.tiers.tier1.permission", "duels.customkit.tier1"); dirty = true; }
+        if (!mainConfig.contains("custom-kits.tiers.tier1.limit"))
+            { mainConfig.set("custom-kits.tiers.tier1.limit", 2); dirty = true; }
+        if (!mainConfig.contains("custom-kits.tiers.tier2.permission"))
+            { mainConfig.set("custom-kits.tiers.tier2.permission", "duels.customkit.tier2"); dirty = true; }
+        if (!mainConfig.contains("custom-kits.tiers.tier2.limit"))
+            { mainConfig.set("custom-kits.tiers.tier2.limit", 4); dirty = true; }
 
         if (dirty) plugin.saveConfig();
     }

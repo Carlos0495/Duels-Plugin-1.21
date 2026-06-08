@@ -212,6 +212,12 @@ public class DuelListener implements Listener {
         boolean inFFA = plugin.getPartyFFAManager() != null
                 && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
         if (!inDuel && !inFFA) return;
+        // Custom-Kit-Items dürfen NIEMALS gedroppt werden (Safety).
+        if (plugin.getKitManager() != null
+                && plugin.getKitManager().isNoDrop(event.getItemDrop().getItemStack())) {
+            event.setCancelled(true);
+            return;
+        }
         // Hotbar-Lock-Item? Dann NICHT erlauben (theoretisch nie der Fall im
         // Duel, aber sicher ist sicher).
         if (plugin.getHotbarManager() != null) {
@@ -239,6 +245,11 @@ public class DuelListener implements Listener {
         boolean inFFA = plugin.getPartyFFAManager() != null
                 && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
         if (!inDuel && !inFFA) return;
+        // Custom-Kit-Items niemals manuell nachdroppen (Safety).
+        if (plugin.getKitManager() != null
+                && plugin.getKitManager().isNoDrop(event.getItemDrop().getItemStack())) {
+            return;
+        }
         // Hotbar-Lock-Item nicht manuell droppen (defense-in-depth).
         if (plugin.getHotbarManager() != null) {
             String action = plugin.getHotbarManager()

@@ -36,6 +36,14 @@ public class GUIManager {
     public static final String PARTY_TEAMS_TITLE = "§dAssign Teams";
     public static final String PARTY_KIT_SELECT_TITLE = "§dSelect a Kit §8(Party)";
 
+    // Custom Kit GUI titles
+    public static final String CUSTOM_KIT_LIST_TITLE = "§6My Custom Kits";
+    public static final String CUSTOM_KIT_BUILDER_PREFIX = "§eKit Builder: ";
+    public static final String CUSTOM_KIT_ITEMS_TITLE = "§bItem Picker";
+    public static final String CUSTOM_KIT_ENCHANT_SELECT_TITLE = "§dSelect Item to Enchant";
+    public static final String CUSTOM_KIT_ENCHANT_EDITOR_PREFIX = "§dEnchant: ";
+    public static final String CUSTOM_KIT_NAME_TITLE = "§6Name Your Kit";
+
     // PDC keys
     private final NamespacedKey queueKitKey;
     private final NamespacedKey previewKitKey;
@@ -46,6 +54,23 @@ public class GUIManager {
     private final NamespacedKey armorTrimPieceKey;
     private final NamespacedKey armorTrimActionKey;
     private final NamespacedKey armorTrimLockedKey;
+
+    // Custom kit PDC keys
+    private final NamespacedKey customKitIndexKey;
+    private final NamespacedKey customKitActionKey;
+    private final NamespacedKey customKitEnchantSlotKey;
+    private final NamespacedKey customKitEnchantKey;
+
+    /** Stores the in-progress kit builder state per player. */
+    private final Map<UUID, KitBuilderSession> builderSessions = new HashMap<>();
+
+    /** Stores which item picker page the player is on. */
+    private final Map<UUID, Integer> itemPickerPage = new HashMap<>();
+
+    /** Stores pending custom kit name input. */
+    private final Map<UUID, Boolean> pendingCustomKitName = new HashMap<>();
+    /** Stores pending kit name rename. kitIndex or -1 for new. */
+    private final Map<UUID, Integer> pendingCustomKitEditIndex = new HashMap<>();
 
     public GUIManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -60,6 +85,11 @@ public class GUIManager {
         this.armorTrimPieceKey  = new NamespacedKey(plugin, "armortrim_piece");
         this.armorTrimActionKey = new NamespacedKey(plugin, "armortrim_action");
         this.armorTrimLockedKey = new NamespacedKey(plugin, "armortrim_locked");
+
+        this.customKitIndexKey = new NamespacedKey(plugin, "ckit_index");
+        this.customKitActionKey = new NamespacedKey(plugin, "ckit_action");
+        this.customKitEnchantSlotKey = new NamespacedKey(plugin, "ckit_enchslot");
+        this.customKitEnchantKey = new NamespacedKey(plugin, "ckit_ench");
     }
     public static final String COMPARE_GUI_TITLE = "§bCompare Stats";
 
@@ -514,6 +544,20 @@ public class GUIManager {
                 : createItem(Material.PAPER, "§6Select a Kit to Edit",
                         Arrays.asList("§7Click on a kit to §eedit §7your", "§apersonal inventory layout §7for it."));
         inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.info", 4) : 4, instructions);
+
+        // Custom Kits button (above close) — only show if player has any customkit permission
+        if (plugin.getCustomKitManager() != null && plugin.getCustomKitManager().getKitLimit(player) > 0) {
+            var ckm = plugin.getCustomKitManager();
+            int ckCount = ckm.getKitCount(player.getUniqueId());
+            int ckLimit = ckm.getKitLimit(player);
+            ItemStack customKitBtn = createItem(Material.CRAFTING_TABLE, "§d§lCustom Kits",
+                    Arrays.asList("§7Create and manage your own kits!", "§7(" + ckCount + "/" + ckLimit + " kits)", "",
+                            "§7Custom kits are usable in §dParty§7.", "", "§eClick to manage"));
+            ItemMeta ckm2 = customKitBtn.getItemMeta();
+            ckm2.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "OPEN_LIST");
+            customKitBtn.setItemMeta(ckm2);
+            inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.custom-kits", 48) : 48, customKitBtn);
+        }
 
         ItemStack close = gc != null
                 ? gc.buildItem("edit-layouts-gui.close", Material.BARRIER, "§cClose", null)
@@ -1192,12 +1236,455 @@ public class GUIManager {
             if (slot >= 44) break;
         }
 
+        // Add leader's custom kits (party-only feature)
+        if (plugin.getCustomKitManager() != null) {
+            var customKits = plugin.getCustomKitManager().getKits(leader.getUniqueId());
+            for (var ck : customKits) {
+                if (slot >= 44) break;
+                ItemStack kitItem = new ItemStack(ck.getIcon());
+                ItemMeta meta = kitItem.getItemMeta();
+                meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', ck.getDisplayName()));
+                meta.setLore(Arrays.asList("§d✦ Custom Kit", "", "§7Click to start with this kit."));
+                meta.getPersistentDataContainer().set(partyKitKey, PersistentDataType.STRING, ck.getInternalId());
+                meta.getPersistentDataContainer().set(partyPendingActionKey, PersistentDataType.STRING, pendingAction);
+                if (pendingTargetUuid != null) {
+                    meta.getPersistentDataContainer().set(partyMemberKey, PersistentDataType.STRING, pendingTargetUuid);
+                }
+                kitItem.setItemMeta(meta);
+                inv.setItem(slot, kitItem);
+                slot++;
+                if (slot % 9 == 8) slot += 2;
+            }
+        }
+
         inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
 
         injectCustomItems(inv, "party-kit-select");
         leader.openInventory(inv);
         openGUIs.put(leader.getUniqueId(), new GUI(PARTY_KIT_SELECT_TITLE, System.currentTimeMillis()));
     }
+
+    // ================== Custom Kit GUIs ==================
+
+    public NamespacedKey getCustomKitIndexKey() { return customKitIndexKey; }
+    public NamespacedKey getCustomKitActionKey() { return customKitActionKey; }
+    public NamespacedKey getCustomKitEnchantSlotKey() { return customKitEnchantSlotKey; }
+    public NamespacedKey getCustomKitEnchantKey() { return customKitEnchantKey; }
+
+    public Map<UUID, Boolean> getPendingCustomKitName() { return pendingCustomKitName; }
+    public Map<UUID, Integer> getPendingCustomKitEditIndex() { return pendingCustomKitEditIndex; }
+    public Map<UUID, KitBuilderSession> getBuilderSessions() { return builderSessions; }
+
+    /** In-progress custom kit builder state. */
+    public static class KitBuilderSession {
+        public int kitIndex; // -1 = new kit (not saved yet)
+        public String displayName;
+        public Material icon = Material.DIAMOND_SWORD;
+        /** Slots 0-35 inventory, 99 offhand, 100-103 armor. */
+        public final Map<Integer, ItemStack> items = new HashMap<>();
+        /** Which enchant-editor slot is selected (builder GUI slot). */
+        public int selectedEnchantSlot = -1;
+    }
+
+    /** Opens the Custom Kit List GUI showing the player's custom kits. */
+    public void openCustomKitListGUI(Player player) {
+        if (!plugin.getCustomKitManager().isWorldAllowed(player)) {
+            player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.wrong-world",
+                    "&cYou can only manage custom kits in the allowed world."));
+            return;
+        }
+        var ckm = plugin.getCustomKitManager();
+        int limit = ckm.getKitLimit(player);
+        if (limit <= 0) {
+            player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.no-permission",
+                    "&cYou don't have permission to create custom kits."));
+            return;
+        }
+
+        Inventory inv = Bukkit.createInventory(null, 54, CUSTOM_KIT_LIST_TITLE);
+
+        var kits = ckm.getKits(player.getUniqueId());
+        int count = kits.size();
+
+        // Info
+        ItemStack info = createItem(Material.PAPER, "§6Your Custom Kits",
+                Arrays.asList("§7You have §e" + count + "§7/§e" + limit + " §7custom kits.",
+                        "", "§7Custom kits can only be used in", "§dParty §7(1v1, FFA, Team).", "",
+                        "§eClick a kit to edit, §cShift+click to delete."));
+        inv.setItem(4, info);
+
+        // Kit items
+        int slot = 10;
+        for (var ck : kits) {
+            ItemStack item = new ItemStack(ck.getIcon());
+            ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', ck.getDisplayName()));
+            meta.setLore(Arrays.asList("", "§eLeft-click to edit", "§cShift+click to delete"));
+            meta.getPersistentDataContainer().set(customKitIndexKey, PersistentDataType.INTEGER, ck.getIndex());
+            meta.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "EDIT");
+            item.setItemMeta(meta);
+            inv.setItem(slot, item);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        // Create new button (if under limit)
+        if (count < limit) {
+            ItemStack create = createItem(Material.EMERALD, "§a§lCreate New Kit",
+                    Arrays.asList("§7Create a new custom kit.", "§7(" + count + "/" + limit + ")", "", "§eClick to create"));
+            ItemMeta cm = create.getItemMeta();
+            cm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "CREATE");
+            create.setItemMeta(cm);
+            inv.setItem(48, create);
+        }
+
+        inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
+
+        injectCustomItems(inv, "custom-kit-list");
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(CUSTOM_KIT_LIST_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Begins a new kit builder session (kit not yet saved). */
+    public void beginNewKitBuilder(Player player, String name) {
+        KitBuilderSession session = new KitBuilderSession();
+        session.kitIndex = -1;
+        session.displayName = name;
+        session.icon = Material.DIAMOND_SWORD;
+        builderSessions.put(player.getUniqueId(), session);
+        openKitBuilderGUI(player);
+    }
+
+    /** Loads an existing custom kit into a builder session for editing. */
+    public void beginEditKitBuilder(Player player, int index) {
+        var ck = plugin.getCustomKitManager().getKit(player.getUniqueId(), index);
+        if (ck == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.not-found", "&cCustom kit not found."));
+            return;
+        }
+        KitBuilderSession session = new KitBuilderSession();
+        session.kitIndex = ck.getIndex();
+        session.displayName = ck.getDisplayName();
+        session.icon = ck.getIcon();
+        for (Map.Entry<Integer, ItemStack> e : ck.getItems().entrySet()) {
+            session.items.put(e.getKey(), e.getValue().clone());
+        }
+        builderSessions.put(player.getUniqueId(), session);
+        openKitBuilderGUI(player);
+    }
+
+    /** Opens the Kit Builder GUI for creating/editing a custom kit. */
+    public void openKitBuilderGUI(Player player) {
+        KitBuilderSession session = builderSessions.get(player.getUniqueId());
+        if (session == null) return;
+
+        String title = CUSTOM_KIT_BUILDER_PREFIX + ChatColor.translateAlternateColorCodes('&', session.displayName);
+        if (title.length() > 32) title = title.substring(0, 32);
+        Inventory inv = Bukkit.createInventory(null, 54, title);
+
+        // Fill kit items (0-35)
+        for (int i = 0; i < 36; i++) {
+            ItemStack it = session.items.get(i);
+            if (it != null) inv.setItem(i, it.clone());
+        }
+
+        // Armor: gui 36=boots(100), 37=legs(101), 38=chest(102), 39=helm(103)
+        inv.setItem(36, session.items.containsKey(100) ? session.items.get(100).clone() : null);
+        inv.setItem(37, session.items.containsKey(101) ? session.items.get(101).clone() : null);
+        inv.setItem(38, session.items.containsKey(102) ? session.items.get(102).clone() : null);
+        inv.setItem(39, session.items.containsKey(103) ? session.items.get(103).clone() : null);
+        // Offhand
+        inv.setItem(40, session.items.containsKey(99) ? session.items.get(99).clone() : null);
+
+        // Separators
+        ItemStack sep = createItem(Material.GRAY_STAINED_GLASS_PANE, "§7", null);
+        for (int i = 41; i <= 44; i++) inv.setItem(i, sep);
+
+        // Buttons (bottom row)
+        ItemStack infoItem = createItem(Material.PAPER, "§6Kit Builder",
+                Arrays.asList("§7Drag items in slots §a0-35§7.",
+                        "§7Armor: §eSlots 36-39§7, Offhand: §eSlot 40§7.", "",
+                        "§7Use buttons below to add items & enchant."));
+        inv.setItem(45, infoItem);
+
+        inv.setItem(46, createItem(Material.CHEST, "§aAdd Items",
+                Arrays.asList("§7Browse and add items to your kit.", "", "§eClick to open item picker")));
+        inv.setItem(47, createItem(Material.ENCHANTING_TABLE, "§bEnchant Items",
+                Arrays.asList("§7Enchant armor and tools in your kit.", "", "§eClick to select an item to enchant")));
+
+        // Icon display
+        ItemStack iconItem = new ItemStack(session.icon);
+        ItemMeta iconMeta = iconItem.getItemMeta();
+        iconMeta.setDisplayName("§eKit Icon: §f" + session.icon.name());
+        iconMeta.setLore(Arrays.asList("§7Click with an item in your cursor", "§7to change the kit icon."));
+        iconMeta.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "SET_ICON");
+        iconItem.setItemMeta(iconMeta);
+        inv.setItem(48, iconItem);
+
+        inv.setItem(51, createItem(Material.LIME_DYE, "§aSave Kit",
+                Arrays.asList("§7Save your custom kit.", "", "§eClick to save")));
+        inv.setItem(53, createItem(Material.BARRIER, "§cClose", Arrays.asList("§7Close without saving")));
+
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(title, System.currentTimeMillis()));
+    }
+
+    /** Saves builder GUI contents back to the session. */
+    public void saveBuilderStateFromGUI(Inventory inv, UUID playerId) {
+        KitBuilderSession session = builderSessions.get(playerId);
+        if (session == null) return;
+        var ckm = plugin.getCustomKitManager();
+        session.items.clear();
+        for (int i = 0; i < 36; i++) {
+            ItemStack it = inv.getItem(i);
+            if (it != null && it.getType() != Material.AIR && !ckm.isBlacklisted(it.getType())) session.items.put(i, it.clone());
+        }
+        // Armor
+        putIfAllowed(session, ckm, 100, inv.getItem(36));
+        putIfAllowed(session, ckm, 101, inv.getItem(37));
+        putIfAllowed(session, ckm, 102, inv.getItem(38));
+        putIfAllowed(session, ckm, 103, inv.getItem(39));
+        // Offhand
+        putIfAllowed(session, ckm, 99, inv.getItem(40));
+    }
+
+    private void putIfAllowed(KitBuilderSession session, dev.duels.managers.CustomKitManager ckm, int slot, ItemStack it) {
+        if (it != null && it.getType() != Material.AIR && !ckm.isBlacklisted(it.getType())) {
+            session.items.put(slot, it.clone());
+        }
+    }
+
+    /** Commits the builder session to the CustomKitManager (create or update). Returns true on success. */
+    public boolean commitBuilderSession(Player player) {
+        KitBuilderSession session = builderSessions.get(player.getUniqueId());
+        if (session == null) return false;
+        var ckm = plugin.getCustomKitManager();
+
+        if (session.kitIndex < 0) {
+            // New kit
+            var ck = ckm.createKit(player, session.displayName);
+            if (ck == null) {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.limit-reached",
+                        "&cYou have reached your custom kit limit."));
+                return false;
+            }
+            ck.setIcon(session.icon);
+            ck.getItems().clear();
+            for (Map.Entry<Integer, ItemStack> e : session.items.entrySet()) {
+                ck.getItems().put(e.getKey(), e.getValue().clone());
+            }
+            ckm.updateKit(ck);
+            session.kitIndex = ck.getIndex();
+        } else {
+            // Update existing
+            var ck = ckm.getKit(player.getUniqueId(), session.kitIndex);
+            if (ck == null) {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.not-found", "&cCustom kit not found."));
+                return false;
+            }
+            ck.setDisplayName(session.displayName);
+            ck.setIcon(session.icon);
+            ck.getItems().clear();
+            for (Map.Entry<Integer, ItemStack> e : session.items.entrySet()) {
+                ck.getItems().put(e.getKey(), e.getValue().clone());
+            }
+            ckm.updateKit(ck);
+        }
+        return true;
+    }
+
+    public void clearBuilderSession(UUID playerId) {
+        builderSessions.remove(playerId);
+        itemPickerPage.remove(playerId);
+    }
+
+    public int getItemPickerPage(UUID playerId) {
+        return itemPickerPage.getOrDefault(playerId, 0);
+    }
+
+    /** Opens the paginated Item Picker GUI. */
+    public void openItemPickerGUI(Player player, int page) {
+        itemPickerPage.put(player.getUniqueId(), page);
+        var items = plugin.getCustomKitManager().getAvailableItems();
+        int perPage = 45; // 5 rows
+        int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) perPage));
+        if (page >= totalPages) page = totalPages - 1;
+        if (page < 0) page = 0;
+
+        Inventory inv = Bukkit.createInventory(null, 54, CUSTOM_KIT_ITEMS_TITLE);
+
+        int start = page * perPage;
+        for (int i = 0; i < perPage && (start + i) < items.size(); i++) {
+            Material m = items.get(start + i);
+            ItemStack item = new ItemStack(m);
+            ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName("§f" + m.name());
+            meta.setLore(Arrays.asList("§7Click to add to your kit."));
+            item.setItemMeta(meta);
+            inv.setItem(i, item);
+        }
+
+        // Navigation (bottom row)
+        if (page > 0) {
+            ItemStack prev = createItem(Material.ARROW, "§e← Previous Page",
+                    Arrays.asList("§7Page " + page + "/" + totalPages));
+            ItemMeta pm = prev.getItemMeta();
+            pm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "PREV_PAGE");
+            prev.setItemMeta(pm);
+            inv.setItem(45, prev);
+        }
+
+        ItemStack pageInfo = createItem(Material.BOOK, "§7Page " + (page + 1) + "/" + totalPages, null);
+        inv.setItem(49, pageInfo);
+
+        if (page < totalPages - 1) {
+            ItemStack next = createItem(Material.ARROW, "§eNext Page →",
+                    Arrays.asList("§7Page " + (page + 2) + "/" + totalPages));
+            ItemMeta nm = next.getItemMeta();
+            nm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "NEXT_PAGE");
+            next.setItemMeta(nm);
+            inv.setItem(53, next);
+        }
+
+        ItemStack back = createItem(Material.DARK_OAK_DOOR, "§cBack to Kit Builder", null);
+        ItemMeta bm = back.getItemMeta();
+        bm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "BACK_TO_BUILDER");
+        back.setItemMeta(bm);
+        inv.setItem(48, back);
+
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(CUSTOM_KIT_ITEMS_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Opens the Enchant Select GUI showing enchantable items from the kit. */
+    public void openEnchantSelectGUI(Player player) {
+        KitBuilderSession session = builderSessions.get(player.getUniqueId());
+        if (session == null) return;
+
+        Inventory inv = Bukkit.createInventory(null, 54, CUSTOM_KIT_ENCHANT_SELECT_TITLE);
+
+        ItemStack info = createItem(Material.ENCHANTING_TABLE, "§dSelect an item to enchant",
+                Arrays.asList("§7Only armor and tools can be enchanted.", "", "§eClick an item to enchant it."));
+        inv.setItem(4, info);
+
+        int slot = 10;
+        for (Map.Entry<Integer, ItemStack> entry : session.items.entrySet()) {
+            ItemStack it = entry.getValue();
+            if (it == null || it.getType() == Material.AIR) continue;
+            if (!dev.duels.managers.CustomKitManager.isEnchantable(it.getType())) continue;
+
+            ItemStack display = it.clone();
+            ItemMeta meta = display.getItemMeta();
+            List<String> lore = meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+            lore.add("");
+            lore.add("§eClick to enchant");
+            meta.setLore(lore);
+            meta.getPersistentDataContainer().set(customKitEnchantSlotKey, PersistentDataType.INTEGER, entry.getKey());
+            display.setItemMeta(meta);
+            inv.setItem(slot, display);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        ItemStack back = createItem(Material.DARK_OAK_DOOR, "§cBack to Kit Builder", null);
+        ItemMeta bm = back.getItemMeta();
+        bm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "BACK_TO_BUILDER");
+        back.setItemMeta(bm);
+        inv.setItem(49, back);
+
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(CUSTOM_KIT_ENCHANT_SELECT_TITLE, System.currentTimeMillis()));
+    }
+
+    /** Opens the Enchant Editor for a specific item. */
+    public void openEnchantEditorGUI(Player player, int builderSlot) {
+        KitBuilderSession session = builderSessions.get(player.getUniqueId());
+        if (session == null) return;
+
+        ItemStack target = session.items.get(builderSlot);
+        if (target == null) return;
+
+        session.selectedEnchantSlot = builderSlot;
+
+        String title = CUSTOM_KIT_ENCHANT_EDITOR_PREFIX + target.getType().name();
+        if (title.length() > 32) title = title.substring(0, 32);
+
+        Inventory inv = Bukkit.createInventory(null, 54, title);
+
+        // Show target item at slot 4
+        ItemStack preview = target.clone();
+        ItemMeta previewMeta = preview.getItemMeta();
+        previewMeta.setDisplayName("§e" + target.getType().name());
+        preview.setItemMeta(previewMeta);
+        inv.setItem(4, preview);
+
+        // List all applicable enchantments
+        int slot = 10;
+        for (org.bukkit.enchantments.Enchantment ench : org.bukkit.enchantments.Enchantment.values()) {
+            if (!ench.canEnchantItem(target)) continue;
+
+            int currentLevel = target.getEnchantmentLevel(ench);
+            int maxLevel = ench.getMaxLevel();
+
+            Material dispMat = currentLevel > 0 ? Material.ENCHANTED_BOOK : Material.BOOK;
+            ItemStack enchItem = new ItemStack(dispMat);
+            ItemMeta em = enchItem.getItemMeta();
+            em.setDisplayName("§b" + formatEnchantName(ench));
+            em.setLore(Arrays.asList(
+                    "§7Current: §e" + (currentLevel > 0 ? levelToRoman(currentLevel) : "None"),
+                    "§7Max: §e" + levelToRoman(maxLevel),
+                    "",
+                    "§aLeft-click §7to increase level",
+                    "§cRight-click §7to decrease level"
+            ));
+            em.getPersistentDataContainer().set(customKitEnchantKey, PersistentDataType.STRING, ench.getKey().getKey());
+            enchItem.setItemMeta(em);
+            inv.setItem(slot, enchItem);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        ItemStack done = createItem(Material.LIME_DYE, "§aDone", Arrays.asList("§7Return to enchant select."));
+        ItemMeta dm = done.getItemMeta();
+        dm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "ENCHANT_DONE");
+        done.setItemMeta(dm);
+        inv.setItem(49, done);
+
+        player.openInventory(inv);
+        openGUIs.put(player.getUniqueId(), new GUI(title, System.currentTimeMillis()));
+    }
+
+    private String formatEnchantName(org.bukkit.enchantments.Enchantment ench) {
+        String key = ench.getKey().getKey();
+        String[] parts = key.split("_");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (!sb.isEmpty()) sb.append(' ');
+            sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
+        }
+        return sb.toString();
+    }
+
+    private String levelToRoman(int level) {
+        return switch (level) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            case 6 -> "VI";
+            case 7 -> "VII";
+            case 8 -> "VIII";
+            case 9 -> "IX";
+            case 10 -> "X";
+            default -> String.valueOf(level);
+        };
+    }
+
+    // ================== End Custom Kit GUIs ==================
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
         ItemStack item = new ItemStack(material);

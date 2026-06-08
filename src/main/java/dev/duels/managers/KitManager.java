@@ -18,12 +18,57 @@ public class KitManager {
     private final Map<String, Kit> kits = new LinkedHashMap<>(); // key = kitId (clean)
     private final Map<UUID, Map<String, ItemStack[]>> playerKitLayouts = new HashMap<>();
 
+    /** Tracks ids of custom (player-created) kits registered into the kits map.
+     *  These are excluded from getKitNames() so they don't appear in queue/edit-layouts/duel-gui. */
+    private final java.util.Set<String> customKitIds = new java.util.HashSet<>();
+
+    /** PDC key marking items from custom kits as non-droppable (safety: custom
+     *  kit items must never leak into the economy). */
+    private final org.bukkit.NamespacedKey noDropKey;
+
     public KitManager(DuelsPlugin plugin) {
         this.plugin = plugin;
+        this.noDropKey = new org.bukkit.NamespacedKey(plugin, "customkit_nodrop");
+    }
+
+    public org.bukkit.NamespacedKey getNoDropKey() { return noDropKey; }
+
+    /** Returns true if the item is a non-droppable custom-kit item. */
+    public boolean isNoDrop(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer()
+                .has(noDropKey, org.bukkit.persistence.PersistentDataType.BYTE);
+    }
+
+    /** Clones the item (if non-null) and tags it no-drop when requested. */
+    private ItemStack applyNoDrop(ItemStack item, boolean noDrop) {
+        if (item == null) return null;
+        ItemStack it = item.clone();
+        if (noDrop) tagNoDrop(it);
+        return it;
+    }
+
+    /** Tags a cloned item as non-droppable and returns it. */
+    private ItemStack tagNoDrop(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return item;
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.getPersistentDataContainer().set(noDropKey,
+                    org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     public void loadKits() {
+        // Preserve custom kits across reloads
+        Map<String, Kit> savedCustom = new LinkedHashMap<>();
+        for (String id : customKitIds) {
+            Kit k = kits.get(id);
+            if (k != null) savedCustom.put(id, k);
+        }
         kits.clear();
+        kits.putAll(savedCustom);
 
         if (!plugin.getConfigManager().getKitsConfig().contains("kits")) {
             plugin.getLogger().info("Loaded 0 kits");
@@ -257,12 +302,16 @@ public class KitManager {
         PlayerInventory inv = player.getInventory();
         inv.clear();
 
+        boolean noDrop = isCustomKit(kitId);
+
         ItemStack[] customLayout = getCustomLayout(player.getUniqueId(), kitId);
 
         if (customLayout != null) {
             for (int i = 0; i < Math.min(customLayout.length, 36); i++) {
                 if (customLayout[i] != null && customLayout[i].getType() != Material.AIR) {
-                    inv.setItem(i, customLayout[i].clone());
+                    ItemStack it = customLayout[i].clone();
+                    if (noDrop) tagNoDrop(it);
+                    inv.setItem(i, it);
                 }
             }
         } else {
@@ -271,17 +320,19 @@ public class KitManager {
                 ItemStack item = entry.getValue();
 
                 if (slot >= 0 && slot < 36) {
-                    inv.setItem(slot, item.clone());
+                    ItemStack it = item.clone();
+                    if (noDrop) tagNoDrop(it);
+                    inv.setItem(slot, it);
                 }
             }
         }
 
-        inv.setBoots(kit.getItem(100) != null ? kit.getItem(100).clone() : null);
-        inv.setLeggings(kit.getItem(101) != null ? kit.getItem(101).clone() : null);
-        inv.setChestplate(kit.getItem(102) != null ? kit.getItem(102).clone() : null);
-        inv.setHelmet(kit.getItem(103) != null ? kit.getItem(103).clone() : null);
+        inv.setBoots(applyNoDrop(kit.getItem(100), noDrop));
+        inv.setLeggings(applyNoDrop(kit.getItem(101), noDrop));
+        inv.setChestplate(applyNoDrop(kit.getItem(102), noDrop));
+        inv.setHelmet(applyNoDrop(kit.getItem(103), noDrop));
 
-        inv.setItemInOffHand(kit.getItem(99) != null ? kit.getItem(99).clone() : null);
+        inv.setItemInOffHand(applyNoDrop(kit.getItem(99), noDrop));
 
         // Persönliche Armor-Trims des Spielers auf die gerade angezogene
         // Rüstung anwenden (nur wenn duels.armortrim Permission). Wirkt
@@ -429,11 +480,43 @@ public class KitManager {
     }
 
     public Set<String> getKitNames() {
-        return kits.keySet();
+        if (customKitIds.isEmpty()) return kits.keySet();
+        java.util.Set<String> result = new java.util.LinkedHashSet<>();
+        for (String id : kits.keySet()) {
+            if (!customKitIds.contains(id)) result.add(id);
+        }
+        return result;
     }
 
     public Kit getKit(String kitId) {
         return kits.get(kitId);
+    }
+
+    // ============ Custom Kit Registration ============
+
+    public void registerCustomKit(String id, Kit kit) {
+        kits.put(id, kit);
+        customKitIds.add(id);
+    }
+
+    public void unregisterCustomKit(String id) {
+        kits.remove(id);
+        customKitIds.remove(id);
+    }
+
+    public void clearCustomKits() {
+        for (String id : new java.util.ArrayList<>(customKitIds)) {
+            kits.remove(id);
+        }
+        customKitIds.clear();
+    }
+
+    public boolean isCustomKit(String kitId) {
+        return customKitIds.contains(kitId);
+    }
+
+    public java.util.Set<String> getCustomKitIds() {
+        return java.util.Collections.unmodifiableSet(customKitIds);
     }
 
     public Material getKitPreviewMaterial(String kitId) {
