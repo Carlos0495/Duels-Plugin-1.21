@@ -89,6 +89,11 @@ public class ArenaManager {
                 arena.setAllowedKits(arenaCfg.getStringList(path + ".allowedKits"));
             }
 
+            // Zusätzlich abbaubare Arena-Blöcke (für Custom-Kits)
+            if (arenaCfg.isList(path + ".breakableBlocks")) {
+                arena.setBreakableBlocks(arenaCfg.getStringList(path + ".breakableBlocks"));
+            }
+
             // Per-Arena FFA-Spawn (optional). Wenn gesetzt, kann diese Arena
             // für Party-FFA reserviert werden — mehrere Parties = mehrere
             // Maps gleichzeitig.
@@ -193,6 +198,14 @@ public class ArenaManager {
         } else {
             plugin.getConfigManager().getArenaConfig().set(path + ".allowedKits",
                     new ArrayList<>(arena.getAllowedKits()));
+        }
+
+        // Breakable arena blocks
+        if (arena.getBreakableBlocks().isEmpty()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".breakableBlocks", null);
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".breakableBlocks",
+                    new ArrayList<>(arena.getBreakableBlocks()));
         }
 
         saveArenaSnapshot(arena);

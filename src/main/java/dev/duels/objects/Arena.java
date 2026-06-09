@@ -23,6 +23,10 @@ public class Arena {
     // Allowed kits (empty = alle Kits erlaubt)
     private final Set<String> allowedKits = new LinkedHashSet<>();
 
+    // Zusätzlich abbaubare Arena-Block-Materialien (für Custom-Kits / je nach
+    // Config auch normale Kits). Gespeichert als Material-Namen (UPPERCASE).
+    private final Set<String> breakableBlocks = new LinkedHashSet<>();
+
     // Snapshot data
     private String snapshotWorld;
     private int snapshotMinX, snapshotMinY, snapshotMinZ;
@@ -191,6 +195,39 @@ public class Arena {
     public boolean isKitAllowed(String kitId) {
         if (allowedKits.isEmpty()) return true;
         if (kitId == null) return false;
-        return allowedKits.contains(kitId.toLowerCase(Locale.ROOT));
+        String id = kitId.toLowerCase(Locale.ROOT);
+        if (allowedKits.contains(id)) return true;
+        // "customkits" Platzhalter: erlaubt jedes Custom-Kit (interne IDs
+        // beginnen mit "ckit_") als wäre es ein normales Kit auf dieser Arena.
+        if (id.startsWith("ckit_") && allowedKits.contains("customkits")) return true;
+        return false;
+    }
+
+    // Breakable arena blocks management (Material-Namen, UPPERCASE)
+    public Set<String> getBreakableBlocks() { return breakableBlocks; }
+
+    public void setBreakableBlocks(java.util.Collection<String> mats) {
+        breakableBlocks.clear();
+        if (mats == null) return;
+        for (String m : mats) {
+            if (m != null && !m.isEmpty()) breakableBlocks.add(m.toUpperCase(Locale.ROOT));
+        }
+    }
+
+    public boolean addBreakableBlock(String material) {
+        if (material == null || material.isEmpty()) return false;
+        return breakableBlocks.add(material.toUpperCase(Locale.ROOT));
+    }
+
+    public boolean removeBreakableBlock(String material) {
+        if (material == null) return false;
+        return breakableBlocks.remove(material.toUpperCase(Locale.ROOT));
+    }
+
+    public void clearBreakableBlocks() { breakableBlocks.clear(); }
+
+    public boolean isArenaBreakable(org.bukkit.Material material) {
+        if (material == null || breakableBlocks.isEmpty()) return false;
+        return breakableBlocks.contains(material.name());
     }
 }

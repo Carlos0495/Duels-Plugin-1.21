@@ -217,6 +217,33 @@ public class CustomKitManager {
         return ck;
     }
 
+    public enum GiveResult { SUCCESS, NO_SUCH_KIT }
+
+    /**
+     * Copies the owner's custom kit at the given 1-based slot (slot 1 = first
+     * kit) to the target player as a NEW custom kit. The owner keeps the
+     * original. Admin command — does not enforce the target's tier limit.
+     */
+    public GiveResult giveKit(UUID ownerId, int slot1Based, UUID targetId) {
+        List<CustomKit> ownerKits = getKits(ownerId);
+        if (slot1Based < 1 || slot1Based > ownerKits.size()) return GiveResult.NO_SUCH_KIT;
+        CustomKit src = ownerKits.get(slot1Based - 1);
+
+        List<CustomKit> targetKits = playerKits.computeIfAbsent(targetId, k -> new ArrayList<>());
+        int nextIndex = targetKits.isEmpty() ? 0
+                : targetKits.stream().mapToInt(k -> k.index).max().orElse(-1) + 1;
+        CustomKit copy = new CustomKit(targetId, nextIndex);
+        copy.displayName = src.displayName;
+        copy.icon = src.icon;
+        for (Map.Entry<Integer, ItemStack> e : src.items.entrySet()) {
+            copy.items.put(e.getKey(), e.getValue().clone());
+        }
+        targetKits.add(copy);
+        registerIntoKitManager(copy);
+        saveKit(copy);
+        return GiveResult.SUCCESS;
+    }
+
     public void updateKit(CustomKit ck) {
         // Re-register to update Kit object in KitManager
         plugin.getKitManager().unregisterCustomKit(ck.getInternalId());
@@ -303,6 +330,14 @@ public class CustomKitManager {
 
         for (Map.Entry<Integer, ItemStack> entry : ck.items.entrySet()) {
             kit.setItem(entry.getKey(), entry.getValue().clone());
+            // Jeder Block, der im Custom-Kit liegt, darf platziert werden.
+            // Das Abbauen regelt der BlockBreakListener separat (nur selbst
+            // platzierte Blöcke + die Arena-Breakable-Liste), damit man NICHT
+            // beliebige Arena-Blöcke gleichen Materials zerstören kann.
+            ItemStack it = entry.getValue();
+            if (it != null && it.getType().isBlock()) {
+                kit.getPlaceableBlocks().add(it.getType());
+            }
         }
 
         plugin.getKitManager().registerCustomKit(ck.getInternalId(), kit);
@@ -331,6 +366,92 @@ public class CustomKitManager {
         }
         result.sort(Comparator.comparing(Material::name));
         return result;
+    }
+
+    // ======================= Item Categories =======================
+
+    /** A picker category (tab) like Creative mode. */
+    public static class ItemCategory {
+        public final String id;
+        public final String display;
+        public final Material icon;
+        public ItemCategory(String id, String display, Material icon) {
+            this.id = id; this.display = display; this.icon = icon;
+        }
+    }
+
+    private static final List<ItemCategory> CATEGORIES = Arrays.asList(
+            new ItemCategory("all",      "&fAll",            Material.CHEST),
+            new ItemCategory("pvp",      "&cPvP",            Material.DIAMOND_SWORD),
+            new ItemCategory("tools",    "&6Tools",          Material.DIAMOND_PICKAXE),
+            new ItemCategory("armor",    "&bArmor",          Material.DIAMOND_CHESTPLATE),
+            new ItemCategory("blocks",   "&aBlocks",         Material.GRASS_BLOCK),
+            new ItemCategory("food",     "&eFood",           Material.COOKED_BEEF),
+            new ItemCategory("brewing",  "&dPotions",        Material.BREWING_STAND),
+            new ItemCategory("redstone", "&4Redstone",       Material.REDSTONE),
+            new ItemCategory("misc",     "&7Misc",           Material.ENDER_PEARL)
+    );
+
+    public List<ItemCategory> getItemCategories() { return CATEGORIES; }
+
+    public ItemCategory getCategory(String id) {
+        if (id == null) return CATEGORIES.get(0);
+        for (ItemCategory c : CATEGORIES) if (c.id.equalsIgnoreCase(id)) return c;
+        return CATEGORIES.get(0);
+    }
+
+    /** Items in a category (already blacklist-filtered, sorted by name). */
+    public List<Material> getCategoryItems(String categoryId) {
+        List<Material> all = getAvailableItems();
+        if (categoryId == null || categoryId.equalsIgnoreCase("all")) return all;
+        List<Material> result = new ArrayList<>();
+        for (Material m : all) {
+            if (categoryOf(m).equals(categoryId.toLowerCase(Locale.ROOT))) result.add(m);
+        }
+        return result;
+    }
+
+    /** Classify a material into exactly one picker category id. */
+    public static String categoryOf(Material m) {
+        String n = m.name();
+        // PvP / combat
+        if (n.endsWith("_SWORD") || n.endsWith("_AXE")
+                || n.equals("BOW") || n.equals("CROSSBOW") || n.equals("TRIDENT")
+                || n.equals("MACE") || n.equals("SHIELD")
+                || n.equals("ARROW") || n.equals("SPECTRAL_ARROW") || n.equals("TIPPED_ARROW")
+                || n.equals("TOTEM_OF_UNDYING") || n.equals("FIRE_CHARGE")
+                || n.equals("END_CRYSTAL")) return "pvp";
+        // Armor
+        if (n.endsWith("_HELMET") || n.endsWith("_CHESTPLATE") || n.endsWith("_LEGGINGS")
+                || n.endsWith("_BOOTS") || n.equals("ELYTRA") || n.endsWith("_HORSE_ARMOR")
+                || n.equals("TURTLE_HELMET")) return "armor";
+        // Tools / utility
+        if (n.endsWith("_PICKAXE") || n.endsWith("_SHOVEL") || n.endsWith("_HOE")
+                || n.equals("SHEARS") || n.equals("FLINT_AND_STEEL") || n.equals("FISHING_ROD")
+                || n.equals("COMPASS") || n.equals("RECOVERY_COMPASS") || n.equals("CLOCK")
+                || n.equals("SPYGLASS") || n.equals("BRUSH") || n.equals("LEAD")
+                || n.equals("NAME_TAG") || n.equals("BUCKET") || n.equals("WATER_BUCKET")
+                || n.equals("LAVA_BUCKET") || n.equals("POWDER_SNOW_BUCKET")
+                || n.equals("ENDER_EYE") || n.equals("FIREWORK_ROCKET")) return "tools";
+        // Potions & brewing
+        if (n.equals("POTION") || n.equals("SPLASH_POTION") || n.equals("LINGERING_POTION")
+                || n.equals("EXPERIENCE_BOTTLE") || n.equals("GLASS_BOTTLE")
+                || n.equals("DRAGON_BREATH") || n.equals("BLAZE_POWDER") || n.equals("NETHER_WART")
+                || n.equals("FERMENTED_SPIDER_EYE") || n.equals("BREWING_STAND")
+                || n.equals("GHAST_TEAR") || n.equals("MAGMA_CREAM")) return "brewing";
+        // Redstone (check before generic blocks)
+        if (n.equals("REDSTONE") || n.equals("REDSTONE_BLOCK") || n.equals("REDSTONE_TORCH")
+                || n.equals("REPEATER") || n.equals("COMPARATOR") || n.equals("OBSERVER")
+                || n.equals("PISTON") || n.equals("STICKY_PISTON") || n.equals("DISPENSER")
+                || n.equals("DROPPER") || n.equals("HOPPER") || n.equals("LEVER")
+                || n.equals("TNT") || n.equals("REDSTONE_LAMP") || n.equals("TARGET")
+                || n.equals("DAYLIGHT_DETECTOR") || n.equals("SLIME_BLOCK") || n.equals("HONEY_BLOCK")
+                || n.equals("TRIPWIRE_HOOK") || n.endsWith("_BUTTON") || n.endsWith("_PRESSURE_PLATE")) return "redstone";
+        // Food
+        if (m.isEdible()) return "food";
+        // Generic placeable blocks
+        if (m.isBlock()) return "blocks";
+        return "misc";
     }
 
     /**

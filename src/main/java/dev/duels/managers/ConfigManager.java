@@ -390,6 +390,17 @@ public class ConfigManager {
         // Custom-Kit-System Defaults
         if (!mainConfig.contains("custom-kits.enabled"))
             { mainConfig.set("custom-kits.enabled", true); dirty = true; }
+        // Button für ALLE sichtbar (auch ohne Permission)? false = nur mit Permission.
+        if (!mainConfig.contains("custom-kits.show-button"))
+            { mainConfig.set("custom-kits.show-button", true); dirty = true; }
+        // Block-Break Precedence für NORMALE Kits: MERGE | ARENA | KIT.
+        if (!mainConfig.contains("custom-kits.block-rules.precedence"))
+            { mainConfig.set("custom-kits.block-rules.precedence", "MERGE"); dirty = true; }
+        // tier0 = 1 Kit
+        if (!mainConfig.contains("custom-kits.tiers.tier0.permission"))
+            { mainConfig.set("custom-kits.tiers.tier0.permission", "duels.customkit.tier0"); dirty = true; }
+        if (!mainConfig.contains("custom-kits.tiers.tier0.limit"))
+            { mainConfig.set("custom-kits.tiers.tier0.limit", 1); dirty = true; }
         if (!mainConfig.contains("custom-kits.tiers.tier1.permission"))
             { mainConfig.set("custom-kits.tiers.tier1.permission", "duels.customkit.tier1"); dirty = true; }
         if (!mainConfig.contains("custom-kits.tiers.tier1.limit"))

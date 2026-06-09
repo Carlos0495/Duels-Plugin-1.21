@@ -1101,6 +1101,12 @@ public class GUIListener implements Listener {
                 plugin.getGuiManager().openItemPickerGUI(player, getItemPickerPage(player) + 1);
                 return;
             }
+            if (action != null && action.startsWith("CAT:")) {
+                String catId = action.substring("CAT:".length());
+                plugin.getGuiManager().setItemPickerCategory(player.getUniqueId(), catId);
+                plugin.getGuiManager().openItemPickerGUI(player, 0);
+                return;
+            }
             if ("BACK_TO_BUILDER".equals(action)) {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
@@ -1110,8 +1116,8 @@ public class GUIListener implements Listener {
             }
         }
 
-        // Item slot (0-44) — add to kit builder
-        if (raw < 45 && clicked.getType() != Material.AIR) {
+        // Item slot (9-44) — add to kit builder (0-8 are category tabs)
+        if (raw >= 9 && raw < 45 && clicked.getType() != Material.AIR) {
             var session = plugin.getGuiManager().getBuilderSessions().get(player.getUniqueId());
             if (session == null) return;
 

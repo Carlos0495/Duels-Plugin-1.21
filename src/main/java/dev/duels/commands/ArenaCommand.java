@@ -49,6 +49,10 @@ public class ArenaCommand implements CommandExecutor {
             case "removekit" -> handleRemoveKit(player, args);
             case "clearkits" -> handleClearKits(player, args);
             case "listkits" -> handleListKits(player, args);
+            case "addbreakable" -> handleAddBreakable(player, args);
+            case "removebreakable" -> handleRemoveBreakable(player, args);
+            case "clearbreakable" -> handleClearBreakable(player, args);
+            case "listbreakable" -> handleListBreakable(player, args);
             default -> {
                 player.sendMessage(plugin.getConfigManager().prefixed("arena.unknown-subcommand", "&cUnknown subcommand!"));
                 showUsage(player);
@@ -75,6 +79,10 @@ public class ArenaCommand implements CommandExecutor {
         player.sendMessage(plugin.getConfigManager().prefixed("arena.help-removekit", "&7  removekit <arenaName> <kit> &8- &cDisallow a kit"));
         player.sendMessage(plugin.getConfigManager().prefixed("arena.help-clearkits", "&7  clearkits <arenaName> &8- &eAllow every kit again"));
         player.sendMessage(plugin.getConfigManager().prefixed("arena.help-listkits", "&7  listkits <arenaName> &8- &bList kits allowed on this arena"));
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.help-addbreakable", "&7  addbreakable <arenaName> <material> &8- &aAllow breaking an arena block (custom kits)"));
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.help-removebreakable", "&7  removebreakable <arenaName> <material> &8- &cDisallow breaking an arena block"));
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.help-clearbreakable", "&7  clearbreakable <arenaName> &8- &eClear breakable block list"));
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.help-listbreakable", "&7  listbreakable <arenaName> &8- &bList breakable arena blocks"));
     }
 
     private void handleSetFirst(Player player, String[] args) {
@@ -262,7 +270,10 @@ public class ArenaCommand implements CommandExecutor {
             return;
         }
 
-        if (!plugin.getKitManager().kitExists(kitId)) {
+        // "customkits" ist ein Platzhalter (kein echtes Kit): erlaubt ALLE
+        // Custom-Kits auf dieser Arena, als wären es normale Kits.
+        boolean isWildcard = kitId.equalsIgnoreCase("customkits");
+        if (!isWildcard && !plugin.getKitManager().kitExists(kitId)) {
             player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: &e{kit}", java.util.Map.of("kit", kitId)));
             return;
         }
@@ -339,6 +350,87 @@ public class ArenaCommand implements CommandExecutor {
         player.sendMessage(plugin.getConfigManager().prefixed("arena.listkits-header", "&7Allowed kits for &e{arena}&7:", java.util.Map.of("arena", arenaName)));
         for (String kit : arena.getAllowedKits()) {
             player.sendMessage(plugin.getConfigManager().getMessage("arena.listkits-entry", "&8- &b{kit}", java.util.Map.of("kit", kit)));
+        }
+    }
+
+    private void handleAddBreakable(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.usage-addbreakable", "&7Usage: /arena addbreakable <arenaName> <material>"));
+            return;
+        }
+        String arenaName = args[1];
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getArena(arenaName);
+        if (arena == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.not-found", "&cArena not found!"));
+            return;
+        }
+        org.bukkit.Material mat = org.bukkit.Material.matchMaterial(args[2]);
+        if (mat == null || !mat.isBlock()) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.invalid-material", "&cInvalid block material: &e{material}", java.util.Map.of("material", args[2])));
+            return;
+        }
+        if (!arena.addBreakableBlock(mat.name())) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.breakable-already", "&e{material} &eis already breakable on this arena.", java.util.Map.of("material", mat.name())));
+            return;
+        }
+        plugin.getArenaManager().saveArena(arena);
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.breakable-added", "&a{material} &acan now be broken on arena &e{arena}&a (custom kits).", java.util.Map.of("material", mat.name(), "arena", arenaName)));
+    }
+
+    private void handleRemoveBreakable(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.usage-removebreakable", "&7Usage: /arena removebreakable <arenaName> <material>"));
+            return;
+        }
+        String arenaName = args[1];
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getArena(arenaName);
+        if (arena == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.not-found", "&cArena not found!"));
+            return;
+        }
+        String matName = args[2].toUpperCase(java.util.Locale.ROOT);
+        if (!arena.removeBreakableBlock(matName)) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.breakable-not-set", "&c{material} &cwas not breakable on this arena.", java.util.Map.of("material", matName)));
+            return;
+        }
+        plugin.getArenaManager().saveArena(arena);
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.breakable-removed", "&a{material} &ais no longer breakable on arena &e{arena}&a.", java.util.Map.of("material", matName, "arena", arenaName)));
+    }
+
+    private void handleClearBreakable(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.usage-clearbreakable", "&7Usage: /arena clearbreakable <arenaName>"));
+            return;
+        }
+        String arenaName = args[1];
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getArena(arenaName);
+        if (arena == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.not-found", "&cArena not found!"));
+            return;
+        }
+        arena.clearBreakableBlocks();
+        plugin.getArenaManager().saveArena(arena);
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.breakable-cleared", "&aBreakable block list cleared for arena &e{arena}&a.", java.util.Map.of("arena", arenaName)));
+    }
+
+    private void handleListBreakable(Player player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.usage-listbreakable", "&7Usage: /arena listbreakable <arenaName>"));
+            return;
+        }
+        String arenaName = args[1];
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getArena(arenaName);
+        if (arena == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.not-found", "&cArena not found!"));
+            return;
+        }
+        if (arena.getBreakableBlocks().isEmpty()) {
+            player.sendMessage(plugin.getConfigManager().prefixed("arena.listbreakable-none", "&7Arena &e{arena} &7has no extra breakable blocks.", java.util.Map.of("arena", arenaName)));
+            return;
+        }
+        player.sendMessage(plugin.getConfigManager().prefixed("arena.listbreakable-header", "&7Breakable blocks for &e{arena}&7:", java.util.Map.of("arena", arenaName)));
+        for (String mat : arena.getBreakableBlocks()) {
+            player.sendMessage(plugin.getConfigManager().getMessage("arena.listbreakable-entry", "&8- &b{material}", java.util.Map.of("material", mat)));
         }
     }
 }

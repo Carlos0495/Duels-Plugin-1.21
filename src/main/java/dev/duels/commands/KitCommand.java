@@ -48,6 +48,12 @@ public class KitCommand implements CommandExecutor {
             return handleRemove(player, args);
         }
 
+        // /duels:kit give customkit1..4 "owner" to "target" — an die
+        // KitEditCommand-Logik delegieren (gleicher Code-Pfad wie /dkit give).
+        if (sub.equals("give")) {
+            return new KitEditCommand(plugin).onCommand(player, command, label, args);
+        }
+
         sendUsage(player);
         return true;
     }

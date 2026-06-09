@@ -47,7 +47,11 @@ public class BlockBreakListener implements Listener {
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
         if (kit == null) { event.setCancelled(true); return; }
 
-        if (kit.isBreakable(event.getBlock().getType())) {
+        Material type = event.getBlock().getType();
+        dev.duels.objects.Arena arena = findArenaAt(event.getBlock().getLocation());
+        boolean allowed = isBreakAllowed(kitId, kit, arena, type, event.getBlock());
+
+        if (allowed) {
             // Erlaubt: cancel zurücknehmen falls ein Anti-Grief-Plugin
             // gecancelt hat. Zusätzlich erzwingen dass der Block-Drop
             // generiert wird — Anti-Grief setzt manchmal setDropItems(false)
@@ -55,9 +59,61 @@ public class BlockBreakListener implements Listener {
             if (event.isCancelled()) event.setCancelled(false);
             try { event.setDropItems(true); } catch (Throwable ignored) {}
             try { event.setExpToDrop(event.getExpToDrop()); } catch (Throwable ignored) {}
+            // Selbst platzierter Block wird abgebaut → aus dem Tracking nehmen,
+            // damit der Arena-Reset ihn nicht doppelt behandelt.
+            if (arena != null) {
+                dev.duels.objects.BlockVector v = new dev.duels.objects.BlockVector(
+                        event.getBlock().getX(), event.getBlock().getY(), event.getBlock().getZ());
+                arena.removePlayerPlacedBlock(v);
+            }
         } else {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * Entscheidet, ob {@code player} (mit {@code kit}) den Block abbauen darf.
+     *
+     * <p>Custom-Kits: man darf IMMER selbst platzierte Blöcke abbauen, plus
+     * die in der Arena als breakable markierten Materialien. Beliebige Arena-
+     * Blöcke bleiben geschützt.</p>
+     *
+     * <p>Normale Kits: gilt die Kit-eigene breakable-Liste sowie – je nach
+     * Config-Precedence – zusätzlich die Arena-Liste.</p>
+     */
+    private boolean isBreakAllowed(String kitId, KitManager.Kit kit,
+                                   dev.duels.objects.Arena arena, Material type,
+                                   org.bukkit.block.Block block) {
+        boolean playerPlaced = false;
+        boolean arenaBreakable = false;
+        if (arena != null) {
+            dev.duels.objects.BlockVector v = new dev.duels.objects.BlockVector(
+                    block.getX(), block.getY(), block.getZ());
+            playerPlaced = arena.isPlayerPlacedBlock(v);
+            arenaBreakable = arena.isArenaBreakable(type);
+        }
+
+        if (plugin.getKitManager().isCustomKit(kitId)) {
+            // Custom-Kit: selbst platziert ODER vom Admin freigegebener Arena-Block.
+            return playerPlaced || arenaBreakable;
+        }
+
+        // Normale Kits: Precedence-Modus berücksichtigen.
+        boolean kitBreakable = kit.isBreakable(type);
+        String mode = plugin.getConfigManager().getMainConfig()
+                .getString("custom-kits.block-rules.precedence", "MERGE")
+                .toUpperCase(java.util.Locale.ROOT);
+        boolean arenaResult;
+        switch (mode) {
+            case "ARENA" -> // Arena-Liste überschreibt: nur Arena zählt, wenn gesetzt.
+                arenaResult = (arena != null && !arena.getBreakableBlocks().isEmpty())
+                        ? arenaBreakable : kitBreakable;
+            case "KIT" -> // Kit-Liste überschreibt: Arena-Liste ignorieren.
+                arenaResult = kitBreakable;
+            default -> // MERGE: Vereinigung beider Listen.
+                arenaResult = kitBreakable || arenaBreakable;
+        }
+        return arenaResult || playerPlaced;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)

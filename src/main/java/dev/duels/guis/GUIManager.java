@@ -67,6 +67,9 @@ public class GUIManager {
     /** Stores which item picker page the player is on. */
     private final Map<UUID, Integer> itemPickerPage = new HashMap<>();
 
+    /** Stores which item picker category (tab) the player is viewing. */
+    private final Map<UUID, String> itemPickerCategory = new HashMap<>();
+
     /** Stores pending custom kit name input. */
     private final Map<UUID, Boolean> pendingCustomKitName = new HashMap<>();
     /** Stores pending kit name rename. kitIndex or -1 for new. */
@@ -545,18 +548,32 @@ public class GUIManager {
                         Arrays.asList("§7Click on a kit to §eedit §7your", "§apersonal inventory layout §7for it."));
         inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.info", 4) : 4, instructions);
 
-        // Custom Kits button (above close) — only show if player has any customkit permission
-        if (plugin.getCustomKitManager() != null && plugin.getCustomKitManager().getKitLimit(player) > 0) {
+        // Custom Kits button — direkt ÜBER dem Barrier (Slot 40, da Close=49).
+        // Sichtbarkeit: per config "custom-kits.show-button" für ALLE sichtbar
+        // (auch ohne Permission). Bei false nur für Spieler mit Permission.
+        if (plugin.getCustomKitManager() != null) {
             var ckm = plugin.getCustomKitManager();
-            int ckCount = ckm.getKitCount(player.getUniqueId());
-            int ckLimit = ckm.getKitLimit(player);
-            ItemStack customKitBtn = createItem(Material.CRAFTING_TABLE, "§d§lCustom Kits",
-                    Arrays.asList("§7Create and manage your own kits!", "§7(" + ckCount + "/" + ckLimit + " kits)", "",
-                            "§7Custom kits are usable in §dParty§7.", "", "§eClick to manage"));
-            ItemMeta ckm2 = customKitBtn.getItemMeta();
-            ckm2.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "OPEN_LIST");
-            customKitBtn.setItemMeta(ckm2);
-            inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.custom-kits", 48) : 48, customKitBtn);
+            boolean hasPerm = ckm.getKitLimit(player) > 0;
+            boolean showToAll = plugin.getConfigManager() == null
+                    || plugin.getConfigManager().getMainConfig().getBoolean("custom-kits.show-button", true);
+            if (showToAll || hasPerm) {
+                ItemStack customKitBtn;
+                if (hasPerm) {
+                    int ckCount = ckm.getKitCount(player.getUniqueId());
+                    int ckLimit = ckm.getKitLimit(player);
+                    customKitBtn = createItem(Material.CRAFTING_TABLE, "§d§lCustom Kits",
+                            Arrays.asList("§7Create and manage your own kits!", "§7(" + ckCount + "/" + ckLimit + " kits)", "",
+                                    "§7Custom kits are usable in §dParty§7.", "", "§eClick to manage"));
+                } else {
+                    customKitBtn = createItem(Material.CRAFTING_TABLE, "§d§lCustom Kits",
+                            Arrays.asList("§7Create and manage your own kits!", "",
+                                    "§cYou don't have permission", "§cto create custom kits."));
+                }
+                ItemMeta ckm2 = customKitBtn.getItemMeta();
+                ckm2.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "OPEN_LIST");
+                customKitBtn.setItemMeta(ckm2);
+                inv.setItem(gc != null ? gc.getSlot("edit-layouts-gui.custom-kits", 40) : 40, customKitBtn);
+            }
         }
 
         ItemStack close = gc != null
@@ -1336,7 +1353,8 @@ public class GUIManager {
             ItemMeta cm = create.getItemMeta();
             cm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "CREATE");
             create.setItemMeta(cm);
-            inv.setItem(48, create);
+            // Direkt über dem Barrier (Close=49 → 40).
+            inv.setItem(40, create);
         }
 
         inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
@@ -1497,23 +1515,57 @@ public class GUIManager {
     public void clearBuilderSession(UUID playerId) {
         builderSessions.remove(playerId);
         itemPickerPage.remove(playerId);
+        itemPickerCategory.remove(playerId);
     }
 
     public int getItemPickerPage(UUID playerId) {
         return itemPickerPage.getOrDefault(playerId, 0);
     }
 
-    /** Opens the paginated Item Picker GUI. */
+    public String getItemPickerCategory(UUID playerId) {
+        return itemPickerCategory.getOrDefault(playerId, "all");
+    }
+
+    public void setItemPickerCategory(UUID playerId, String categoryId) {
+        itemPickerCategory.put(playerId, categoryId);
+    }
+
+    /** Opens the paginated Item Picker GUI for the player's current category. */
     public void openItemPickerGUI(Player player, int page) {
         itemPickerPage.put(player.getUniqueId(), page);
-        var items = plugin.getCustomKitManager().getAvailableItems();
-        int perPage = 45; // 5 rows
+        String catId = getItemPickerCategory(player.getUniqueId());
+        var ckm = plugin.getCustomKitManager();
+        var items = ckm.getCategoryItems(catId);
+        int perPage = 36; // 4 rows (top row reserved for category tabs)
         int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) perPage));
         if (page >= totalPages) page = totalPages - 1;
         if (page < 0) page = 0;
 
         Inventory inv = Bukkit.createInventory(null, 54, CUSTOM_KIT_ITEMS_TITLE);
 
+        // Category tabs (top row, slots 0-8)
+        var categories = ckm.getItemCategories();
+        for (int i = 0; i < categories.size() && i < 9; i++) {
+            var cat = categories.get(i);
+            boolean selected = cat.id.equalsIgnoreCase(catId);
+            ItemStack tab = createItem(cat.icon,
+                    ChatColor.translateAlternateColorCodes('&', (selected ? "&l" : "") + cat.display),
+                    selected ? Arrays.asList("§7Currently viewing.") : Arrays.asList("§eClick to view"));
+            ItemMeta tm = tab.getItemMeta();
+            tm.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING, "CAT:" + cat.id);
+            if (selected) {
+                org.bukkit.enchantments.Enchantment glow = org.bukkit.Registry.ENCHANTMENT.get(
+                        org.bukkit.NamespacedKey.minecraft("unbreaking"));
+                if (glow != null) {
+                    tm.addEnchant(glow, 1, true);
+                    tm.addItemFlags(org.bukkit.inventory.ItemFlag.HIDE_ENCHANTS);
+                }
+            }
+            tab.setItemMeta(tm);
+            inv.setItem(i, tab);
+        }
+
+        // Items (slots 9-44)
         int start = page * perPage;
         for (int i = 0; i < perPage && (start + i) < items.size(); i++) {
             Material m = items.get(start + i);
@@ -1522,7 +1574,7 @@ public class GUIManager {
             meta.setDisplayName("§f" + m.name());
             meta.setLore(Arrays.asList("§7Click to add to your kit."));
             item.setItemMeta(meta);
-            inv.setItem(i, item);
+            inv.setItem(9 + i, item);
         }
 
         // Navigation (bottom row)
