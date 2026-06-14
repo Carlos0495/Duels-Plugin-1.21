@@ -7,6 +7,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionType;
 
 import java.io.File;
 import java.io.IOException;
@@ -244,6 +246,50 @@ public class CustomKitManager {
         return GiveResult.SUCCESS;
     }
 
+    /**
+     * Applies the owner's custom kit at the given 1-based slot directly to an
+     * online target's inventory (admin "give" — like the kit is designed).
+     * Returns false if the owner has no kit in that slot.
+     */
+    public boolean giveKitToInventory(UUID ownerId, int slot1Based, Player target) {
+        List<CustomKit> ownerKits = getKits(ownerId);
+        if (slot1Based < 1 || slot1Based > ownerKits.size()) return false;
+        CustomKit src = ownerKits.get(slot1Based - 1);
+        plugin.getKitManager().giveKit(target, src.getInternalId());
+        return true;
+    }
+
+    public enum CopyResult { SUCCESS, NO_SLOT, NO_SUCH_KIT, NO_PERMISSION }
+
+    /**
+     * Copies another player's custom kit (by the owner's kit index) into a free
+     * slot of the viewer's own kit list. Enforces the viewer's tier limit, so a
+     * player can only copy if they still have a free slot. Player command.
+     */
+    public CopyResult copyKitToSelf(Player viewer, UUID ownerId, int ownerKitIndex) {
+        int limit = getKitLimit(viewer);
+        if (limit <= 0) return CopyResult.NO_PERMISSION;
+        if (getKitCount(viewer.getUniqueId()) >= limit) return CopyResult.NO_SLOT;
+
+        CustomKit src = getKit(ownerId, ownerKitIndex);
+        if (src == null) return CopyResult.NO_SUCH_KIT;
+
+        UUID targetId = viewer.getUniqueId();
+        List<CustomKit> targetKits = playerKits.computeIfAbsent(targetId, k -> new ArrayList<>());
+        int nextIndex = targetKits.isEmpty() ? 0
+                : targetKits.stream().mapToInt(k -> k.index).max().orElse(-1) + 1;
+        CustomKit copy = new CustomKit(targetId, nextIndex);
+        copy.displayName = src.displayName;
+        copy.icon = src.icon;
+        for (Map.Entry<Integer, ItemStack> e : src.items.entrySet()) {
+            copy.items.put(e.getKey(), e.getValue().clone());
+        }
+        targetKits.add(copy);
+        registerIntoKitManager(copy);
+        saveKit(copy);
+        return CopyResult.SUCCESS;
+    }
+
     public void updateKit(CustomKit ck) {
         // Re-register to update Kit object in KitManager
         plugin.getKitManager().unregisterCustomKit(ck.getInternalId());
@@ -409,6 +455,53 @@ public class CustomKitManager {
             if (categoryOf(m).equals(categoryId.toLowerCase(Locale.ROOT))) result.add(m);
         }
         return result;
+    }
+
+    /**
+     * Concrete picker items (ItemStacks) for a category. Unlike
+     * {@link #getCategoryItems(String)} this expands potions and tipped arrows
+     * into their effect variants (Strength, Speed, Healing, ...) so players can
+     * actually pick brewed potions instead of plain water bottles.
+     */
+    public List<ItemStack> getCategoryPickerItems(String categoryId) {
+        boolean all = categoryId == null || categoryId.equalsIgnoreCase("all");
+        String cat = all ? "all" : categoryId.toLowerCase(Locale.ROOT);
+        List<ItemStack> result = new ArrayList<>();
+
+        for (Material m : getAvailableItems()) {
+            // Raw potion / tipped-arrow materials are added as detailed variants below.
+            if (m == Material.POTION || m == Material.SPLASH_POTION
+                    || m == Material.LINGERING_POTION || m == Material.TIPPED_ARROW) continue;
+            if (!all && !categoryOf(m).equals(cat)) continue;
+            result.add(new ItemStack(m));
+        }
+
+        if (all || cat.equals("brewing")) {
+            Material[] containers = { Material.POTION, Material.SPLASH_POTION, Material.LINGERING_POTION };
+            for (Material c : containers) result.addAll(buildPotionVariants(c));
+        }
+        if (all || cat.equals("pvp")) {
+            result.addAll(buildPotionVariants(Material.TIPPED_ARROW));
+        }
+        return result;
+    }
+
+    private List<ItemStack> buildPotionVariants(Material container) {
+        List<ItemStack> list = new ArrayList<>();
+        for (PotionType pt : PotionType.values()) {
+            // Skip the "empty" base types for tipped arrows (no useful effect).
+            if (container == Material.TIPPED_ARROW
+                    && (pt == PotionType.WATER || pt == PotionType.MUNDANE
+                        || pt == PotionType.THICK || pt == PotionType.AWKWARD)) continue;
+            try {
+                ItemStack is = new ItemStack(container);
+                if (!(is.getItemMeta() instanceof PotionMeta pm)) continue;
+                pm.setBasePotionType(pt);
+                is.setItemMeta(pm);
+                list.add(is);
+            } catch (Throwable ignored) {}
+        }
+        return list;
     }
 
     /** Classify a material into exactly one picker category id. */

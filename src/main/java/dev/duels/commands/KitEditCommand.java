@@ -115,26 +115,30 @@ public class KitEditCommand implements CommandExecutor, TabCompleter {
         }
 
         UUID ownerId = resolveUuid(ownerName);
-        UUID targetId = resolveUuid(targetName);
         if (ownerId == null) {
             player.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-unknown-player", "&cUnknown player: &e{player}", java.util.Map.of("player", ownerName)));
             return true;
         }
-        if (targetId == null) {
-            player.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-unknown-player", "&cUnknown player: &e{player}", java.util.Map.of("player", targetName)));
+        // Recipient must be ONLINE — the kit is placed directly into their inventory.
+        Player target = org.bukkit.Bukkit.getPlayerExact(targetName);
+        if (target == null) {
+            player.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-target-offline", "&cPlayer &e{player} &cmust be online to receive a kit.",
+                    java.util.Map.of("player", targetName)));
             return true;
         }
 
-        dev.duels.managers.CustomKitManager.GiveResult result =
-                plugin.getCustomKitManager().giveKit(ownerId, slot, targetId);
-        if (result == dev.duels.managers.CustomKitManager.GiveResult.NO_SUCH_KIT) {
+        boolean ok = plugin.getCustomKitManager().giveKitToInventory(ownerId, slot, target);
+        if (!ok) {
             player.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-no-kit", "&c{owner} has no custom kit in slot {slot}.",
                     java.util.Map.of("owner", ownerName, "slot", String.valueOf(slot))));
             return true;
         }
+        target.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-received",
+                "&aYou received custom kit #{slot} from &e{owner}&a.",
+                java.util.Map.of("slot", String.valueOf(slot), "owner", ownerName)));
         player.sendMessage(plugin.getConfigManager().prefixed("kitedit.give-success",
-                "&aCopied custom kit #{slot} from &e{owner} &ato &e{target}&a.",
-                java.util.Map.of("slot", String.valueOf(slot), "owner", ownerName, "target", targetName)));
+                "&aGave custom kit #{slot} from &e{owner} &ato &e{target}&a's inventory.",
+                java.util.Map.of("slot", String.valueOf(slot), "owner", ownerName, "target", target.getName())));
         return true;
     }
 

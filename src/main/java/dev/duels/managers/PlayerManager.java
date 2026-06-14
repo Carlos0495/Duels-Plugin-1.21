@@ -7,6 +7,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -504,8 +505,40 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
             player.sendMessage(plugin.getConfigManager().prefixed("general.spawn-not-set", "&cSpawn has not been set yet!"));
             return;
         }
+        attemptSpawnTeleport(player, spawn, 0);
+    }
 
-        player.teleport(spawn);
+    /**
+     * Robustly teleports a player to spawn. A bare {@code player.teleport()} can
+     * silently fail (return false) when the player still rides/has a vehicle, is
+     * spectating an entity (camera attached), or has passengers — in that case
+     * the old code still handed out the lobby hotbar items but never moved the
+     * player. We clear those blockers first and retry a few times before
+     * applying the lobby state.
+     */
+    private void attemptSpawnTeleport(Player player, Location spawn, int attempt) {
+        if (player == null || !player.isOnline()) return;
+
+        // Clear common teleport blockers.
+        if (player.getSpectatorTarget() != null) player.setSpectatorTarget(null);
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        }
+        if (player.isInsideVehicle()) player.leaveVehicle();
+        if (!player.getPassengers().isEmpty()) player.eject();
+
+        boolean ok;
+        try {
+            ok = player.teleport(spawn, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        } catch (Throwable t) {
+            ok = false;
+        }
+
+        if (!ok && attempt < 3) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> attemptSpawnTeleport(player, spawn, attempt + 1), 2L);
+            return;
+        }
 
         if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
             forceLobbyState(player);

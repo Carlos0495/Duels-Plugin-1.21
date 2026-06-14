@@ -125,6 +125,11 @@ commands:
     usage: /<command> edit <kitName>
     aliases: ["duels:kit"]
 
+  customkit:
+    description: Manage your custom kits (open list, copy another player's kit)
+    usage: /<command> [copy <owner>]
+    aliases: [customkits, ckit]
+
 permissions:
   duels.*:
     description: Gives access to all duels commands

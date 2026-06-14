@@ -43,6 +43,7 @@ public class GUIManager {
     public static final String CUSTOM_KIT_ENCHANT_SELECT_TITLE = "§dSelect Item to Enchant";
     public static final String CUSTOM_KIT_ENCHANT_EDITOR_PREFIX = "§dEnchant: ";
     public static final String CUSTOM_KIT_NAME_TITLE = "§6Name Your Kit";
+    public static final String CUSTOM_KIT_COPY_TITLE = "§6Copy a Custom Kit";
 
     // PDC keys
     private final NamespacedKey queueKitKey;
@@ -1364,6 +1365,41 @@ public class GUIManager {
         openGUIs.put(player.getUniqueId(), new GUI(CUSTOM_KIT_LIST_TITLE, System.currentTimeMillis()));
     }
 
+    /**
+     * Opens a selection GUI listing another player's custom kits so the viewer
+     * can copy one into a free slot of their own ({@code /customkit copy}).
+     */
+    public void openCopyKitGUI(Player viewer, UUID ownerId, String ownerName) {
+        var ckm = plugin.getCustomKitManager();
+        var kits = ckm.getKits(ownerId);
+        Inventory inv = Bukkit.createInventory(null, 54, CUSTOM_KIT_COPY_TITLE);
+
+        int free = ckm.getKitLimit(viewer) - ckm.getKitCount(viewer.getUniqueId());
+        ItemStack info = createItem(Material.PAPER, "§6Copy from §e" + ownerName,
+                Arrays.asList("§7Click a kit to copy it into", "§7one of your free slots.",
+                        "", "§7Free slots: §e" + Math.max(0, free)));
+        inv.setItem(4, info);
+
+        int slot = 10;
+        for (var ck : kits) {
+            ItemStack item = new ItemStack(ck.getIcon());
+            ItemMeta meta = item.getItemMeta();
+            meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', ck.getDisplayName()));
+            meta.setLore(Arrays.asList("", "§eClick to copy into your kits"));
+            meta.getPersistentDataContainer().set(customKitActionKey, PersistentDataType.STRING,
+                    "COPY:" + ownerId + ":" + ck.getIndex());
+            item.setItemMeta(meta);
+            inv.setItem(slot, item);
+            slot++;
+            if (slot % 9 == 8) slot += 2;
+            if (slot >= 44) break;
+        }
+
+        inv.setItem(49, createItem(Material.BARRIER, "§cClose", null));
+        viewer.openInventory(inv);
+        openGUIs.put(viewer.getUniqueId(), new GUI(CUSTOM_KIT_COPY_TITLE, System.currentTimeMillis()));
+    }
+
     /** Begins a new kit builder session (kit not yet saved). */
     public void beginNewKitBuilder(Player player, String name) {
         KitBuilderSession session = new KitBuilderSession();
@@ -1535,7 +1571,7 @@ public class GUIManager {
         itemPickerPage.put(player.getUniqueId(), page);
         String catId = getItemPickerCategory(player.getUniqueId());
         var ckm = plugin.getCustomKitManager();
-        var items = ckm.getCategoryItems(catId);
+        var items = ckm.getCategoryPickerItems(catId);
         int perPage = 36; // 4 rows (top row reserved for category tabs)
         int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) perPage));
         if (page >= totalPages) page = totalPages - 1;
@@ -1568,12 +1604,12 @@ public class GUIManager {
         // Items (slots 9-44)
         int start = page * perPage;
         for (int i = 0; i < perPage && (start + i) < items.size(); i++) {
-            Material m = items.get(start + i);
-            ItemStack item = new ItemStack(m);
+            ItemStack item = items.get(start + i).clone();
             ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName("§f" + m.name());
-            meta.setLore(Arrays.asList("§7Click to add to your kit."));
-            item.setItemMeta(meta);
+            if (meta != null) {
+                meta.setLore(Arrays.asList("§7Click to add to your kit."));
+                item.setItemMeta(meta);
+            }
             inv.setItem(9 + i, item);
         }
 

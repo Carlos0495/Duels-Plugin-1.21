@@ -237,6 +237,22 @@ kit:
   usage-remove: "&7Usage: /kit remove <name>"
 kitedit:
   usage: "&eUsage: &7/dkit edit <kitName>"
+  usage-give: "&eUsage: &7/duels:kit give customkit1..4 \"owner\" to \"target\""
+  give-bad-slot: "&cKit slot must be customkit1, customkit2, customkit3 or customkit4."
+  give-unknown-player: "&cUnknown player: &e{player}"
+  give-target-offline: "&cPlayer &e{player} &cmust be online to receive a kit."
+  give-no-kit: "&c{owner} has no custom kit in slot {slot}."
+  give-received: "&aYou received custom kit #{slot} from &e{owner}&a."
+  give-success: "&aGave custom kit #{slot} from &e{owner} &ato &e{target}&a's inventory."
+custom-kit:
+  no-permission: "&cYou don't have permission to create custom kits."
+  copy-usage: "&eUsage: &7/customkit copy <owner> [number]"
+  copy-unknown-player: "&cUnknown player: &e{player}"
+  copy-self: "&cYou can't copy your own kit."
+  copy-no-slot: "&cYou have no free custom kit slot to copy into."
+  copy-owner-empty: "&e{owner} &chas no custom kits."
+  copy-bad-number: "&c{owner} only has {count} custom kit(s)."
+  copy-success: "&aCopied a custom kit from &e{owner} &ainto your kits."
 layout:
   no-kit-id: "&cCould not detect kit id for this layout."
   reset: "&7Inventory layout for kit &r{kit} &a reset to default!"

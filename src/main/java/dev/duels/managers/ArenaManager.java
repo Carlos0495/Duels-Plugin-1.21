@@ -376,6 +376,13 @@ public class ArenaManager {
                         }
                     }
 
+                    // 2.5 Flüssigkeits-Sweep: garantiert, dass kein Wasser/Lava
+                    // (auch fließendes "flaches" Wasser oder waterlogged Blöcke)
+                    // stehen bleibt, das beim Tracking durchgerutscht ist. Für
+                    // Snapshot-Arenen ein Sicherheitsnetz, für große Arenen ohne
+                    // Snapshot die eigentliche Flüssigkeits-Bereinigung.
+                    sweepStrayLiquids(worldFinal, arena);
+
                     // 3. Entities (Pfeile, Drops, Crystals, Tridents) wegräumen
                     cleanupArenaEntities(worldFinal, arena);
 
@@ -396,6 +403,55 @@ public class ArenaManager {
             }
             if (onComplete != null) onComplete.run();
         });
+    }
+
+    /**
+     * Entfernt jegliches Wasser/Lava (inkl. fließendem "flachem" Wasser und
+     * waterlogged Blöcken) in der Arena-Bounding-Box, das nicht zum Original
+     * gehört. Das ist die zuverlässige Lösung für "Flüssigkeit wird beim Reset
+     * manchmal nicht entfernt", weil das ereignisbasierte Tracking einzelne
+     * Fließ-Kacheln verpassen kann.
+     */
+    private void sweepStrayLiquids(org.bukkit.World world, Arena arena) {
+        if (world == null || !arena.hasSnapshotBounds()) return;
+
+        int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
+        int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();
+
+        long volume = (long) (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        long cap = plugin.getConfigManager().getMainConfig().getLong("arena.max-liquid-sweep-blocks", 1000000L);
+        if (cap > 0 && volume > cap) return; // zu groß → überspringen, kein Lag-Spike
+
+        org.bukkit.block.data.BlockData air = Bukkit.createBlockData(org.bukkit.Material.AIR);
+        Map<BlockVector, org.bukkit.block.data.BlockData> originals = arena.getOriginalBlocks();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    org.bukkit.block.Block b = world.getBlockAt(x, y, z);
+                    org.bukkit.Material t = b.getType();
+                    boolean liquid = t == org.bukkit.Material.WATER || t == org.bukkit.Material.LAVA;
+                    org.bukkit.block.data.BlockData bd = b.getBlockData();
+                    boolean waterlogged = bd instanceof org.bukkit.block.data.Waterlogged wl && wl.isWaterlogged();
+                    if (!liquid && !waterlogged) continue;
+
+                    BlockVector v = new BlockVector(x, y, z);
+                    org.bukkit.block.data.BlockData orig = originals.get(v);
+                    if (orig != null) {
+                        // Original wiederherstellen (deckt Map-Wasser + waterlogged ab).
+                        if (!orig.equals(bd)) b.setBlockData(orig, false);
+                    } else if (liquid) {
+                        // Im Match entstandene Flüssigkeit ohne Original → entfernen.
+                        b.setBlockData(air, false);
+                    } else {
+                        // waterlogged ohne Original-Record → nur das Wasser entfernen.
+                        org.bukkit.block.data.Waterlogged wl = (org.bukkit.block.data.Waterlogged) bd;
+                        wl.setWaterlogged(false);
+                        b.setBlockData(wl, false);
+                    }
+                }
+            }
+        }
     }
 
     /**

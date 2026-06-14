@@ -253,6 +253,10 @@ public class GUIListener implements Listener {
             handleCustomKitListClick(event, player, top, clickedInv);
             return;
         }
+        if (title.equals(GUIManager.CUSTOM_KIT_COPY_TITLE)) {
+            handleCopyKitClick(event, player, top, clickedInv);
+            return;
+        }
         if (title.startsWith(GUIManager.CUSTOM_KIT_BUILDER_PREFIX)) {
             handleKitBuilderClick(event, player, top, clickedInv);
             return;
@@ -882,6 +886,7 @@ public class GUIListener implements Listener {
                 || title.equals(GUIManager.SETTINGS_GUI_TITLE)
                 || title.equals(GUIManager.STATS_GUI_TITLE)
                 || title.equals(GUIManager.CUSTOM_KIT_LIST_TITLE)
+                || title.equals(GUIManager.CUSTOM_KIT_COPY_TITLE)
                 || title.equals(GUIManager.CUSTOM_KIT_ITEMS_TITLE)
                 || title.equals(GUIManager.CUSTOM_KIT_ENCHANT_SELECT_TITLE)
                 || title.startsWith(GUIManager.CUSTOM_KIT_ENCHANT_EDITOR_PREFIX)) {
@@ -969,6 +974,58 @@ public class GUIListener implements Listener {
                 Bukkit.getScheduler().runTaskLater(plugin, () ->
                         plugin.getGuiManager().beginEditKitBuilder(player, idx), 2L);
             }
+        }
+    }
+
+    private void handleCopyKitClick(InventoryClickEvent event, Player player,
+                                    Inventory top, Inventory clickedInv) {
+        event.setCancelled(true);
+        if (clickedInv != top) return;
+
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || !clicked.hasItemMeta()) return;
+
+        if (clicked.getType() == Material.BARRIER) {
+            player.closeInventory();
+            plugin.getGuiManager().closeGUI(player.getUniqueId());
+            return;
+        }
+
+        var pdc = clicked.getItemMeta().getPersistentDataContainer();
+        String action = pdc.getOrDefault(
+                plugin.getGuiManager().getCustomKitActionKey(),
+                PersistentDataType.STRING, null);
+        if (action == null || !action.startsWith("COPY:")) return;
+
+        String[] parts = action.split(":");
+        if (parts.length != 3) return;
+        java.util.UUID ownerId;
+        int ownerKitIndex;
+        try {
+            ownerId = java.util.UUID.fromString(parts[1]);
+            ownerKitIndex = Integer.parseInt(parts[2]);
+        } catch (IllegalArgumentException e) { return; }
+
+        String ownerName = Bukkit.getOfflinePlayer(ownerId).getName();
+        if (ownerName == null) ownerName = "?";
+
+        dev.duels.managers.CustomKitManager.CopyResult result =
+                plugin.getCustomKitManager().copyKitToSelf(player, ownerId, ownerKitIndex);
+        switch (result) {
+            case SUCCESS -> {
+                player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.copy-success",
+                        "&aCopied a custom kit from &e{owner} &ainto your kits.",
+                        java.util.Map.of("owner", ownerName)));
+                player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.3f);
+                player.closeInventory();
+                plugin.getGuiManager().closeGUI(player.getUniqueId());
+            }
+            case NO_SLOT -> player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.copy-no-slot",
+                    "&cYou have no free custom kit slot to copy into."));
+            case NO_PERMISSION -> player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.no-permission",
+                    "&cYou don't have permission to create custom kits."));
+            case NO_SUCH_KIT -> player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.copy-owner-empty",
+                    "&e{owner} &chas no custom kits.", java.util.Map.of("owner", ownerName)));
         }
     }
 
@@ -1133,7 +1190,12 @@ public class GUIListener implements Listener {
                 return;
             }
 
-            ItemStack added = new ItemStack(mat, mat.getMaxStackSize());
+            // Clone the picker item so potion/effect meta is preserved, then strip
+            // the cosmetic picker lore and stack it up to the material max.
+            ItemStack added = clicked.clone();
+            org.bukkit.inventory.meta.ItemMeta am = added.getItemMeta();
+            if (am != null) { am.setLore(null); added.setItemMeta(am); }
+            added.setAmount(mat.getMaxStackSize());
             session.items.put(freeSlot, added);
             player.sendMessage(plugin.getConfigManager().prefixed("custom-kit.item-added",
                     "&7Added &e{item} &7to slot {slot}.",

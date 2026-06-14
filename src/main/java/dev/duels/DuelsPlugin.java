@@ -188,6 +188,12 @@ public final class DuelsPlugin extends JavaPlugin {
             getCommand("party").setExecutor(partyCmd);
             getCommand("party").setTabCompleter(partyCmd);
         }
+
+        if (getCommand("customkit") != null) {
+            CustomKitCommand ckc = new CustomKitCommand(this);
+            getCommand("customkit").setExecutor(ckc);
+            getCommand("customkit").setTabCompleter(ckc);
+        }
     }
 
     private void startTasks() {
