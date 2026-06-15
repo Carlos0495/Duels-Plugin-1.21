@@ -58,6 +58,7 @@ public class StatsCommand implements CommandExecutor {
         int losses = data.getLosses();
         double kd = data.getKD();
         double winrate = data.getWinRate();
+        int coins = data.getCoins();
 
         String playerName = data.getName();
         if (playerName == null || playerName.equals("Unknown")) {
@@ -75,5 +76,6 @@ public class StatsCommand implements CommandExecutor {
         viewer.sendMessage(cm.getMessage("stats.wins", "&a✔ &7ᴡɪɴѕ &a{value}", java.util.Map.of("value", String.valueOf(wins))));
         viewer.sendMessage(cm.getMessage("stats.losses", "&c✘ &7ʟᴏѕѕᴇѕ &c{value}", java.util.Map.of("value", String.valueOf(losses))));
         viewer.sendMessage(cm.getMessage("stats.winrate", "&b🧪 &7ᴡɪɴ ʀᴀᴛᴇ &b{value}", java.util.Map.of("value", String.format("%.1f%%", winrate))));
+        viewer.sendMessage(cm.getMessage("stats.coins", "&6\uD83D\uDCB0 &7{currency} &6{value}", java.util.Map.of("value", String.valueOf(coins))));
     }
 }

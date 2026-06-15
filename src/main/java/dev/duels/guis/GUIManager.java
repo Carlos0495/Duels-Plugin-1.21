@@ -61,6 +61,8 @@ public class GUIManager {
     private final NamespacedKey customKitActionKey;
     private final NamespacedKey customKitEnchantSlotKey;
     private final NamespacedKey customKitEnchantKey;
+    /** Marks the labeled glass panes that show where armor/offhand slots are. */
+    private final NamespacedKey builderPlaceholderKey;
 
     /** Stores the in-progress kit builder state per player. */
     private final Map<UUID, KitBuilderSession> builderSessions = new HashMap<>();
@@ -94,6 +96,42 @@ public class GUIManager {
         this.customKitActionKey = new NamespacedKey(plugin, "ckit_action");
         this.customKitEnchantSlotKey = new NamespacedKey(plugin, "ckit_enchslot");
         this.customKitEnchantKey = new NamespacedKey(plugin, "ckit_ench");
+        this.builderPlaceholderKey = new NamespacedKey(plugin, "ckit_placeholder");
+    }
+
+    public NamespacedKey getBuilderPlaceholderKey() { return builderPlaceholderKey; }
+
+    /** True if the item is one of the armor/offhand slot label panes. */
+    public boolean isBuilderPlaceholder(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) return false;
+        return item.getItemMeta().getPersistentDataContainer()
+                .has(builderPlaceholderKey, PersistentDataType.BYTE);
+    }
+
+    /**
+     * Liefert die Beschriftungs-Scheibe (Glas) für einen Rüstungs-/Offhand-Slot
+     * des Kit-Builders, damit der Spieler weiß wo Helm/Brust/Hose/Schuhe/Offhand
+     * hingehören (User-Wunsch). Slots: 36=Schuhe, 37=Hose, 38=Brust, 39=Helm,
+     * 40=Offhand.
+     */
+    public ItemStack builderPlaceholderFor(int rawSlot) {
+        Material mat;
+        String name;
+        String hint;
+        switch (rawSlot) {
+            case 36 -> { mat = Material.ORANGE_STAINED_GLASS_PANE; name = "§6Boots Slot";       hint = "§7Place your §6boots §7here"; }
+            case 37 -> { mat = Material.YELLOW_STAINED_GLASS_PANE; name = "§eLeggings Slot";    hint = "§7Place your §eleggings §7here"; }
+            case 38 -> { mat = Material.RED_STAINED_GLASS_PANE;    name = "§cChestplate Slot";  hint = "§7Place your §cchestplate §7here"; }
+            case 39 -> { mat = Material.LIGHT_BLUE_STAINED_GLASS_PANE; name = "§bHelmet Slot";  hint = "§7Place your §bhelmet §7here"; }
+            case 40 -> { mat = Material.LIME_STAINED_GLASS_PANE;   name = "§aOffhand Slot";     hint = "§7Place your §aoffhand §7item here"; }
+            default -> { return null; }
+        }
+        ItemStack pane = createItem(mat, name,
+                Arrays.asList(hint, "", "§8(visual marker – click to place an item)"));
+        ItemMeta meta = pane.getItemMeta();
+        meta.getPersistentDataContainer().set(builderPlaceholderKey, PersistentDataType.BYTE, (byte) 1);
+        pane.setItemMeta(meta);
+        return pane;
     }
     public static final String COMPARE_GUI_TITLE = "§bCompare Stats";
 
@@ -145,52 +183,38 @@ public class GUIManager {
         // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
 
-        int total = Math.min(sortedKits.size(), 35);
-        int startRow = getCenteredStartRow(total, 7, 5);
-        int rowsNeeded = (int) Math.ceil(total / 7.0);
+        List<Integer> slots = computeKitSlots(sortedKits);
+        int total = slots.size();
 
-        int kitIndex = 0;
-        for (int r = 0; r < rowsNeeded; r++) {
-            int remaining = total - kitIndex;
-            int countThisRow = Math.min(7, remaining);
+        for (int i = 0; i < total; i++) {
+            String kitId = sortedKits.get(i);
+            KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
 
-            int[] cols = centeredColsWithMiddleGap(countThisRow);
+            Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
 
-            for (int c = 0; c < countThisRow; c++) {
-                String kitId = sortedKits.get(kitIndex);
-                KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+            int queued = plugin.getQueueManager().getQueueSize(kitId);
+            int playing = plugin.getQueueManager().getPlayingCount(kitId);
+            int sum = queued + playing;
+            boolean queuedByViewer = plugin.getQueueManager().isInQueue(viewer.getUniqueId(), kitId);
 
-                Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
+            ItemStack kitItem = new ItemStack(previewMat);
+            kitItem.setAmount(Math.max(1, Math.min(64, sum)));
 
-                int queued = plugin.getQueueManager().getQueueSize(kitId);
-                int playing = plugin.getQueueManager().getPlayingCount(kitId);
-                int sum = queued + playing;
-                boolean queuedByViewer = plugin.getQueueManager().isInQueue(viewer.getUniqueId(), kitId);
+            ItemMeta meta = kitItem.getItemMeta();
+            String display = (kit != null ? kit.getDisplayName() : kitId);
+            meta.setDisplayName(display + (queuedByViewer ? " §7(Queued)" : ""));
 
-                ItemStack kitItem = new ItemStack(previewMat);
-                kitItem.setAmount(Math.max(1, Math.min(64, sum)));
+            meta.setLore(Arrays.asList(
+                    "§7In Queue: §a" + queued,
+                    "§7Playing: §6" + playing,
+                    "",
+                    queuedByViewer ? "§cClick to leave queue" : "§eClick to join queue"
+            ));
 
-                ItemMeta meta = kitItem.getItemMeta();
-                String display = (kit != null ? kit.getDisplayName() : kitId);
-                meta.setDisplayName(display + (queuedByViewer ? " §7(Queued)" : ""));
+            meta.getPersistentDataContainer().set(queueKitKey, PersistentDataType.STRING, kitId);
+            kitItem.setItemMeta(meta);
 
-                meta.setLore(Arrays.asList(
-                        "§7In Queue: §a" + queued,
-                        "§7Playing: §6" + playing,
-                        "",
-                        queuedByViewer ? "§cClick to leave queue" : "§eClick to join queue"
-                ));
-
-                meta.getPersistentDataContainer().set(queueKitKey, PersistentDataType.STRING, kitId);
-                kitItem.setItemMeta(meta);
-
-                int row = startRow + r;
-                int col = cols[c];
-                int slot = (row * 9) + col;
-                inv.setItem(slot, kitItem);
-
-                kitIndex++;
-            }
+            inv.setItem(slots.get(i), kitItem);
         }
 
         ItemStack info = gc != null
@@ -228,49 +252,30 @@ public class GUIManager {
         List<String> sortedKits = new ArrayList<>(kits);
 
 
-        int total = Math.min(sortedKits.size(), 35);
-        int startRow = getCenteredStartRow(total, 7, 5);
-        int rowsNeeded = (int) Math.ceil(total / 7.0);
+        List<Integer> slots = computeKitSlots(sortedKits);
+        int total = slots.size();
 
+        for (int i = 0; i < total; i++) {
+            String kitId = sortedKits.get(i);
+            Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
 
-        int kitIndex = 0;
-        for (int r = 0; r < rowsNeeded; r++) {
-            int remaining = total - kitIndex;
-            int countThisRow = Math.min(7, remaining);
+            ItemStack kitItem = new ItemStack(previewMat);
+            ItemMeta meta = kitItem.getItemMeta();
 
+            KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+            meta.setDisplayName(kit != null ? kit.getDisplayName() : kitId);
 
-            int[] cols = centeredColsWithMiddleGap(countThisRow);
+            int itemCount = kit != null ? kit.getItems().size() : 0;
+            meta.setLore(Arrays.asList(
+                    "§7Contains " + itemCount + " items",
+                    "",
+                    "§eClick to preview kit in your inventory"
+            ));
 
+            meta.getPersistentDataContainer().set(previewKitKey, PersistentDataType.STRING, kitId);
+            kitItem.setItemMeta(meta);
 
-            for (int c = 0; c < countThisRow; c++) {
-                String kitId = sortedKits.get(kitIndex++);
-                Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
-
-
-                ItemStack kitItem = new ItemStack(previewMat);
-                ItemMeta meta = kitItem.getItemMeta();
-
-
-                KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
-                meta.setDisplayName(kit != null ? kit.getDisplayName() : kitId);
-
-
-                int itemCount = kit != null ? kit.getItems().size() : 0;
-                meta.setLore(Arrays.asList(
-                        "§7Contains " + itemCount + " items",
-                        "",
-                        "§eClick to preview kit in your inventory"
-                ));
-
-
-                meta.getPersistentDataContainer().set(previewKitKey, PersistentDataType.STRING, kitId);
-                kitItem.setItemMeta(meta);
-
-
-                int row = startRow + r;
-                int col = cols[c];
-                inv.setItem((row * 9) + col, kitItem);
-            }
+            inv.setItem(slots.get(i), kitItem);
         }
 
 
@@ -318,49 +323,35 @@ public class GUIManager {
         // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
         List<String> sortedKits = new ArrayList<>(kits);
 
-        int total = Math.min(sortedKits.size(), 35);
-        int startRow = getCenteredStartRow(total, 7, 5);
-        int rowsNeeded = (int) Math.ceil(total / 7.0);
+        List<Integer> slots = computeKitSlots(sortedKits);
+        int total = slots.size();
 
-        int kitIndex = 0;
-        for (int r = 0; r < rowsNeeded; r++) {
-            int remaining = total - kitIndex;
-            int countThisRow = Math.min(7, remaining);
+        for (int i = 0; i < total; i++) {
+            String kitId = sortedKits.get(i);
+            Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
 
-            int[] cols = centeredColsWithMiddleGap(countThisRow);
+            ItemStack kitItem = new ItemStack(previewMat);
+            ItemMeta meta = kitItem.getItemMeta();
 
-            for (int c = 0; c < countThisRow; c++) {
-                String kitId = sortedKits.get(kitIndex);
-                Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
+            KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+            String display = kit != null ? kit.getDisplayName() : kitId;
+            meta.setDisplayName(display);
 
-                ItemStack kitItem = new ItemStack(previewMat);
-                ItemMeta meta = kitItem.getItemMeta();
+            int itemCount = kit != null ? kit.getItems().size() : 0;
+            int defaultBestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 1);
 
-                KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
-                String display = kit != null ? kit.getDisplayName() : kitId;
-                meta.setDisplayName(display);
+            meta.setLore(Arrays.asList(
+                    "§7Challenge §c" + target.getName() + " §7with this kit",
+                    "§7Contains " + itemCount + " items",
+                    "",
+                    "§aLeft-Click §7= send request §8(Best of " + defaultBestOf + ")",
+                    "§eRight-Click §7= choose Best-Of"
+            ));
 
-                int itemCount = kit != null ? kit.getItems().size() : 0;
-                int defaultBestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 1);
+            meta.getPersistentDataContainer().set(duelKitKey, PersistentDataType.STRING, kitId);
+            kitItem.setItemMeta(meta);
 
-                meta.setLore(Arrays.asList(
-                        "§7Challenge §c" + target.getName() + " §7with this kit",
-                        "§7Contains " + itemCount + " items",
-                        "",
-                        "§aLeft-Click §7= send request §8(Best of " + defaultBestOf + ")",
-                        "§eRight-Click §7= choose Best-Of"
-                ));
-
-                meta.getPersistentDataContainer().set(duelKitKey, PersistentDataType.STRING, kitId);
-                kitItem.setItemMeta(meta);
-
-                int row = startRow + r;
-                int col = cols[c];
-                int slot = (row * 9) + col;
-                inv.setItem(slot, kitItem);
-
-                kitIndex++;
-            }
+            inv.setItem(slots.get(i), kitItem);
         }
 
         ItemStack info = createItem(Material.PAPER, "§6Select a Kit",
@@ -496,49 +487,35 @@ public class GUIManager {
             // Reihenfolge aus kits.yml beibehalten — KEIN alphabetischer Sort.
             List<String> sortedKits = new ArrayList<>(kits);
 
-            int total = Math.min(sortedKits.size(), 35);
-            int startRow = getCenteredStartRow(total, 7, 5);
-            int rowsNeeded = (int) Math.ceil(total / 7.0);
+            List<Integer> slots = computeKitSlots(sortedKits);
+            int total = slots.size();
 
-            int kitIndex = 0;
-            for (int r = 0; r < rowsNeeded; r++) {
-                int remaining = total - kitIndex;
-                int countThisRow = Math.min(7, remaining);
+            for (int i = 0; i < total; i++) {
+                String kitId = sortedKits.get(i);
+                KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
 
-                int[] cols = centeredColsWithMiddleGap(countThisRow);
+                Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
 
-                for (int c = 0; c < countThisRow; c++) {
-                    String kitId = sortedKits.get(kitIndex);
-                    KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+                ItemStack kitItem = new ItemStack(previewMat);
+                ItemMeta meta = kitItem.getItemMeta();
 
-                    Material previewMat = plugin.getKitManager().getKitPreviewMaterial(kitId);
+                meta.setDisplayName(kit != null ? kit.getDisplayName() : kitId);
 
-                    ItemStack kitItem = new ItemStack(previewMat);
-                    ItemMeta meta = kitItem.getItemMeta();
+                boolean hasCustomLayout = plugin.getKitManager().getCustomLayout(player.getUniqueId(), kitId) != null;
 
-                    meta.setDisplayName(kit != null ? kit.getDisplayName() : kitId);
+                meta.getPersistentDataContainer().set(editKitKey, PersistentDataType.STRING, kitId);
 
-                    boolean hasCustomLayout = plugin.getKitManager().getCustomLayout(player.getUniqueId(), kitId) != null;
+                meta.setLore(Arrays.asList(
+                        "§7Edit your inventory layout for this kit.",
+                        "",
+                        hasCustomLayout ? "§a✓ Custom layout saved" : "§7No custom layout yet",
+                        "",
+                        "§eClick to edit layout"
+                ));
 
-                    meta.getPersistentDataContainer().set(editKitKey, PersistentDataType.STRING, kitId);
+                kitItem.setItemMeta(meta);
 
-                    meta.setLore(Arrays.asList(
-                            "§7Edit your inventory layout for this kit.",
-                            "",
-                            hasCustomLayout ? "§a✓ Custom layout saved" : "§7No custom layout yet",
-                            "",
-                            "§eClick to edit layout"
-                    ));
-
-                    kitItem.setItemMeta(meta);
-
-                    int row = startRow + r;
-                    int col = cols[c];
-                    int slot = (row * 9) + col;
-                    inv.setItem(slot, kitItem);
-
-                    kitIndex++;
-                }
+                inv.setItem(slots.get(i), kitItem);
             }
         }
 
@@ -1443,13 +1420,16 @@ public class GUIManager {
             if (it != null) inv.setItem(i, it.clone());
         }
 
-        // Armor: gui 36=boots(100), 37=legs(101), 38=chest(102), 39=helm(103)
-        inv.setItem(36, session.items.containsKey(100) ? session.items.get(100).clone() : null);
-        inv.setItem(37, session.items.containsKey(101) ? session.items.get(101).clone() : null);
-        inv.setItem(38, session.items.containsKey(102) ? session.items.get(102).clone() : null);
-        inv.setItem(39, session.items.containsKey(103) ? session.items.get(103).clone() : null);
+        // Armor: gui 36=boots(100), 37=legs(101), 38=chest(102), 39=helm(103),
+        // 40=offhand(99). Leere Slots bekommen eine beschriftete Glas-Scheibe,
+        // damit klar ist wo Helm/Brust/Hose/Schuhe/Offhand hingehören
+        // (User-Wunsch: man soll Schuhe nicht aus Versehen in Offhand legen).
+        inv.setItem(36, session.items.containsKey(100) ? session.items.get(100).clone() : builderPlaceholderFor(36));
+        inv.setItem(37, session.items.containsKey(101) ? session.items.get(101).clone() : builderPlaceholderFor(37));
+        inv.setItem(38, session.items.containsKey(102) ? session.items.get(102).clone() : builderPlaceholderFor(38));
+        inv.setItem(39, session.items.containsKey(103) ? session.items.get(103).clone() : builderPlaceholderFor(39));
         // Offhand
-        inv.setItem(40, session.items.containsKey(99) ? session.items.get(99).clone() : null);
+        inv.setItem(40, session.items.containsKey(99) ? session.items.get(99).clone() : builderPlaceholderFor(40));
 
         // Separators
         ItemStack sep = createItem(Material.GRAY_STAINED_GLASS_PANE, "§7", null);
@@ -1457,8 +1437,12 @@ public class GUIManager {
 
         // Buttons (bottom row)
         ItemStack infoItem = createItem(Material.PAPER, "§6Kit Builder",
-                Arrays.asList("§7Drag items in slots §a0-35§7.",
-                        "§7Armor: §eSlots 36-39§7, Offhand: §eSlot 40§7.", "",
+                Arrays.asList("§7Top 4 rows = §ayour inventory§7.", "",
+                        "§7The colored slots below are equipment:",
+                        "§6• Boots   §e• Leggings   §c• Chestplate",
+                        "§b• Helmet   §a• Offhand", "",
+                        "§7Each colored slot is labeled — just",
+                        "§7click an item onto it to equip it.", "",
                         "§7Use buttons below to add items & enchant."));
         inv.setItem(45, infoItem);
 
@@ -1492,7 +1476,7 @@ public class GUIManager {
         session.items.clear();
         for (int i = 0; i < 36; i++) {
             ItemStack it = inv.getItem(i);
-            if (it != null && it.getType() != Material.AIR && !ckm.isBlacklisted(it.getType())) session.items.put(i, it.clone());
+            if (it != null && it.getType() != Material.AIR && !isBuilderPlaceholder(it) && !ckm.isBlacklisted(it.getType())) session.items.put(i, it.clone());
         }
         // Armor
         putIfAllowed(session, ckm, 100, inv.getItem(36));
@@ -1504,7 +1488,7 @@ public class GUIManager {
     }
 
     private void putIfAllowed(KitBuilderSession session, dev.duels.managers.CustomKitManager ckm, int slot, ItemStack it) {
-        if (it != null && it.getType() != Material.AIR && !ckm.isBlacklisted(it.getType())) {
+        if (it != null && it.getType() != Material.AIR && !isBuilderPlaceholder(it) && !ckm.isBlacklisted(it.getType())) {
             session.items.put(slot, it.clone());
         }
     }
@@ -1803,6 +1787,78 @@ public class GUIManager {
     private int getCenteredStartRow(int totalItems, int perRow, int usableRows) {
         int rowsNeeded = (int) Math.ceil(totalItems / (double) perRow);
         return Math.max(0, (usableRows - rowsNeeded) / 2);
+    }
+
+    /**
+     * Die automatischen, zentrierten Slot-Positionen für {@code total} Kits
+     * (Standard-Layout der Kit-Auswahl-GUIs, mittlere Lücke pro Reihe).
+     */
+    private List<Integer> centeredSlots(int total) {
+        List<Integer> out = new ArrayList<>();
+        int startRow = getCenteredStartRow(total, 7, 5);
+        int rowsNeeded = (int) Math.ceil(total / 7.0);
+        int idx = 0;
+        for (int r = 0; r < rowsNeeded; r++) {
+            int remaining = total - idx;
+            int countThisRow = Math.min(7, remaining);
+            int[] cols = centeredColsWithMiddleGap(countThisRow);
+            for (int c = 0; c < countThisRow; c++) {
+                out.add((startRow + r) * 9 + cols[c]);
+                idx++;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Liefert für jedes Kit in {@code sortedKits} (max. 35) den Ziel-Slot in der
+     * GUI. Steht {@code kits.use-custom-slots} auf {@code true}, werden Kits mit
+     * gesetztem {@code gui-slot} (0-53) genau dort platziert; alle übrigen füllen
+     * die freien Standard-Positionen auf. Sonst exakt das bisherige zentrierte
+     * Layout.
+     */
+    private List<Integer> computeKitSlots(List<String> sortedKits) {
+        int total = Math.min(sortedKits.size(), 35);
+        boolean custom = plugin.getConfigManager().getMainConfig()
+                .getBoolean("kits.use-custom-slots", false);
+
+        if (!custom) {
+            return centeredSlots(total);
+        }
+
+        Integer[] assigned = new Integer[total];
+        Set<Integer> used = new HashSet<>();
+        for (int i = 0; i < total; i++) {
+            KitManager.Kit kit = plugin.getKitManager().getKit(sortedKits.get(i));
+            int gs = kit != null ? kit.getGuiSlot() : -1;
+            if (gs >= 0 && gs <= 53 && used.add(gs)) {
+                assigned[i] = gs;
+            }
+        }
+
+        List<Integer> centered = centeredSlots(total);
+        int ci = 0;
+        for (int i = 0; i < total; i++) {
+            if (assigned[i] != null) continue;
+            // Nächste freie zentrierte Position …
+            while (ci < centered.size() && used.contains(centered.get(ci))) ci++;
+            int slot;
+            if (ci < centered.size()) {
+                slot = centered.get(ci);
+                ci++;
+            } else {
+                // … sonst nächster freier Slot 0-53.
+                slot = 0;
+                while (slot <= 53 && used.contains(slot)) slot++;
+                if (slot > 53) slot = 53;
+            }
+            used.add(slot);
+            assigned[i] = slot;
+        }
+
+        List<Integer> out = new ArrayList<>(total);
+        for (int i = 0; i < total; i++) out.add(assigned[i]);
+        return out;
     }
 
     private static class GUI {

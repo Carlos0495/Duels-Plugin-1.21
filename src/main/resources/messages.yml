@@ -363,6 +363,7 @@ spectate:
   tp-only-match: "&cYou can only teleport to players in your match."
   usage: "&eUsage: &7/spectate <player> &7or &7/spectate stop"
 stats:
+  coins: "&6💰 &7{currency} &6{value}"
   deaths: "&c☠ &7ᴅᴇᴀᴛʜѕ &c{value}"
   header: "&bStats &7for &a{player}"
   kd: "&e❤ &7ᴋᴅ &e{value}"

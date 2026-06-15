@@ -410,7 +410,168 @@ public class ConfigManager {
         if (!mainConfig.contains("custom-kits.tiers.tier2.limit"))
             { mainConfig.set("custom-kits.tiers.tier2.limit", 4); dirty = true; }
 
+        // Kit-Auswahl-GUI: feste Slots pro Kit.
+        //   use-custom-slots: false → Kits werden automatisch zentriert
+        //                             angeordnet (Standard, wie bisher).
+        //   use-custom-slots: true  → Kits mit gesetztem 'gui-slot' (in
+        //                             kits.yml) erscheinen genau in diesem Slot
+        //                             (0-53). Kits ohne gui-slot füllen die
+        //                             freien Standard-Positionen auf.
+        if (!mainConfig.contains("kits.use-custom-slots"))
+            { mainConfig.set("kits.use-custom-slots", false); dirty = true; }
+
+        // Liquid-Sweep beim Arena-Reset: Obergrenze an Blöcken, die zur
+        // Sicherheit auf Wasser/Lava geprüft werden (Brute-Force-Reset).
+        if (!mainConfig.contains("arena.max-liquid-sweep-blocks"))
+            { mainConfig.set("arena.max-liquid-sweep-blocks", 1000000); dirty = true; }
+
+        // Erklärende Kommentare in die config.yml schreiben (einmalig pro
+        // Comments-Version), damit jeder versteht wofür die Optionen sind.
+        if (applyComments()) dirty = true;
+
         if (dirty) plugin.saveConfig();
+    }
+
+    /**
+     * Schreibt erklärende Kommentar-Blöcke über die config-Keys, damit Admins
+     * direkt in der config.yml sehen, wofür jede Option ist und welche Werte
+     * möglich sind. Läuft nur, wenn sich die {@code config-comments-version}
+     * geändert hat, um die Datei nicht bei jedem Start neu zu schreiben.
+     *
+     * @return true, wenn Kommentare (neu) gesetzt wurden und gespeichert werden muss.
+     */
+    private boolean applyComments() {
+        final int CURRENT = 1;
+        if (mainConfig.getInt("config-comments-version", 0) >= CURRENT) return false;
+
+        c("prefix",
+                "Plugin-Prefix vor jeder Plugin-Nachricht. '&' fuer Farbcodes.");
+        c("scoreboard-title",
+                "Titel des Lobby-Scoreboards.");
+        c("scoreboard-lines",
+                "Lobby-Scoreboard-Zeilen.",
+                "Platzhalter: %online% %playing% %currency% %coins% %kills%",
+                "%deaths% %kd% %wins% %losses% %winrate%");
+        c("duel-scoreboard-lines",
+                "Scoreboard waehrend eines 1v1-Duells.",
+                "Platzhalter: %opponent% %map% %round% %bestof% %score%",
+                "%requiredwins% %playerping% %opponentping% %timeleft%");
+        c("ffa-scoreboard-lines",
+                "Scoreboard waehrend eines FFA-Matches.",
+                "Platzhalter: %alive% %map% %timeleft% (+ Lobby-Platzhalter)");
+        c("team-scoreboard-lines",
+                "Scoreboard waehrend eines Team-Fights.",
+                "Platzhalter: %yourteam% %enemyteam% %map% %timeleft%");
+        c("queue",
+                "Queue-Einstellungen.",
+                "allowed-worlds: Welten in denen man die Queue betreten darf.",
+                "Leere Liste [] = jede Welt (Lobby-Welt automatisch erlaubt).");
+        c("duel-time",
+                "Standard-Dauer eines Duells in Sekunden (Kit kann ueberschreiben).");
+        c("request-timeout",
+                "Zeit in Sekunden, bis eine Duel-Anfrage ablaeuft.");
+        c("default-map",
+                "Standard-Map-Name (Anzeige), wenn keine Arena einen Namen setzt.");
+        c("default-bestof",
+                "Standard 'Best of' (Anzahl Runden) fuer ein Duell.");
+        c("bestof-options",
+                "Auswaehlbare 'Best of' Werte im Best-Of-Menue.");
+        c("arena",
+                "Arena-Reset Einstellungen.",
+                "max-snapshot-blocks: max. Bloecke pro Arena-Snapshot.",
+                "max-liquid-sweep-blocks: Obergrenze fuer den Fluessigkeits-",
+                "Brute-Force-Reset (Wasser/Lava sicher entfernen).");
+        c("party",
+                "Party-Einstellungen.",
+                "ffa-grace-seconds: Schonzeit (Sek.) zu FFA-Start ohne Schaden.");
+        c("coins",
+                "Belohnungen in der konfigurierbaren Waehrung (siehe currency.name).",
+                "win-reward: wie viel man pro Sieg bekommt.");
+        c("duel-request-timeout-seconds",
+                "Timeout (Sek.) einer Duel-Anfrage (alternativer Schluessel).");
+        c("messages",
+                "Titel/Untertitel (Title-Animationen) fuer Sieg/Niederlage usw.",
+                "ALLE Chat-Texte stehen separat in der messages.yml!",
+                "Platzhalter: {score} {winner} {round} {team} {seconds} {currency}");
+        c("status",
+                "Status-Symbole (PlaceholderAPI %duels_status% + Nametag).",
+                "Prioritaet: spec > duel > lobby > world.",
+                "team1/team2: nur fuer den Nametag im Team-Match.");
+        c("worlds",
+                "Welt-Einschraenkungen: je eine LISTE von Welt-Namen.",
+                "Leere Liste [] = ueberall erlaubt. Beispiel: [\"world\", \"lobby\"]",
+                "Item-Ersetzungen (Hotbar, Party, Visibility) passieren IMMER",
+                "nur in der Lobby-Welt (wo /setspawn gesetzt wurde).",
+                "  join-party           - wo man einer Party beitreten kann",
+                "  public-party-message - wo die oeffentliche Party-Nachricht erscheint",
+                "  queue                - wo man Queue/Duell starten kann",
+                "  kit-preview          - wo man Kits vorschauen kann (/previewkit)",
+                "  kit-edit             - wo man Kit-Layouts bearbeiten kann",
+                "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf");
+        c("spectator",
+                "Zuschauer eines Matches (via /spectate oder Auto-Spectate)",
+                "koennen NICHT durch Bloecke (auch Barrier) fliegen, wenn true.",
+                "Echte SPECTATOR-Gamemode-Spieler sind nie betroffen.");
+        c("anti-glitch",
+                "Verhindert Durch-Glitchen (z.B. Ender-Pearls durch Waende).",
+                "  enabled: an/aus",
+                "  scope:   DUELS = nur in Matches | GLOBAL = ueberall",
+                "  mode:    BLACKLIST = nur 'blocks' blocken",
+                "           WHITELIST = nur durch 'blocks' erlaubt, Rest blockt",
+                "           ALL = alle Bloecke blocken | NONE = aus",
+                "  blocks:  Material-Liste fuer BLACKLIST/WHITELIST");
+        c("leaderboard",
+                "Ranglisten-Placeholder (%duels_<kategorie>_<platz>%).",
+                "  format: Zeilen-Format. Platzhalter {rank} {name} {value} {category}",
+                "  empty:  Text wenn kein Spieler auf dem Platz existiert",
+                "  names:  Anzeigename je Kategorie (kills/deaths/wins/losses/",
+                "          coins/kd/winrate) fuer {category}");
+        c("chat",
+                "Chat-Filter.",
+                "  duel-isolated:    Spieler im Match chatten nur mit dem Match (an)",
+                "  lobby-isolated:   eigener Chat nur fuer die Lobby-Welt(en)",
+                "  per-world-worlds: Welten mit eigenem (isoliertem) Chat");
+        c("tablist",
+                "Tablist-Filter (default AUS).",
+                "  duel-filter:      im Match nur Gegner/Mitspieler im TAB",
+                "  per-world-worlds: in diesen Welten nur Spieler derselben Welt");
+        c("currency",
+                "Waehrungsname: was statt 'Coins' ueberall angezeigt wird",
+                "(Scoreboard, Vergleich, Nachrichten via {currency}, Placeholder,",
+                "Leaderboard). Beliebiger Text, z.B. 'Elo'.");
+        c("permissions",
+                "Auto-Deaktivierung bei fehlender Permission:",
+                "  auto-disable-fly:       kein 'duels.fly' -> Fly automatisch aus",
+                "  auto-disable-armortrim: kein Recht -> Armortrims werden entfernt");
+        c("duel",
+                "Duel-Anzeige.",
+                "  show-map-in-request: Map/Arena in der Einladung + beim Start zeigen?");
+        c("custom-kits",
+                "Custom-Kit-System (von Spielern selbst erstellte Kits).",
+                "  enabled:     System an/aus",
+                "  show-button: 'Custom Kits'-Button fuer ALLE sichtbar (auch ohne",
+                "               Permission)? false = nur mit Permission.",
+                "  block-rules.precedence: fuer NORMALE Kits, Arena- vs Kit-Liste:",
+                "      MERGE = beide Listen | ARENA = Arena ueberschreibt | KIT = Kit",
+                "  tiers: Permission -> max. Anzahl Kits (hoechste zaehlt).",
+                "      tier0=1, tier1=2, tier2=4 (Permissions frei waehlbar).");
+        c("kits",
+                "Kit-Auswahl-GUI: feste Slots pro Kit.",
+                "  use-custom-slots: false = automatische, zentrierte Anordnung",
+                "                    (Standard, wie bisher).",
+                "  use-custom-slots: true  = Kits mit 'gui-slot' (in kits.yml, 0-53)",
+                "                    erscheinen genau dort; der Rest fuellt frei auf.");
+
+        mainConfig.set("config-comments-version", CURRENT);
+        mainConfig.setComments("config-comments-version", java.util.Arrays.asList(
+                "Interner Marker, damit die Kommentare nur einmal geschrieben werden.",
+                "Nicht aendern."));
+        return true;
+    }
+
+    /** Setzt einen Kommentar-Block ueber den angegebenen config-Key. */
+    private void c(String path, String... lines) {
+        mainConfig.setComments(path, java.util.Arrays.asList(lines));
     }
 
     /** @return konfigurierbarer Währungsname (default "Coins"). */

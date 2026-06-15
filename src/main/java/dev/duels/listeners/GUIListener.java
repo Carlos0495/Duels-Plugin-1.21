@@ -864,11 +864,13 @@ public class GUIListener implements Listener {
             return;
         }
 
-        // Kit Builder: allow drag in editable slots (0-40) only
+        // Kit Builder: allow drag only in inventory slots (0-35). Equipment
+        // slots (36-40) hold marker panes and are placed via click, so dragging
+        // there is blocked to keep the markers intact.
         if (title.startsWith(GUIManager.CUSTOM_KIT_BUILDER_PREFIX)) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot < event.getView().getTopInventory().getSize()) {
-                    if (rawSlot > 40) {
+                    if (rawSlot > 35) {
                         event.setCancelled(true);
                         return;
                     }
@@ -1054,9 +1056,16 @@ public class GUIListener implements Listener {
 
         if (clickedInv != top) return;
 
-        // Editable slots: 0-40 (let Minecraft handle item moving)
-        if (raw >= 0 && raw <= 40) {
-            // Allow normal click behavior (place/pick items in these slots)
+        // Inventory slots 0-35: free editing (vanilla place/pick).
+        if (raw >= 0 && raw <= 35) {
+            return;
+        }
+
+        // Equipment slots 36-40 hold labeled placeholder panes when empty.
+        // Handle them manually so the marker panes never end up on the cursor or
+        // in the saved kit, but items can still be placed/picked up normally.
+        if (raw >= 36 && raw <= 40) {
+            handleBuilderEquipClick(event, player, top, raw);
             return;
         }
 
@@ -1131,6 +1140,41 @@ public class GUIListener implements Listener {
             plugin.getGuiManager().closeGUI(player.getUniqueId());
             plugin.getGuiManager().clearBuilderSession(player.getUniqueId());
         }
+    }
+
+    /**
+     * Manuelle Behandlung der Rüstungs-/Offhand-Slots (36-40) im Kit-Builder.
+     * Die leeren Slots enthalten beschriftete Marker-Scheiben; diese dürfen
+     * nie auf den Cursor oder ins gespeicherte Kit gelangen. Items lassen sich
+     * trotzdem normal ablegen und wieder aufnehmen (Swap Cursor ↔ Slot).
+     */
+    private void handleBuilderEquipClick(InventoryClickEvent event, Player player, Inventory top, int raw) {
+        event.setCancelled(true);
+        var gm = plugin.getGuiManager();
+
+        ItemStack cursor = event.getCursor();
+        ItemStack current = top.getItem(raw);
+
+        ItemStack cursorItem = (cursor != null && cursor.getType() != Material.AIR) ? cursor.clone() : null;
+        boolean curIsPlaceholder = gm.isBuilderPlaceholder(current);
+        ItemStack realCurrent = (current != null && current.getType() != Material.AIR && !curIsPlaceholder)
+                ? current.clone() : null;
+
+        // Empty slot + empty hand → nothing to do.
+        if (cursorItem == null && realCurrent == null) {
+            return;
+        }
+
+        // Don't allow blacklisted (admin) items into equipment slots.
+        if (cursorItem != null && plugin.getCustomKitManager() != null
+                && plugin.getCustomKitManager().isBlacklisted(cursorItem.getType())) {
+            return;
+        }
+
+        // Swap cursor <-> slot. Empty slot falls back to its marker pane.
+        top.setItem(raw, cursorItem != null ? cursorItem : gm.builderPlaceholderFor(raw));
+        event.getView().setCursor(realCurrent); // null clears the cursor
+        gm.saveBuilderStateFromGUI(top, player.getUniqueId());
     }
 
     private void handleItemPickerClick(InventoryClickEvent event, Player player,

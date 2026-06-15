@@ -178,10 +178,17 @@ public class KitManager {
                 kitsSection.set(kitId + ".potions", new java.util.ArrayList<String>());
                 wroteExtra = true;
             }
+            // Fester GUI-Slot in den Kit-Auswahl-GUIs (nur aktiv wenn
+            //   config kits.use-custom-slots: true). -1 = Auto-Anordnung.
+            if (!kitsSection.contains(kitId + ".gui-slot")) {
+                kitsSection.set(kitId + ".gui-slot", -1);
+                wroteExtra = true;
+            }
             if (wroteExtra) {
                 plugin.getConfigManager().saveKitsConfig();
             }
             kit.setStartSaturation(kitsSection.getDouble(kitId + ".saturation", -1));
+            kit.setGuiSlot(kitsSection.getInt(kitId + ".gui-slot", -1));
             kit.getStartEffects().clear();
             for (String entry : kitsSection.getStringList(kitId + ".potions")) {
                 org.bukkit.potion.PotionEffect eff = parsePotionEffect(entry);
@@ -607,6 +614,11 @@ public class KitManager {
         // Pro-Kit Auto-Potions beim Start.
         private final java.util.List<org.bukkit.potion.PotionEffect> startEffects = new java.util.ArrayList<>();
 
+        // Fester GUI-Slot (0-53) in den Kit-Auswahl-GUIs. -1 = automatische,
+        // zentrierte Anordnung wie bisher. Greift nur wenn der globale Toggle
+        // (config: kits.use-custom-slots) auf true steht.
+        private int guiSlot = -1;
+
         public Kit(String id) {
             this.id = id;
             this.previewMaterial = Material.DIAMOND_SWORD;
@@ -620,6 +632,9 @@ public class KitManager {
         public double getStartSaturation() { return startSaturation; }
         public void setStartSaturation(double v) { this.startSaturation = v; }
         public java.util.List<org.bukkit.potion.PotionEffect> getStartEffects() { return startEffects; }
+
+        public int getGuiSlot() { return guiSlot; }
+        public void setGuiSlot(int slot) { this.guiSlot = slot; }
 
         public String getId() { return id; }
 
