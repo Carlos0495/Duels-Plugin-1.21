@@ -178,7 +178,7 @@ public class PartyFFAManager {
             if (p == null) continue;
             if (plugin.getSpectateManager() != null) plugin.getSpectateManager().clearSpectating(p);
             if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) p.setGameMode(org.bukkit.GameMode.SURVIVAL);
-            p.teleport(spawn);
+            plugin.getPlayerManager().safeTeleport(p, spawn);
             DuelManager.clearFullInventory(p);
             plugin.getKitManager().giveKit(p, kitName);
             p.setHealth(p.getMaxHealth());
@@ -331,7 +331,7 @@ public class PartyFFAManager {
             Location targetSpawn = (t == 1) ? spawn1 : spawn2;
             if (plugin.getSpectateManager() != null) plugin.getSpectateManager().clearSpectating(p);
             if (p.getGameMode() != org.bukkit.GameMode.SURVIVAL) p.setGameMode(org.bukkit.GameMode.SURVIVAL);
-            p.teleport(targetSpawn);
+            plugin.getPlayerManager().safeTeleport(p, targetSpawn);
             DuelManager.clearFullInventory(p);
             plugin.getKitManager().giveKit(p, kitName);
             p.setHealth(p.getMaxHealth());
@@ -672,7 +672,7 @@ public class PartyFFAManager {
                     if (pl.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
                         pl.setGameMode(org.bukkit.GameMode.SURVIVAL);
                     }
-                    if (lobbySpawn != null) pl.teleport(lobbySpawn);
+                    if (lobbySpawn != null) plugin.getPlayerManager().safeTeleport(pl, lobbySpawn);
                     DuelManager.clearFullInventory(pl);
                     plugin.getPlayerManager().forceLobbyState(pl);
                     plugin.getPlayerManager().applyLobbyFly(pl);
@@ -688,7 +688,7 @@ public class PartyFFAManager {
             if (pl.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
                 pl.setGameMode(org.bukkit.GameMode.SURVIVAL);
             }
-            if (lobbySpawn != null) pl.teleport(lobbySpawn);
+            if (lobbySpawn != null) plugin.getPlayerManager().safeTeleport(pl, lobbySpawn);
             DuelManager.clearFullInventory(pl);
             plugin.getPlayerManager().forceLobbyState(pl);
             plugin.getPlayerManager().applyLobbyFly(pl);

@@ -81,13 +81,13 @@ public class DuelManager {
 
         Location spawn = plugin.getArenaManager().getSpawnLocation();
         if (spawn != null) {
-            p.teleport(spawn);
+            plugin.getPlayerManager().safeTeleport(p, spawn);
             return;
         }
 
         // Fallback: World Spawn
         Location worldSpawn = p.getWorld().getSpawnLocation();
-        if (worldSpawn != null) p.teleport(worldSpawn);
+        if (worldSpawn != null) plugin.getPlayerManager().safeTeleport(p, worldSpawn);
     }
 
     private static final long AUTOSELECT_TIMEOUT_MS = 20000;
@@ -236,8 +236,8 @@ public class DuelManager {
 
         // Teleportieren
         if (arena.getSpawn1() != null && arena.getSpawn2() != null) {
-            p1.teleport(arena.getSpawn1());
-            p2.teleport(arena.getSpawn2());
+            plugin.getPlayerManager().safeTeleport(p1, arena.getSpawn1());
+            plugin.getPlayerManager().safeTeleport(p2, arena.getSpawn2());
         }
 
         // Tab-Liste anpassen
@@ -468,7 +468,7 @@ public class DuelManager {
 
         Location target = pendingRoundRespawn.get(uuid);
         if (target != null) {
-            player.teleport(target);
+            plugin.getPlayerManager().safeTeleport(player, target);
         }
 
         forceRoundState(player);

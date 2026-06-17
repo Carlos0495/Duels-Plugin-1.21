@@ -296,6 +296,10 @@ public class ConfigManager {
             { mainConfig.set("worlds.kit-edit", java.util.Arrays.asList("world")); dirty = true; }
         if (!mainConfig.contains("worlds.custom-kit"))
             { mainConfig.set("worlds.custom-kit", java.util.Arrays.asList("world")); dirty = true; }
+        // Welt(en) in denen man /duel <name> (Spieler herausfordern) nutzen darf.
+        // Leere Liste [] = überall erlaubt.
+        if (!mainConfig.contains("worlds.duel-command"))
+            { mainConfig.set("worlds.duel-command", new java.util.ArrayList<String>()); dirty = true; }
 
         // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
         // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
@@ -303,6 +307,13 @@ public class ConfigManager {
         // SPECTATOR-GameMode (die kein Match zuschauen) sind NICHT betroffen.
         if (!mainConfig.contains("spectator.block-collision"))
             { mainConfig.set("spectator.block-collision", true); dirty = true; }
+        // Durch welche breakable Blöcke ein Match-Spectator dennoch fliegen darf:
+        //   NONE  = keine (volle Kollision, wie block-collision)
+        //   ARENA = breakable Arena-Blöcke (pro Arena gesetzt)
+        //   KIT   = breakable Kit-Blöcke (des laufenden Kits)
+        //   BOTH  = beides
+        if (!mainConfig.contains("spectator.pass-through-breakable"))
+            { mainConfig.set("spectator.pass-through-breakable", "NONE"); dirty = true; }
 
         // Anti-Glitch: verhindert dass Spieler sich durch konfigurierte Blöcke
         // glitchen (z.B. mit Ender-Pearls durch Wände). Der Pearl-Teleport wird
@@ -441,7 +452,7 @@ public class ConfigManager {
      * @return true, wenn Kommentare (neu) gesetzt wurden und gespeichert werden muss.
      */
     private boolean applyComments() {
-        final int CURRENT = 1;
+        final int CURRENT = 2;
         if (mainConfig.getInt("config-comments-version", 0) >= CURRENT) return false;
 
         c("prefix",
@@ -507,11 +518,16 @@ public class ConfigManager {
                 "  queue                - wo man Queue/Duell starten kann",
                 "  kit-preview          - wo man Kits vorschauen kann (/previewkit)",
                 "  kit-edit             - wo man Kit-Layouts bearbeiten kann",
-                "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf");
+                "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf",
+                "  duel-command         - wo man /duel <name> nutzen darf");
         c("spectator",
-                "Zuschauer eines Matches (via /spectate oder Auto-Spectate)",
-                "koennen NICHT durch Bloecke (auch Barrier) fliegen, wenn true.",
-                "Echte SPECTATOR-Gamemode-Spieler sind nie betroffen.");
+                "Zuschauer eines Matches (via /spectate oder Auto-Spectate).",
+                "  block-collision: true = koennen NICHT durch Bloecke (auch",
+                "                   Barrier) fliegen. Echte SPECTATOR-Gamemode-",
+                "                   Spieler sind nie betroffen.",
+                "  pass-through-breakable: durch welche breakable Bloecke der",
+                "                   Spectator dennoch fliegen darf:",
+                "                   NONE | ARENA | KIT | BOTH (default NONE)");
         c("anti-glitch",
                 "Verhindert Durch-Glitchen (z.B. Ender-Pearls durch Waende).",
                 "  enabled: an/aus",
@@ -522,7 +538,10 @@ public class ConfigManager {
                 "  blocks:  Material-Liste fuer BLACKLIST/WHITELIST");
         c("leaderboard",
                 "Ranglisten-Placeholder (%duels_<kategorie>_<platz>%).",
-                "  format: Zeilen-Format. Platzhalter {rank} {name} {value} {category}",
+                "  Basis-Placeholder gibt NUR DEN NAMEN aus (Top 10), z.B.",
+                "  %duels_coins_1% -> Name von Platz 1. Siehe Placeholder-Liste",
+                "  ganz unten in dieser Datei.",
+                "  format: Zeilen-Format fuer ..._line. {rank} {name} {value} {category}",
                 "  empty:  Text wenn kein Spieler auf dem Platz existiert",
                 "  names:  Anzeigename je Kategorie (kills/deaths/wins/losses/",
                 "          coins/kd/winrate) fuer {category}");
@@ -566,7 +585,63 @@ public class ConfigManager {
         mainConfig.setComments("config-comments-version", java.util.Arrays.asList(
                 "Interner Marker, damit die Kommentare nur einmal geschrieben werden.",
                 "Nicht aendern."));
+
+        // Komplette Placeholder-Referenz ganz unten in die Datei schreiben.
+        mainConfig.options().setFooter(buildPlaceholderReference());
         return true;
+    }
+
+    /**
+     * Baut die komplette Placeholder-Referenz, die als Kommentar-Footer ganz
+     * unten in die config.yml geschrieben wird (User-Wunsch).
+     */
+    private java.util.List<String> buildPlaceholderReference() {
+        return java.util.Arrays.asList(
+                "",
+                "==============================================================",
+                "  PLACEHOLDER-REFERENZ (alle verfuegbaren Platzhalter)",
+                "==============================================================",
+                "",
+                "--- PlaceholderAPI ( %duels_...% , fuer TAB/Scoreboard-Plugins ) ---",
+                "Benoetigt das Plugin PlaceholderAPI.",
+                "  %duels_status%          Status-Symbol m. Farbe (duel/spec/lobby/world)",
+                "  %duels_status_icon%     nur das Symbol (ohne Farbe)",
+                "  %duels_currency%        Name der Waehrung (currency.name, z.B. Elo)",
+                "  %duels_coins%           Coins/Waehrung des Spielers",
+                "  %duels_wins%            Siege",
+                "  %duels_losses%          Niederlagen",
+                "  %duels_kills%           Kills",
+                "  %duels_deaths%          Tode",
+                "  %duels_playing_<kit>%   Anzahl Spieler gerade IM Match mit dem Kit",
+                "  %duels_queue_<kit>%     Anzahl Spieler in der Queue fuer das Kit",
+                "  %duels_armortrim_<teil>%  Trim-Pattern (helmet/chestplate/leggings/boots)",
+                "  %duels_material_<teil>%   Trim-Material (helmet/chestplate/leggings/boots)",
+                "      optional Name anhaengen: %duels_armortrim_helmet_Steve%",
+                "",
+                "--- Ranglisten / Top 10 ( %duels_<kategorie>_<platz>% ) ---",
+                "Kategorien: kills, deaths, wins, losses, coins, kd, winrate",
+                "Platz: 1 bis 10",
+                "  %duels_coins_1%         NUR der Name auf Platz 1 (Standard!)",
+                "  %duels_coins_1_name%    NUR der Name",
+                "  %duels_coins_1_value%   NUR der Wert",
+                "  %duels_coins_1_line%    komplette Zeile (Format: leaderboard.format)",
+                "  Beispiele: %duels_kills_3%  %duels_winrate_1_value%  %duels_wins_2_line%",
+                "",
+                "--- Scoreboard-Zeilen (config: *-scoreboard-lines) ---",
+                "Diese gelten NUR in den scoreboard-lines-Optionen (kein PAPI noetig):",
+                "  Lobby: %online% %playing% %currency% %coins% %kills% %deaths%",
+                "         %kd% %wins% %losses% %winrate%",
+                "  Duel:  %opponent% %map% %round% %bestof% %score% %requiredwins%",
+                "         %playerping% %opponentping% %timeleft%",
+                "  FFA:   %alive% %map% %timeleft% (+ Lobby-Platzhalter)",
+                "  Team:  %yourteam% %enemyteam% %map% %timeleft%",
+                "",
+                "--- Nachrichten-Platzhalter (messages.yml + messages: hier) ---",
+                "In geschweiften Klammern, je nach Nachricht verfuegbar:",
+                "  {player} {arena} {map} {kit} {currency} {coins} {value}",
+                "  {winner} {loser} {score} {round} {bestof} {team} {seconds}",
+                "  {amount} {rank} {name}",
+                "==============================================================");
     }
 
     /** Setzt einen Kommentar-Block ueber den angegebenen config-Key. */
@@ -599,6 +674,16 @@ public class ConfigManager {
     /** @return true wenn Match-Spectator-Block-Kollision aktiv ist. */
     public boolean isSpectatorBlockCollision() {
         return mainConfig == null || mainConfig.getBoolean("spectator.block-collision", true);
+    }
+
+    /**
+     * @return durch welche breakable Blöcke ein Match-Spectator fliegen darf:
+     * NONE / ARENA / KIT / BOTH (default NONE).
+     */
+    public String getSpectatorPassThroughBreakable() {
+        if (mainConfig == null) return "NONE";
+        String s = mainConfig.getString("spectator.pass-through-breakable", "NONE");
+        return (s == null || s.trim().isEmpty()) ? "NONE" : s.trim();
     }
 
     // ---- Chat-Filter ----

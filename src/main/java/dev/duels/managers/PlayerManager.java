@@ -556,6 +556,48 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
         plugin.getScoreboardManager().updateScoreboard(player);
     }
 
+    /**
+     * Robuster Teleport für beliebige Ziele (Arena-Spawn, Lobby, Runden-
+     * Respawn usw.). Ein nacktes {@code player.teleport()} schlägt manchmal
+     * still fehl (gibt false zurück), wenn der Spieler noch in einem Vehikel
+     * sitzt, Passagiere hat, gerade eine Entity spectatet (Kamera) oder der
+     * Ziel-Chunk noch nicht geladen ist. Das führte zum Bug "manchmal
+     * funktioniert jeglicher TP einfach nicht" (Spieler bekam Kit/Items, wurde
+     * aber nicht bewegt). Wir lösen die Blocker, laden den Ziel-Chunk und
+     * wiederholen den Teleport ein paar Mal.
+     *
+     * @return true, wenn der Teleport (sofort) erfolgreich war.
+     */
+    public boolean safeTeleport(Player player, Location dest) {
+        if (player == null || dest == null || dest.getWorld() == null) return false;
+        return attemptSafeTeleport(player, dest, 0);
+    }
+
+    private boolean attemptSafeTeleport(Player player, Location dest, int attempt) {
+        if (player == null || !player.isOnline() || dest == null || dest.getWorld() == null) return false;
+
+        // Häufige Teleport-Blocker auflösen.
+        try { if (player.getSpectatorTarget() != null) player.setSpectatorTarget(null); } catch (Throwable ignored) {}
+        if (player.isInsideVehicle()) player.leaveVehicle();
+        if (!player.getPassengers().isEmpty()) player.eject();
+        // Ziel-Chunk laden — Teleport in einen ungeladenen Chunk schlägt
+        // gelegentlich still fehl.
+        try { dest.getWorld().getChunkAt(dest).load(); } catch (Throwable ignored) {}
+
+        boolean ok;
+        try {
+            ok = player.teleport(dest, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        } catch (Throwable t) {
+            ok = false;
+        }
+
+        if (!ok && attempt < 3) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> attemptSafeTeleport(player, dest, attempt + 1), 2L);
+        }
+        return ok;
+    }
+
     // Füge diese Methoden zur PlayerManager Klasse hinzu:
 
     public void forceLobbyState(Player player) {

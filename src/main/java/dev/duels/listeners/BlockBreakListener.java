@@ -124,7 +124,13 @@ public class BlockBreakListener implements Listener {
         KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
         if (kit == null) { event.setCancelled(true); return; }
 
-        if (kit.isPlaceable(event.getBlockPlaced().getType())) {
+        // Custom-Kits: ALLE Blöcke dürfen platziert werden (User-Wunsch). Sonst
+        // ergäbe es keinen Sinn, dass man die Arena-breakable-Blöcke abbauen,
+        // aber nicht (wieder) setzen kann. Jeder platzierte Block wird getrackt
+        // und ist damit auch wieder abbaubar + wird beim Arena-Reset entfernt.
+        boolean placeAllowed = plugin.getKitManager().isCustomKit(kitId)
+                || kit.isPlaceable(event.getBlockPlaced().getType());
+        if (placeAllowed) {
             if (event.isCancelled()) event.setCancelled(false);
             // ArenaListener trackt Placements bei NORMAL-Priority. Wenn ein
             // Anti-Grief-Plugin den Event vorher gecancelt hat, läuft der

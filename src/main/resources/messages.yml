@@ -133,6 +133,7 @@ duel:
   request-sent-firstto: "&7Sent duel request to &c{player} &7| Kit: &e{kit} &7| First to &f{value}"
   request-sent-to: "&aDuel request sent to &e{player}"
   requester-offline: "&cThe player who sent the request is no longer online!"
+  wrong-world: "&cYou can't use /duel in this world!"
   requester-offline-short: "&cRequester is offline."
   round-count-prompt: "&eType a number &f1-100 &ein chat to set the round count, or &ccancel&e."
   round-draw: "&eRound &f#{round} &eended in a draw &7(time up) &8| {score}"
