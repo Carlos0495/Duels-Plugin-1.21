@@ -17,7 +17,7 @@ public class QueueCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "Only players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "Only players can use this command!"));
             return true;
         }
 
@@ -44,7 +44,7 @@ public class QueueCommand implements CommandExecutor {
                 break;
 
             default:
-                player.sendMessage(plugin.getPrefix() + "§cUnknown subcommand!");
+                player.sendMessage(plugin.getConfigManager().prefixed("queue.unknown-subcommand", "&cUnknown subcommand!"));
                 showUsage(player);
                 break;
         }
@@ -53,10 +53,10 @@ public class QueueCommand implements CommandExecutor {
     }
 
     private void showUsage(Player player) {
-        player.sendMessage(plugin.getPrefix() + "§7Usage:");
-        player.sendMessage("§c/queue join <kit>");
-        player.sendMessage("§c/queue leave");
-        player.sendMessage("§c/queue gui");
+        player.sendMessage(plugin.getConfigManager().prefixed("queue.usage-header", "&7Usage:"));
+        player.sendMessage(plugin.getConfigManager().getMessage("queue.usage-join", "&c/queue join <kit>"));
+        player.sendMessage(plugin.getConfigManager().getMessage("queue.usage-leave", "&c/queue leave"));
+        player.sendMessage(plugin.getConfigManager().getMessage("queue.usage-gui", "&c/queue gui"));
     }
 
     private void handleLeave(Player player) {
@@ -70,21 +70,21 @@ public class QueueCommand implements CommandExecutor {
 
     private void handleJoin(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(plugin.getPrefix() + "§7Usage: §c/queue join <kit>");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.usage-join", "&7Usage: &c/queue join <kit>"));
             return;
         }
 
         String kitName = args[1];
 
         if (!plugin.getKitManager().kitExists(kitName)) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: §e" + kitName);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: {kit}", java.util.Map.of("kit", kitName)));
             return;
         }
 
         // Toggle behavior
         if (plugin.getQueueManager().isInQueue(player.getUniqueId(), kitName)) {
             plugin.getQueueManager().leaveQueue(player);
-            player.sendMessage(plugin.getPrefix() + "§cLeft §7queue for kit §e" + kitName);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.left-kit", "&cLeft &7queue for kit &e{kit}", java.util.Map.of("kit", kitName)));
         } else {
             plugin.getQueueManager().joinQueue(player, kitName);
         }

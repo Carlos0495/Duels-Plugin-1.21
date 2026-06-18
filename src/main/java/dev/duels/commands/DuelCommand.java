@@ -19,13 +19,13 @@ public class DuelCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(plugin.getPrefix() + "§cOnly players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
 
         if (args.length < 1) {
-            player.sendMessage(plugin.getPrefix() + "§7Usage: §a/duel <player> §7| §a/duel accept §7| §a/duel deny");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.usage", "&7Usage: &a/duel <player> &7| &a/duel accept &7| &a/duel deny"));
             return true;
         }
 
@@ -45,26 +45,26 @@ public class DuelCommand implements CommandExecutor {
 
         // Normal: /duel <player>
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
-            player.sendMessage(plugin.getPrefix() + "§cYou are already in a duel!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.already-in-duel", "&cYou are already in a duel!"));
             return true;
         }
 
 
         Player target = Bukkit.getPlayer(args[0]);
         if (target == null) {
-            player.sendMessage(plugin.getPrefix() + "§cPlayer not found or offline!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.player-not-found", "&cPlayer not found or offline!"));
             return true;
         }
 
 
         if (target.equals(player)) {
-            player.sendMessage(plugin.getPrefix() + "§cYou cannot duel yourself!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.cannot-duel-self", "&cYou cannot duel yourself!"));
             return true;
         }
 
 
         if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
-            player.sendMessage(plugin.getPrefix() + "§cThat player is already in a duel!");
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.target-in-duel", "&cThat player is already in a duel!"));
             return true;
         }
 

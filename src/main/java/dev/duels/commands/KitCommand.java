@@ -24,12 +24,12 @@ public class KitCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(plugin.getPrefix() + "§cOnly players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
         if (!player.hasPermission("duels.admin")) {
-            player.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.no-permission", "&cYou don't have permission!"));
             return true;
         }
 
@@ -48,6 +48,12 @@ public class KitCommand implements CommandExecutor {
             return handleRemove(player, args);
         }
 
+        // /duels:kit give customkit1..4 "owner" to "target" — an die
+        // KitEditCommand-Logik delegieren (gleicher Code-Pfad wie /dkit give).
+        if (sub.equals("give")) {
+            return new KitEditCommand(plugin).onCommand(player, command, label, args);
+        }
+
         sendUsage(player);
         return true;
     }
@@ -55,8 +61,8 @@ public class KitCommand implements CommandExecutor {
     private boolean handleAdd(Player player, String[] args) {
         // /kit add <name with spaces and &> <material>
         if (args.length < 3) {
-            player.sendMessage(plugin.getPrefix() + "§7Usage: /kit add <name> <preview_item>");
-            player.sendMessage(plugin.getPrefix() + "§7Example: /kit add &a&lSword DIAMOND_SWORD");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.usage-add", "&7Usage: /kit add <name> <preview_item>"));
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.example-add", "&7Example: /kit add &a&lSword DIAMOND_SWORD"));
             return true;
         }
 
@@ -65,7 +71,7 @@ public class KitCommand implements CommandExecutor {
         try {
             previewMaterial = Material.valueOf(previewItemStr);
         } catch (IllegalArgumentException e) {
-            player.sendMessage(plugin.getPrefix() + "§cInvalid material! Use something like DIAMOND_SWORD, BOW, etc.");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.invalid-material", "&cInvalid material! Use something like DIAMOND_SWORD, BOW, etc."));
             return true;
         }
 
@@ -77,7 +83,7 @@ public class KitCommand implements CommandExecutor {
         plainName = plainName.trim();
 
         if (plainName.isEmpty()) {
-            player.sendMessage(plugin.getPrefix() + "§cInvalid kit name!");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.invalid-name", "&cInvalid kit name!"));
             return true;
         }
 
@@ -86,8 +92,8 @@ public class KitCommand implements CommandExecutor {
         if (plugin.getKitManager().kitExists(kitId)) {
             KitManager.Kit existing = plugin.getKitManager().getKit(kitId);
             String existingDisplay = existing != null ? existing.getDisplayName() : kitId;
-            player.sendMessage(plugin.getPrefix() + "§cKit already exists: " + existingDisplay + " §8(§f" + kitId + "§8)");
-            player.sendMessage(plugin.getPrefix() + "§7Use §c/kit remove " + plainName + " §7first.");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.already-exists", "&cKit already exists: {display} &8(&f{id}&8)", java.util.Map.of("display", existingDisplay, "id", kitId)));
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.remove-first", "&7Use &c/kit remove {name} &7first.", java.util.Map.of("name", plainName)));
             return true;
         }
 
@@ -119,16 +125,16 @@ public class KitCommand implements CommandExecutor {
 
         plugin.getKitManager().saveKit(kitId, kit);
 
-        player.sendMessage(plugin.getPrefix() + "§7Kit " + kit.getDisplayName() + " §7has been §a§lcreated!");
-        player.sendMessage(plugin.getPrefix() + "§7Internal name: §f" + kitId);
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.created", "&7Kit {display} &7has been &a&lcreated!", java.util.Map.of("display", kit.getDisplayName())));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.internal-name", "&7Internal name: &f{id}", java.util.Map.of("id", kitId)));
         return true;
     }
 
     private boolean handleRemove(Player player, String[] args) {
         // /kit remove <name with spaces (can include colors, ignored)>
         if (args.length < 2) {
-            player.sendMessage(plugin.getPrefix() + "§7Usage: /kit remove <name>");
-            player.sendMessage(plugin.getPrefix() + "§7Example: /kit remove No Debuff Kit");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.usage-remove", "&7Usage: /kit remove <name>"));
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.example-remove", "&7Example: /kit remove No Debuff Kit"));
             return true;
         }
 
@@ -139,7 +145,7 @@ public class KitCommand implements CommandExecutor {
         plain = plain.trim();
 
         if (plain.isEmpty()) {
-            player.sendMessage(plugin.getPrefix() + "§cInvalid kit name!");
+            player.sendMessage(plugin.getConfigManager().prefixed("kit.invalid-name", "&cInvalid kit name!"));
             return true;
         }
 
@@ -153,7 +159,7 @@ public class KitCommand implements CommandExecutor {
         }
 
         if (!plugin.getKitManager().kitExists(kitId)) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: §f" + plain);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: &f{kit}", java.util.Map.of("kit", plain)));
             return true;
         }
 
@@ -162,18 +168,18 @@ public class KitCommand implements CommandExecutor {
 
         plugin.getKitManager().deleteKit(kitId);
 
-        player.sendMessage(plugin.getPrefix() + "§7Kit " + display + " §7has been §c§lremoved!");
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.removed", "&7Kit {display} &7has been &c&lremoved!", java.util.Map.of("display", display)));
         return true;
     }
 
     private void sendUsage(Player player) {
-        player.sendMessage(plugin.getPrefix() + "§7Usage:");
-        player.sendMessage(plugin.getPrefix() + "§7- /kit add <name> <preview_item>");
-        player.sendMessage(plugin.getPrefix() + "§7- /kit remove <name>");
-        player.sendMessage(plugin.getPrefix() + "§7Examples:");
-        player.sendMessage(plugin.getPrefix() + "§7- /kit add &a&lSword DIAMOND_SWORD");
-        player.sendMessage(plugin.getPrefix() + "§7- /kit add &bNo Debuff Kit NETHERITE_SWORD");
-        player.sendMessage(plugin.getPrefix() + "§7- /kit remove No Debuff Kit");
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-usage", "&7Usage:"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-add", "&7- /kit add <name> <preview_item>"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-remove", "&7- /kit remove <name>"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-examples", "&7Examples:"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-ex1", "&7- /kit add &a&lSword DIAMOND_SWORD"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-ex2", "&7- /kit add &bNo Debuff Kit NETHERITE_SWORD"));
+        player.sendMessage(plugin.getConfigManager().prefixed("kit.help-ex3", "&7- /kit remove No Debuff Kit"));
     }
 
     private static String join(String[] args, int fromInclusive, int toExclusive) {

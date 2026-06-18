@@ -5,6 +5,8 @@ import org.bukkit.block.data.BlockData;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -15,7 +17,15 @@ public class Arena {
     private Location spawn2;
     private Location corner1;
     private Location corner2;
+    private Location ffaSpawn;
     private boolean inUse;
+
+    // Allowed kits (empty = alle Kits erlaubt)
+    private final Set<String> allowedKits = new LinkedHashSet<>();
+
+    // Zusätzlich abbaubare Arena-Block-Materialien (für Custom-Kits / je nach
+    // Config auch normale Kits). Gespeichert als Material-Namen (UPPERCASE).
+    private final Set<String> breakableBlocks = new LinkedHashSet<>();
 
     // Snapshot data
     private String snapshotWorld;
@@ -23,6 +33,11 @@ public class Arena {
     private int snapshotMaxX, snapshotMaxY, snapshotMaxZ;
     private final Map<BlockVector, BlockData> originalBlocks = new HashMap<>();
     private final Set<BlockVector> playerPlacedBlocks = new HashSet<>();
+    // Entities die während des Duels gespawnt wurden (End-Crystals, etc.)
+    // damit der Arena-Reset sie sauber entfernen kann — auch wenn die
+    // Arena keine Corners hat (cleanupArenaEntities würde sie sonst nicht
+    // finden).
+    private final Set<java.util.UUID> trackedEntities = new HashSet<>();
 
     public Arena(String name) {
         this.name = name;
@@ -38,6 +53,9 @@ public class Arena {
     public void setCorner1(Location corner1) { this.corner1 = corner1; }
     public Location getCorner2() { return corner2; }
     public void setCorner2(Location corner2) { this.corner2 = corner2; }
+    public Location getFfaSpawn() { return ffaSpawn; }
+    public void setFfaSpawn(Location ffaSpawn) { this.ffaSpawn = ffaSpawn; }
+    public boolean hasFfaSpawn() { return ffaSpawn != null; }
     public boolean isInUse() { return inUse; }
     public void setInUse(boolean inUse) { this.inUse = inUse; }
 
@@ -45,6 +63,13 @@ public class Arena {
     public Map<BlockVector, BlockData> getOriginalBlocks() { return originalBlocks; }
     public String getSnapshotWorld() { return snapshotWorld; }
     public void setSnapshotWorld(String snapshotWorld) { this.snapshotWorld = snapshotWorld; }
+
+    /** True wenn Bounds gesetzt sind (auch wenn keine Block-Daten erfasst wurden). */
+    public boolean hasSnapshotBounds() {
+        return snapshotWorld != null
+                && !(snapshotMinX == 0 && snapshotMinY == 0 && snapshotMinZ == 0
+                  && snapshotMaxX == 0 && snapshotMaxY == 0 && snapshotMaxZ == 0);
+    }
 
     public void setSnapshotBounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         this.snapshotMinX = minX;
@@ -78,9 +103,131 @@ public class Arena {
                 loc.getZ() >= minZ && loc.getZ() <= maxZ;
     }
 
+    /**
+     * Prüft ob die Location (nur X/Z/Y, mit kleinem Rand) innerhalb der
+     * Corner-Bounds liegt. Liefert {@code false} wenn der Spieler die Arena
+     * verlassen würde.
+     */
+    public boolean isWithinBounds(Location loc) {
+        return isInArena(loc);
+    }
+
+    /**
+     * Klemmt eine Location zurück knapp INNERHALB der Corner-Bounds, falls
+     * sie außerhalb liegt. Es wird NICHT zum Zentrum teleportiert, sondern
+     * nur ein kleines Stück zurück an die Kante (User-Wunsch: "nur ein
+     * kleines Stück zurück, nicht komplett zurück"). Blickrichtung bleibt
+     * erhalten. Liefert {@code null} wenn keine Bounds gesetzt sind oder die
+     * Location bereits innerhalb liegt.
+     */
+    public Location clampInside(Location loc) {
+        if (corner1 == null || corner2 == null || loc == null) return null;
+        if (loc.getWorld() == null || corner1.getWorld() == null) return null;
+        if (!corner1.getWorld().getUID().equals(loc.getWorld().getUID())) return null;
+
+        double minX = Math.min(corner1.getX(), corner2.getX());
+        double maxX = Math.max(corner1.getX(), corner2.getX());
+        double minY = Math.min(corner1.getY(), corner2.getY());
+        double maxY = Math.max(corner1.getY(), corner2.getY());
+        double minZ = Math.min(corner1.getZ(), corner2.getZ());
+        double maxZ = Math.max(corner1.getZ(), corner2.getZ());
+
+        // Kleiner Rand damit der Spieler nicht exakt auf der Kante klebt.
+        final double m = 0.5;
+        double x = loc.getX();
+        double y = loc.getY();
+        double z = loc.getZ();
+
+        boolean outside = false;
+        if (x < minX + m) { x = minX + m; outside = true; }
+        else if (x > maxX - m) { x = maxX - m; outside = true; }
+        if (z < minZ + m) { z = minZ + m; outside = true; }
+        else if (z > maxZ - m) { z = maxZ - m; outside = true; }
+        if (y < minY) { y = minY; outside = true; }
+        else if (y > maxY) { y = maxY; outside = true; }
+
+        if (!outside) return null;
+
+        Location clamped = new Location(loc.getWorld(), x, y, z, loc.getYaw(), loc.getPitch());
+        return clamped;
+    }
+
     // Player-placed block tracking
     public void addPlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.add(v); }
     public void removePlayerPlacedBlock(BlockVector v) { playerPlacedBlocks.remove(v); }
     public boolean isPlayerPlacedBlock(BlockVector v) { return playerPlacedBlocks.contains(v); }
+    public java.util.Set<BlockVector> getPlayerPlacedBlocks() { return playerPlacedBlocks; }
     public void clearPlayerPlacedBlocks() { playerPlacedBlocks.clear(); }
+
+    // Entity-Tracking (End-Crystals, gespawnte Items etc.)
+    public void addTrackedEntity(java.util.UUID id) { trackedEntities.add(id); }
+    public void removeTrackedEntity(java.util.UUID id) { trackedEntities.remove(id); }
+    public Set<java.util.UUID> getTrackedEntities() { return trackedEntities; }
+    public void clearTrackedEntities() { trackedEntities.clear(); }
+
+    // Allowed kits management
+    public Set<String> getAllowedKits() { return allowedKits; }
+
+    public void setAllowedKits(java.util.Collection<String> kits) {
+        allowedKits.clear();
+        if (kits == null) return;
+        for (String k : kits) {
+            if (k != null && !k.isEmpty()) allowedKits.add(k.toLowerCase(Locale.ROOT));
+        }
+    }
+
+    public boolean addAllowedKit(String kitId) {
+        if (kitId == null || kitId.isEmpty()) return false;
+        return allowedKits.add(kitId.toLowerCase(Locale.ROOT));
+    }
+
+    public boolean removeAllowedKit(String kitId) {
+        if (kitId == null) return false;
+        return allowedKits.remove(kitId.toLowerCase(Locale.ROOT));
+    }
+
+    public void clearAllowedKits() { allowedKits.clear(); }
+
+    /**
+     * Returns true if this arena may host a duel using the given kit.
+     * An empty allow-list means "all kits allowed".
+     */
+    public boolean isKitAllowed(String kitId) {
+        if (allowedKits.isEmpty()) return true;
+        if (kitId == null) return false;
+        String id = kitId.toLowerCase(Locale.ROOT);
+        if (allowedKits.contains(id)) return true;
+        // "customkits" Platzhalter: erlaubt jedes Custom-Kit (interne IDs
+        // beginnen mit "ckit_") als wäre es ein normales Kit auf dieser Arena.
+        if (id.startsWith("ckit_") && allowedKits.contains("customkits")) return true;
+        return false;
+    }
+
+    // Breakable arena blocks management (Material-Namen, UPPERCASE)
+    public Set<String> getBreakableBlocks() { return breakableBlocks; }
+
+    public void setBreakableBlocks(java.util.Collection<String> mats) {
+        breakableBlocks.clear();
+        if (mats == null) return;
+        for (String m : mats) {
+            if (m != null && !m.isEmpty()) breakableBlocks.add(m.toUpperCase(Locale.ROOT));
+        }
+    }
+
+    public boolean addBreakableBlock(String material) {
+        if (material == null || material.isEmpty()) return false;
+        return breakableBlocks.add(material.toUpperCase(Locale.ROOT));
+    }
+
+    public boolean removeBreakableBlock(String material) {
+        if (material == null) return false;
+        return breakableBlocks.remove(material.toUpperCase(Locale.ROOT));
+    }
+
+    public void clearBreakableBlocks() { breakableBlocks.clear(); }
+
+    public boolean isArenaBreakable(org.bukkit.Material material) {
+        if (material == null || breakableBlocks.isEmpty()) return false;
+        return breakableBlocks.contains(material.name());
+    }
 }

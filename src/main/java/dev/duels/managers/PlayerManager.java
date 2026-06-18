@@ -7,6 +7,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -36,6 +37,7 @@ public class PlayerManager {
         data.setDeaths(plugin.getConfigManager().getPlayersConfig().getInt(key + ".deaths", 0));
         data.setWins(plugin.getConfigManager().getPlayersConfig().getInt(key + ".wins", 0));
         data.setLosses(plugin.getConfigManager().getPlayersConfig().getInt(key + ".losses", 0));
+        data.setCoins(plugin.getConfigManager().getPlayersConfig().getInt(key + ".coins", 0));
         data.setName(plugin.getConfigManager().getPlayersConfig().getString(key + ".name", "Unknown"));
 
         boolean af = plugin.getConfigManager().getPlayersConfig().getBoolean(key + ".autofly", true);
@@ -65,6 +67,7 @@ public class PlayerManager {
         plugin.getConfigManager().getPlayersConfig().set(key + ".deaths", data.getDeaths());
         plugin.getConfigManager().getPlayersConfig().set(key + ".wins", data.getWins());
         plugin.getConfigManager().getPlayersConfig().set(key + ".losses", data.getLosses());
+        plugin.getConfigManager().getPlayersConfig().set(key + ".coins", data.getCoins());
         plugin.getConfigManager().getPlayersConfig().set(key + ".name", data.getName());
         plugin.getConfigManager().getPlayersConfig().set(key + ".autofly", autoFly.getOrDefault(uuid, true));
 
@@ -105,6 +108,9 @@ public class PlayerManager {
             case "losses":
                 data.setLosses(data.getLosses() + amount);
                 break;
+            case "coins":
+                data.setCoins(data.getCoins() + amount);
+                break;
         }
         savePlayerData(uuid);
     }
@@ -123,6 +129,9 @@ public class PlayerManager {
                 break;
             case "losses":
                 data.setLosses(value);
+                break;
+            case "coins":
+                data.setCoins(value);
                 break;
         }
         savePlayerData(uuid);
@@ -147,63 +156,278 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     return list;
 }
 
+/**
+ * Liefert die nach {@code category} absteigend sortierte Rangliste aller
+ * bekannten Spieler. Unterstützte Kategorien: kills, deaths, wins, losses,
+ * coins, kd, winrate. Bei Gleichstand wird alphabetisch nach Name sortiert.
+ */
+public List<PlayerData> getLeaderboard(String category) {
+    List<PlayerData> all = getAllPlayerDataSnapshot();
+    final String cat = category == null ? "kills" : category.toLowerCase();
+    all.sort((a, b) -> {
+        double av = leaderboardValue(a, cat);
+        double bv = leaderboardValue(b, cat);
+        if (Double.compare(bv, av) != 0) return Double.compare(bv, av);
+        String an = a.getName() == null ? "" : a.getName();
+        String bn = b.getName() == null ? "" : b.getName();
+        return an.compareToIgnoreCase(bn);
+    });
+    return all;
+}
+
+private double leaderboardValue(PlayerData pd, String cat) {
+    switch (cat) {
+        case "deaths":  return pd.getDeaths();
+        case "wins":    return pd.getWins();
+        case "losses":  return pd.getLosses();
+        case "coins":   return pd.getCoins();
+        case "kd":      return pd.getDeaths() == 0 ? pd.getKills() : (double) pd.getKills() / pd.getDeaths();
+        case "winrate": {
+            int total = pd.getWins() + pd.getLosses();
+            return total == 0 ? 0.0 : ((double) pd.getWins() / total) * 100.0;
+        }
+        case "kills":
+        default:        return pd.getKills();
+    }
+}
+
+/** Formatiert den Ranglisten-Wert eines Spielers für die Anzeige. */
+public String formatLeaderboardValue(PlayerData pd, String category) {
+    String cat = category == null ? "kills" : category.toLowerCase();
+    switch (cat) {
+        case "kd":      return String.format(java.util.Locale.US, "%.2f",
+                pd.getDeaths() == 0 ? (double) pd.getKills() : (double) pd.getKills() / pd.getDeaths());
+        case "winrate": {
+            int total = pd.getWins() + pd.getLosses();
+            double wr = total == 0 ? 0.0 : ((double) pd.getWins() / total) * 100.0;
+            return String.format(java.util.Locale.US, "%.1f%%", wr);
+        }
+        default:        return String.valueOf((long) leaderboardValue(pd, cat));
+    }
+}
+
     public void setupPlayerInventory(Player player) {
-        player.getInventory().clear();
+        // In der Lobby-Welt: Hotbar setzen (HotbarManager.applyMode räumt
+        // davor Slots 0-8 ab und schreibt die konfigurierten Items rein).
+        // Außerhalb der Lobby-Welt: NUR die PDC-getaggten Hotbar-Items aus
+        // dem Inventar entfernen, sonst NICHTS anfassen — Rüstung, Offhand
+        // und sonstige Items des Spielers bleiben unangetastet (User-Bug:
+        // Welt-Wechsel hat vorher Rüstung gelöscht).
+        if (!isInLobbyWorld(player)) {
+            removeHotbarItems(player);
+            player.updateInventory();
+            return;
+        }
 
-        // Slot 0: Challenge Sword
-        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
-        ItemMeta swordMeta = sword.getItemMeta();
-        swordMeta.setDisplayName("§aᴄʜᴀʟʟᴇɴɢᴇ");
-        swordMeta.setLore(java.util.Arrays.asList(
-                "§7Hit a §cPlayer §7to §achallenge §7them",
-                "§7Right-click to §ajoin the §aqueue"
-        ));
-        sword.setItemMeta(swordMeta);
-        player.getInventory().setItem(0, sword);
+        // In der Lobby-Welt: Hotbar via HotbarManager applizieren. Das setzt
+        // automatisch Slot 0-8. Armor + Offhand sind in der Lobby grund-
+        // sätzlich nicht vorgesehen — die werden nur hier (Lobby) geclearet.
+        var inv = player.getInventory();
+        // Komplettes Lobby-Clear: Inventar + Rüstung + Offhand. Das wird
+        // sowohl von /spawn als auch nach Duel/FFA-Ende ausgeführt — User
+        // soll mit nackter Lobby-Hotbar starten, keine Duel-Items übrig.
+        inv.clear();
+        inv.setHelmet(null);
+        inv.setChestplate(null);
+        inv.setLeggings(null);
+        inv.setBoots(null);
+        inv.setItemInOffHand(null);
+        player.setItemOnCursor(null);
 
-        // Queue Slot (wird durch refreshQueueSlotItem gesetzt)
-        refreshQueueSlotItem(player);
+        HotbarManager hotbar = plugin.getHotbarManager();
+        if (hotbar == null) {
+            player.getInventory().clear();
+            player.updateInventory();
+            return;
+        }
 
-        // Slot 1: Stats
-        ItemStack stats = new ItemStack(Material.PAPER);
-        ItemMeta statsMeta = stats.getItemMeta();
-        statsMeta.setDisplayName("§bѕᴛᴀᴛѕ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        statsMeta.setLore(java.util.Arrays.asList("§7See your stats or see the leaderboard"));
-        stats.setItemMeta(statsMeta);
-        player.getInventory().setItem(1, stats);
+        String mode = HotbarManager.MODE_LOBBY;
+        PartyManager pm = plugin.getPartyManager();
+        if (pm != null && pm.isInParty(player.getUniqueId())) {
+            mode = pm.isLeader(player.getUniqueId())
+                    ? HotbarManager.MODE_PARTY_LEADER
+                    : HotbarManager.MODE_PARTY_MEMBER;
+        }
+        hotbar.applyMode(player, mode);
+    }
 
-        // Slot 7: Visibility
-        ItemStack visibility = new ItemStack(Material.GREEN_DYE);
-        ItemMeta visibilityMeta = visibility.getItemMeta();
-        visibilityMeta.setDisplayName("§aᴘʟᴀʏᴇʀ ᴠɪѕɪʙɪʟɪᴛʏ ᴏɴ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        visibilityMeta.setLore(java.util.Arrays.asList("§7Change the Player visibility."));
-        visibility.setItemMeta(visibilityMeta);
-        player.getInventory().setItem(7, visibility);
+    /**
+     * Räumt alle Nicht-Hotbar-Items aus dem Inventar eines Spielers in der
+     * Lobby-Welt (Survival). Hotbar-Items (PDC-getaggt) in Slot 0–8 bleiben
+     * stehen, alle anderen Slots (inkl. Storage 9–35, Rüstung, Offhand,
+     * Cursor) werden geleert. Wird als Tick-Loop aufgerufen, damit Items
+     * die per Drag-and-Drop aus einer GUI ins Spieler-Inventar gelangen
+     * sind, sofort wieder verschwinden.
+     */
+    public void clearNonHotbarItems(Player player) {
+        if (player == null || !player.isOnline()) return;
+        if (player.getGameMode() != GameMode.SURVIVAL) return;
+        if (!isInLobbyWorld(player)) return;
 
-        // Slot 8: Settings
-        ItemStack settings = new ItemStack(Material.REPEATER);
-        ItemMeta settingsMeta = settings.getItemMeta();
-        settingsMeta.setDisplayName("§cѕᴇᴛᴛɪɴɢѕ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
-        settingsMeta.setLore(java.util.Arrays.asList("§7All kind of settings"));
-        settings.setItemMeta(settingsMeta);
-        player.getInventory().setItem(8, settings);
+        HotbarManager hm = plugin.getHotbarManager();
+        if (hm == null) return;
 
-        player.updateInventory();
+        var inv = player.getInventory();
+        // Slots 0-8 sind die Hotbar — nur Items OHNE Hotbar-Tag clearen.
+        for (int i = 0; i <= 8; i++) {
+            var item = inv.getItem(i);
+            if (item == null) continue;
+            String action = hm.readAction(item);
+            if (action == null || action.isEmpty()) {
+                inv.setItem(i, null);
+            }
+        }
+        // Storage 9-35 komplett clearen.
+        for (int i = 9; i <= 35; i++) {
+            inv.setItem(i, null);
+        }
+        // Rüstung + Offhand + Cursor clearen.
+        inv.setHelmet(null);
+        inv.setChestplate(null);
+        inv.setLeggings(null);
+        inv.setBoots(null);
+        var off = inv.getItemInOffHand();
+        if (off != null) {
+            String action = hm.readAction(off);
+            if (action == null || action.isEmpty()) {
+                inv.setItemInOffHand(null);
+            }
+        }
+        var cursor = player.getItemOnCursor();
+        if (cursor != null && cursor.getType() != Material.AIR) {
+            // Nicht räumen wenn der Spieler gerade ein GUI offen hat (sonst
+            // bricht jeder Klick im GUI ab). Nur wenn das Top-Inventar das
+            // Player-Inv selbst ist (= kein GUI offen).
+            if (player.getOpenInventory() != null
+                    && player.getOpenInventory().getTopInventory() != null
+                    && player.getOpenInventory().getTopInventory().equals(inv) == false
+                    && player.getOpenInventory().getType()
+                            == org.bukkit.event.inventory.InventoryType.CRAFTING) {
+                player.setItemOnCursor(null);
+            }
+        }
+    }
+
+    /**
+     * Setzt den Tab-Liste-Anzeigenamen eines Spielers mit Status-Suffix:
+     * "⚔" wenn im Duel/FFA, "👁" wenn spectating, sonst leer.
+     */
+    public void updateTabName(Player player) {
+        // No-op. Vorher: setPlayerListName(player + " ⚔") — das hat den
+        // %luckperms_prefix% des TAB-Plugins gekillt. Da das ⚔/👁 jetzt
+        // via PAPI-Placeholder %duels_status% im TAB-Format dargestellt
+        // wird, ist setPlayerListName komplett überflüssig.
+        if (player == null) return;
+    }
+
+    /**
+     * Entfernt alle PDC-getaggten Hotbar-Items aus dem Inventar. Andere
+     * Items, Rüstung und Offhand bleiben unangetastet. Wird beim Verlassen
+     * der Lobby-Welt aufgerufen.
+     */
+    public void removeHotbarItems(Player player) {
+        if (player == null) return;
+        HotbarManager hm = plugin.getHotbarManager();
+        if (hm == null) return;
+        var inv = player.getInventory();
+        for (int i = 0; i < inv.getSize(); i++) {
+            var item = inv.getItem(i);
+            if (item == null) continue;
+            String action = hm.readAction(item);
+            if (action != null && !action.isEmpty()) {
+                inv.setItem(i, null);
+            }
+        }
+        // Offhand auch checken (falls dort ein Hotbar-Item gelandet ist).
+        var off = inv.getItemInOffHand();
+        if (off != null) {
+            String action = hm.readAction(off);
+            if (action != null && !action.isEmpty()) {
+                inv.setItemInOffHand(null);
+            }
+        }
+    }
+
+    /** True, falls der Spieler in der Welt steht, in der der Plugin-Spawn gesetzt ist. */
+    public boolean isInLobbyWorld(Player player) {
+        if (player == null || player.getWorld() == null) return false;
+        Location spawn = plugin.getArenaManager().getSpawnLocation();
+        if (spawn == null || spawn.getWorld() == null) {
+            // Spawn nicht (oder noch nicht) gesetzt: vorsichtshalber als
+            // Lobby behandeln (sonst hätte der User keine Hotbar bevor er
+            // /setspawn macht).
+            return true;
+        }
+        return player.getWorld().getUID().equals(spawn.getWorld().getUID());
     }
     public void applyVisibility(Player viewer) {
         if (viewer == null) return;
 
         boolean hidden = isHidden(viewer.getUniqueId());
 
+        // Tablist-/Sicht-Filter bestimmen (Match-Filter hat Vorrang vor
+        // Welt-Filter). Match-Peers (Gegner/Mitspieler) sind IMMER sichtbar,
+        // damit Duelisten sich gegenseitig sehen — unabhängig von Toggles.
+        java.util.Set<UUID> peers = getMatchPeers(viewer.getUniqueId());
+        var cfg = plugin.getConfigManager();
+        boolean duelFilter = cfg.isDuelTablistFilter() && peers != null;
+        boolean sameWorldOnly = !duelFilter && viewer.getWorld() != null
+                && cfg.getPerWorldTablistWorlds().contains(viewer.getWorld().getName().toLowerCase());
+
         for (Player other : Bukkit.getOnlinePlayers()) {
             if (other.equals(viewer)) continue;
 
-            if (hidden) {
-                viewer.hidePlayer(plugin, other);
+            boolean show;
+            if (peers != null && peers.contains(other.getUniqueId())) {
+                show = true;
+            } else if (hidden) {
+                show = false;
+            } else if (duelFilter) {
+                show = false;
+            } else if (sameWorldOnly) {
+                show = other.getWorld() != null && other.getWorld().equals(viewer.getWorld());
             } else {
+                show = true;
+            }
+
+            if (show) {
                 viewer.showPlayer(plugin, other);
+            } else {
+                viewer.hidePlayer(plugin, other);
             }
         }
+    }
+
+    /** Wendet {@link #applyVisibility(Player)} für alle Online-Spieler an. */
+    public void refreshAllVisibility() {
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            applyVisibility(viewer);
+        }
+    }
+
+    /**
+     * Liefert die "Match-Peers" eines Spielers (alle Teilnehmer seines
+     * aktuellen Duel-/FFA-/Team-Matches inkl. ihm selbst) oder {@code null},
+     * wenn er in keinem Match ist. Wird für Chat- und Tablist-Filter genutzt.
+     */
+    public java.util.Set<UUID> getMatchPeers(UUID uuid) {
+        if (uuid == null) return null;
+        if (plugin.getDuelManager().isInDuel(uuid)) {
+            dev.duels.objects.DuelSession s = plugin.getDuelManager().getDuelSession(uuid);
+            if (s != null) {
+                java.util.Set<UUID> set = new java.util.HashSet<>();
+                set.add(s.getPlayer1());
+                set.add(s.getPlayer2());
+                return set;
+            }
+        }
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) {
+            dev.duels.managers.PartyFFAManager.FFASession s =
+                    plugin.getPartyFFAManager().getSession(uuid);
+            if (s != null) return new java.util.HashSet<>(s.allParticipants);
+        }
+        return null;
     }
 
 
@@ -228,24 +452,48 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         if (plugin.getDuelManager().isInDuel(uuid)) return;
         if (player.getGameMode() == GameMode.CREATIVE) return;
 
-        // Slot 4: Queue Item
+        // Nur im Lobby-Hotbar-Mode relevant. Wenn der Spieler in einer Party
+        // ist, belegt der Party-Hotbar bereits Slot 4 — dann nicht
+        // überschreiben.
+        if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) return;
+
+        // Slot 4 (Queue) aus config lesen — falls der User den Slot umkonfiguriert
+        // hat, ehren wir das.
+        int queueSlot = 4;
+        String configuredSlotPath = "hotbar.lobby.queue.slot";
+        if (plugin.getConfigManager().getMainConfig().contains(configuredSlotPath)) {
+            queueSlot = plugin.getConfigManager().getMainConfig().getInt(configuredSlotPath, 4);
+        }
+
+        org.bukkit.NamespacedKey actionKey = plugin.getHotbarManager() != null
+                ? plugin.getHotbarManager().getActionKey()
+                : null;
+
         if (plugin.getQueueManager().isInQueue(uuid)) {
-            // Leave Queue Item
             ItemStack leaveQueue = new ItemStack(Material.BARRIER);
             ItemMeta meta = leaveQueue.getItemMeta();
             meta.setDisplayName("§cʟᴇᴀᴠᴇ ǫᴜᴇᴜᴇ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
             meta.setLore(java.util.Arrays.asList("§7Click to leave your current queue."));
+            if (actionKey != null) {
+                meta.getPersistentDataContainer().set(actionKey,
+                        org.bukkit.persistence.PersistentDataType.STRING,
+                        HotbarManager.ACTION_QUEUE_DYNAMIC);
+            }
             leaveQueue.setItemMeta(meta);
-            player.getInventory().setItem(4, leaveQueue);
+            player.getInventory().setItem(queueSlot, leaveQueue);
         } else {
-            // Join Last Queue Item
             ItemStack joinQueue = new ItemStack(Material.PLAYER_HEAD);
             SkullMeta headMeta = (SkullMeta) joinQueue.getItemMeta();
             headMeta.setDisplayName("§aᴊᴏɪɴ ʟᴀѕᴛ ǫᴜᴇᴜᴇ ᴀɢᴀɪɴ §7(ʀɪɢʜᴛᴄʟɪᴄᴋ)");
             headMeta.setLore(java.util.Arrays.asList("§7Here you can join the same Queue again."));
             headMeta.setOwningPlayer(player);
+            if (actionKey != null) {
+                headMeta.getPersistentDataContainer().set(actionKey,
+                        org.bukkit.persistence.PersistentDataType.STRING,
+                        HotbarManager.ACTION_QUEUE_DYNAMIC);
+            }
             joinQueue.setItemMeta(headMeta);
-            player.getInventory().setItem(4, joinQueue);
+            player.getInventory().setItem(queueSlot, joinQueue);
         }
 
         player.updateInventory();
@@ -254,17 +502,55 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     public void teleportToSpawn(Player player) {
         Location spawn = plugin.getArenaManager().getSpawnLocation();
         if (spawn == null) {
-            player.sendMessage(plugin.getPrefix() + "§cSpawn has not been set yet!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.spawn-not-set", "&cSpawn has not been set yet!"));
             return;
         }
+        attemptSpawnTeleport(player, spawn, 0);
+    }
 
-        player.teleport(spawn);
+    /**
+     * Robustly teleports a player to spawn. A bare {@code player.teleport()} can
+     * silently fail (return false) when the player still rides/has a vehicle, is
+     * spectating an entity (camera attached), or has passengers — in that case
+     * the old code still handed out the lobby hotbar items but never moved the
+     * player. We clear those blockers first and retry a few times before
+     * applying the lobby state.
+     */
+    private void attemptSpawnTeleport(Player player, Location spawn, int attempt) {
+        if (player == null || !player.isOnline()) return;
+
+        // Clear common teleport blockers.
+        if (player.getSpectatorTarget() != null) player.setSpectatorTarget(null);
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR) {
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        }
+        if (player.isInsideVehicle()) player.leaveVehicle();
+        if (!player.getPassengers().isEmpty()) player.eject();
+
+        boolean ok;
+        try {
+            ok = player.teleport(spawn, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        } catch (Throwable t) {
+            ok = false;
+        }
+
+        if (!ok && attempt < 3) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> attemptSpawnTeleport(player, spawn, attempt + 1), 2L);
+            return;
+        }
 
         if (!plugin.getDuelManager().isInDuel(player.getUniqueId())) {
             forceLobbyState(player);
             setupPlayerInventory(player);
             refreshQueueSlotItem(player);
-            applyLobbyFly(player);
+            // Fly mit kurzem Delay applizieren — nach Cross-World-Teleport
+            // oder redundantem setGameMode kann Paper den Flight-State
+            // zurücksetzen. 2-Tick-Delay (wie bei onJoin) garantiert, dass
+            // der Teleport vollständig abgeschlossen ist.
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) applyLobbyFly(player);
+            }, 2L);
         }
 
         plugin.getScoreboardManager().updateScoreboard(player);
@@ -288,7 +574,12 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
         player.getActivePotionEffects().forEach(effect ->
                 player.removePotionEffect(effect.getType()));
 
-        player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        // GameMode nur setzen wenn nötig — Paper kann bei redundantem
+        // setGameMode(SURVIVAL) die Flight-Flags zurücksetzen, was dazu
+        // führt dass /spawn das Fliegen deaktiviert obwohl es an war.
+        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL) {
+            player.setGameMode(org.bukkit.GameMode.SURVIVAL);
+        }
     }
 
 
@@ -303,7 +594,7 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             return;
         }
 
-        if (!player.hasPermission("duels.fly")) {
+        if (plugin.getConfigManager().isAutoDisableFly() && !player.hasPermission("duels.fly")) {
             player.setFlying(false);
             player.setAllowFlight(false);
             return;
@@ -336,23 +627,12 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     public void applyDuelVisibility(Player p1, Player p2) {
         if (p1 == null || p2 == null) return;
 
-        // Duelists: hide everyone except each other
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (other.equals(p1) || other.equals(p2)) continue;
-            p1.hidePlayer(plugin, other);
-            p2.hidePlayer(plugin, other);
-        }
-
-        // Ensure duelists see each other
+        // User-Wunsch: Spieler im Duel bleiben in der Tab-Liste sichtbar.
+        // Statt sie hart zu verstecken, sorgen wir nur dafür, dass die
+        // beiden Duelisten sich gegenseitig sehen können (falls sie vorher
+        // per Visibility-Toggle versteckt waren).
         p1.showPlayer(plugin, p2);
         p2.showPlayer(plugin, p1);
-
-        // Everyone else: hide BOTH duelists
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (viewer.equals(p1) || viewer.equals(p2)) continue;
-            viewer.hidePlayer(plugin, p1);
-            viewer.hidePlayer(plugin, p2);
-        }
     }
 
 
@@ -372,24 +652,31 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
 
 
     public void enforceDuelPrivacyForJoin(Player joiner) {
-        if (joiner == null) return;
-
-        for (Player other : Bukkit.getOnlinePlayers()) {
-            if (other.equals(joiner)) continue;
-
-            boolean otherInDuel = plugin.getDuelManager().isInDuel(other.getUniqueId());
-
-            // If other is in a duel: joiner can't see them AND they can't see joiner
-            if (otherInDuel) {
-                joiner.hidePlayer(plugin, other);
-                other.hidePlayer(plugin, joiner);
-            }
-        }
+        // User-Wunsch: Spieler in Duels bleiben in der Tab-Liste sichtbar.
+        // Wir verstecken sie nicht mehr beim Join eines neuen Spielers.
+        // (Methode bleibt als No-Op für API-Kompatibilität.)
     }
 
 
 
     public void updatePlayerVisibility(Player player) {
+        if (player == null) return;
+        // Visibility-Item NUR in der Lobby-Welt setzen. Sonst würde z.B. nach
+        // einem Duel-Ende (restoreAllVisibility loopt über ALLE Spieler) das
+        // Item in Slot 7 jedes Spielers in einer anderen Welt landen und das
+        // aktuelle Item überschreiben (User-Bug: "Visibility item ersetzt
+        // bei jedem anderen das aktuelle Item wenn jemand in die Lobby geht").
+        if (!isInLobbyWorld(player)) return;
+        // Spieler im Duel/FFA: Visibility-Item NICHT ins Inventar setzen,
+        // da es das aktive Kit ersetzen würde (User-Bug: "Visibility item
+        // ersetzt aktuelles Item wenn jemand /spawn macht").
+        if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(player.getUniqueId())) return;
+        // Spectator: ebenfalls kein Visibility-Item (leeres Inv im Spectator-Mode).
+        if (plugin.getSpectateManager() != null
+                && plugin.getSpectateManager().isSpectating(player.getUniqueId())) return;
+
         boolean hidden = isHidden(player.getUniqueId());
         ItemStack visibilityItem = new ItemStack(hidden ? Material.RED_DYE : Material.GREEN_DYE);
         ItemMeta meta = visibilityItem.getItemMeta();
@@ -402,8 +689,28 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             meta.setLore(java.util.Arrays.asList("§7Change the Player visibility", "§a✓ Players are visible"));
         }
 
+        // PDC-Tag setzen, damit das Item vom Hotbar-Clear-Loop NICHT als
+        // "non-hotbar" erkannt und gelöscht wird (Bug-Report: nach Klick
+        // verschwand das Visibility-Item, weil der neu gebaute ItemStack
+        // den Action-Tag nicht hatte und der 4-Tick-Clear-Loop es danach
+        // entfernt hat).
+        if (plugin.getHotbarManager() != null && meta != null) {
+            meta.getPersistentDataContainer().set(
+                    plugin.getHotbarManager().getActionKey(),
+                    org.bukkit.persistence.PersistentDataType.STRING,
+                    HotbarManager.ACTION_VISIBILITY);
+        }
+
         visibilityItem.setItemMeta(meta);
-        player.getInventory().setItem(7, visibilityItem);
+
+        // Slot aus Config lesen (falls User den Visibility-Slot umkonfiguriert hat).
+        int visibilitySlot = 7;
+        String configuredSlotPath = "hotbar.lobby.visibility.slot";
+        if (plugin.getConfigManager() != null
+                && plugin.getConfigManager().getMainConfig().contains(configuredSlotPath)) {
+            visibilitySlot = plugin.getConfigManager().getMainConfig().getInt(configuredSlotPath, 7);
+        }
+        player.getInventory().setItem(visibilitySlot, visibilityItem);
         player.updateInventory();
     }
 
@@ -437,6 +744,7 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
             case "deaths": return data.getDeaths();
             case "wins": return data.getWins();
             case "losses": return data.getLosses();
+            case "coins": return data.getCoins();
             default: return 0;
         }
     }
@@ -467,6 +775,40 @@ public List<PlayerData> getAllPlayerDataSnapshot() {
     public void setAutoFly(UUID uuid, boolean value) {
         autoFly.put(uuid, value);
         savePlayerData(uuid);
+    }
+
+    /**
+     * Setzt den Autofly-Status und persistiert ihn direkt in players.yml —
+     * funktioniert auch für OFFLINE-Spieler (deren PlayerData nicht geladen ist).
+     */
+    public void setAutoFlyPersistent(UUID uuid, boolean value) {
+        autoFly.put(uuid, value);
+        String key = uuid.toString();
+        plugin.getConfigManager().getPlayersConfig().set(key + ".autofly", value);
+        plugin.getConfigManager().savePlayersConfig();
+    }
+
+    /**
+     * Setzt permission-basierte Defaults durch: ohne {@code duels.fly} wird
+     * Fly aus, ohne Armortrim-Permission werden die Armortrims entfernt —
+     * jeweils nur wenn der entsprechende Config-Toggle aktiv ist.
+     */
+    public void enforcePermissionDefaults(Player player) {
+        if (player == null) return;
+        var cm = plugin.getConfigManager();
+        if (cm.isAutoDisableFly() && !player.hasPermission("duels.fly")) {
+            player.setFlying(false);
+            player.setAllowFlight(false);
+            autoFly.put(player.getUniqueId(), false);
+        }
+        if (cm.isAutoDisableArmortrim()
+                && plugin.getArmorTrimManager() != null
+                && !player.hasPermission(dev.duels.managers.ArmorTrimManager.PERMISSION)) {
+            for (dev.duels.managers.ArmorTrimManager.Piece piece
+                    : dev.duels.managers.ArmorTrimManager.Piece.values()) {
+                plugin.getArmorTrimManager().clearPiece(player.getUniqueId(), piece);
+            }
+        }
     }
 
     private boolean isValidUUID(String string) {

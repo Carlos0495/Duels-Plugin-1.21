@@ -1,6 +1,7 @@
 package dev.duels.commands;
 
 import dev.duels.DuelsPlugin;
+import dev.duels.managers.ConfigManager;
 import dev.duels.objects.PlayerData;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -21,7 +22,7 @@ public class StatsCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "§cOnly players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
@@ -40,7 +41,7 @@ public class StatsCommand implements CommandExecutor {
                 if (targetUUID != null) {
                     showPlayerStats(player, targetUUID);
                 } else {
-                    player.sendMessage(plugin.getPrefix() + "§cPlayer not found!");
+                    player.sendMessage(plugin.getConfigManager().prefixed("stats.player-not-found", "&cPlayer not found!"));
                 }
             }
         }
@@ -57,6 +58,7 @@ public class StatsCommand implements CommandExecutor {
         int losses = data.getLosses();
         double kd = data.getKD();
         double winrate = data.getWinRate();
+        int coins = data.getCoins();
 
         String playerName = data.getName();
         if (playerName == null || playerName.equals("Unknown")) {
@@ -66,12 +68,14 @@ public class StatsCommand implements CommandExecutor {
             }
         }
 
-        viewer.sendMessage(plugin.getPrefix() + "§bStats §7for §a" + playerName);
-        viewer.sendMessage("§2\uD83D\uDDE1 §7ᴋɪʟʟѕ §2" + kills);
-        viewer.sendMessage("§c☠ §7ᴅᴇᴀᴛʜѕ §c" + deaths);
-        viewer.sendMessage("§e❤ §7ᴋᴅ §e" + String.format("%.2f", kd));
-        viewer.sendMessage("§a✔ §7ᴡɪɴѕ §a" + wins);
-        viewer.sendMessage("§c✘ §7ʟᴏѕѕᴇѕ §c" + losses);
-        viewer.sendMessage("§b🧪 §7ᴡɪɴ ʀᴀᴛᴇ §b" + String.format("%.1f%%", winrate));
+        viewer.sendMessage(plugin.getConfigManager().prefixed("stats.header", "&bStats &7for &a{player}", java.util.Map.of("player", playerName)));
+        ConfigManager cm = plugin.getConfigManager();
+        viewer.sendMessage(cm.getMessage("stats.kills", "&2\uD83D\uDDE1 &7ᴋɪʟʟѕ &2{value}", java.util.Map.of("value", String.valueOf(kills))));
+        viewer.sendMessage(cm.getMessage("stats.deaths", "&c☠ &7ᴅᴇᴀᴛʜѕ &c{value}", java.util.Map.of("value", String.valueOf(deaths))));
+        viewer.sendMessage(cm.getMessage("stats.kd", "&e❤ &7ᴋᴅ &e{value}", java.util.Map.of("value", String.format("%.2f", kd))));
+        viewer.sendMessage(cm.getMessage("stats.wins", "&a✔ &7ᴡɪɴѕ &a{value}", java.util.Map.of("value", String.valueOf(wins))));
+        viewer.sendMessage(cm.getMessage("stats.losses", "&c✘ &7ʟᴏѕѕᴇѕ &c{value}", java.util.Map.of("value", String.valueOf(losses))));
+        viewer.sendMessage(cm.getMessage("stats.winrate", "&b🧪 &7ᴡɪɴ ʀᴀᴛᴇ &b{value}", java.util.Map.of("value", String.format("%.1f%%", winrate))));
+        viewer.sendMessage(cm.getMessage("stats.coins", "&6\uD83D\uDCB0 &7{currency} &6{value}", java.util.Map.of("value", String.valueOf(coins))));
     }
 }

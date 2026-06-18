@@ -18,7 +18,7 @@ public class PingCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "Only players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "Only players can use this command!"));
             return true;
         }
 
@@ -27,17 +27,17 @@ public class PingCommand implements CommandExecutor {
         if (args.length == 0) {
             // Eigenen Ping anzeigen
             int ping = getPlayerPing(player);
-            player.sendMessage(plugin.getPrefix() + "§7Your ping: §a" + ping + "ms");
+            player.sendMessage(plugin.getConfigManager().prefixed("ping.self", "&7Your ping: &a{ping}ms", java.util.Map.of("ping", String.valueOf(ping))));
         } else {
             // Ping von anderem Spieler anzeigen
             Player target = Bukkit.getPlayer(args[0]);
             if (target == null) {
-                player.sendMessage(plugin.getPrefix() + "§cPlayer not found!");
+                player.sendMessage(plugin.getConfigManager().prefixed("stats.player-not-found", "&cPlayer not found!"));
                 return true;
             }
 
             int targetPing = getPlayerPing(target);
-            player.sendMessage(plugin.getPrefix() + "§7" + target.getName() + "'s ping: §a" + targetPing + "ms");
+            player.sendMessage(plugin.getConfigManager().prefixed("ping.other", "&7{player}'s ping: &a{ping}ms", java.util.Map.of("player", target.getName(), "ping", String.valueOf(targetPing))));
         }
 
         return true;

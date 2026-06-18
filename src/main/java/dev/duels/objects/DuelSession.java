@@ -12,11 +12,13 @@ public class DuelSession {
     private final String kitName;
     private final String arenaName;
     private int timeLeft;
+    private final int initialDuration;
     private final int bestOf;
     private int winsP1;
     private int winsP2;
     private int round;
     private boolean roundStarting;
+    private boolean matchEnded;
 
     public DuelSession(UUID player1, UUID player2, String kitName, String arenaName, int timeLeft, int bestOf) {
         this.player1 = player1;
@@ -24,11 +26,13 @@ public class DuelSession {
         this.kitName = kitName;
         this.arenaName = arenaName;
         this.timeLeft = timeLeft;
+        this.initialDuration = timeLeft;
         this.bestOf = Math.max(1, bestOf);
         this.winsP1 = 0;
         this.winsP2 = 0;
         this.round = 1;
         this.roundStarting = false;
+        this.matchEnded = false;
     }
 
     public UUID getPlayer1() { return player1; }
@@ -37,6 +41,7 @@ public class DuelSession {
     public String getArenaName() { return arenaName; }
     public int getTimeLeft() { return timeLeft; }
     public void setTimeLeft(int timeLeft) { this.timeLeft = timeLeft; }
+    public int getInitialDuration() { return initialDuration; }
     public int getBestOf() { return bestOf; }
     public int getWinsP1() { return winsP1; }
     public void setWinsP1(int winsP1) { this.winsP1 = winsP1; }
@@ -46,6 +51,8 @@ public class DuelSession {
     public void setRound(int round) { this.round = round; }
     public boolean isRoundStarting() { return roundStarting; }
     public void setRoundStarting(boolean roundStarting) { this.roundStarting = roundStarting; }
+    public boolean isMatchEnded() { return matchEnded; }
+    public void setMatchEnded(boolean matchEnded) { this.matchEnded = matchEnded; }
 
     public UUID getOpponent(UUID player) {
         if (player1.equals(player)) return player2;
@@ -66,7 +73,9 @@ public class DuelSession {
     }
 
     public int requiredWins() {
-        return (bestOf / 2) + 1;
+        // User-Wunsch: "best of N" = First-to-N. Wenn der Spieler 5 Runden
+        // einstellt, müssen 5 Runden gewonnen werden (NICHT die Hälfte+1).
+        return bestOf;
     }
 
     public String getScoreString() {

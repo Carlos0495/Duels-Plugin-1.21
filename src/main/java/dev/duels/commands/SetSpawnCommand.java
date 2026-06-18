@@ -17,19 +17,19 @@ public class SetSpawnCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getPrefix() + "§cOnly players can use this command!");
+            sender.sendMessage(plugin.getConfigManager().prefixed("general.players-only", "&cOnly players can use this command!"));
             return true;
         }
 
         Player player = (Player) sender;
 
         if (!player.hasPermission("duels.setspawn")) {
-            player.sendMessage(plugin.getPrefix() + "§cYou don't have permission!");
+            player.sendMessage(plugin.getConfigManager().prefixed("general.no-permission", "&cYou don't have permission!"));
             return true;
         }
 
         plugin.getArenaManager().setSpawnLocation(player.getLocation());
-        player.sendMessage(plugin.getPrefix() + "§a§lSpawn§7 has been §aset!");
+        player.sendMessage(plugin.getConfigManager().prefixed("admin.spawn-set", "&a&lSpawn&7 has been &aset!"));
         return true;
     }
 }

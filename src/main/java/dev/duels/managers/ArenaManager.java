@@ -5,7 +5,10 @@ import dev.duels.objects.Arena;
 import dev.duels.objects.BlockVector;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.WorldCreator;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.*;
 
@@ -15,6 +18,18 @@ public class ArenaManager {
     private final Map<String, Arena> arenas = new HashMap<>();
     private final Map<String, Arena> availableArenas = new HashMap<>();
     private Location spawnLocation;
+    /**
+     * Gespeicherte Spawn-Kodierung "world,x,y,z,yaw,pitch". Wird benötigt, wenn
+     * die Spawn-Welt beim Plugin-Enable noch nicht geladen ist (z.B. Multiverse-
+     * Welten die erst später geladen werden). In dem Fall ist {@link #spawnLocation}
+     * vorerst {@code null}; beim {@code WorldLoadEvent} wird {@link #tryResolveSpawn()}
+     * nachträglich die Location berechnen.
+     */
+    private String pendingSpawnString;
+
+    /** Eigener Spawn für Party-FFA (alle gegen alle in einer Arena). */
+    private Location partyFFASpawn;
+    private String pendingPartyFFASpawnString;
 
     public ArenaManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -24,10 +39,8 @@ public class ArenaManager {
         arenas.clear();
         availableArenas.clear();
 
-        // Lobby spawn from main config (can stay as Bukkit Location)
-        if (plugin.getConfigManager().getMainConfig().contains("spawn")) {
-            spawnLocation = plugin.getConfigManager().getMainConfig().getLocation("spawn");
-        }
+        loadSpawnFromConfig();
+        loadPartyFFASpawnFromConfig();
 
         var arenaCfg = plugin.getConfigManager().getArenaConfig();
         if (arenaCfg == null || !arenaCfg.contains("arenas")) return;
@@ -69,6 +82,23 @@ public class ArenaManager {
                 arena.setCorner2(stringToLoc(arenaCfg.getString(path + ".corner2")));
             } else if (arenaCfg.contains(path + ".corner2")) {
                 arena.setCorner2(arenaCfg.getLocation(path + ".corner2"));
+            }
+
+            // Allowed kits (empty list / missing = alle Kits erlaubt)
+            if (arenaCfg.isList(path + ".allowedKits")) {
+                arena.setAllowedKits(arenaCfg.getStringList(path + ".allowedKits"));
+            }
+
+            // Zusätzlich abbaubare Arena-Blöcke (für Custom-Kits)
+            if (arenaCfg.isList(path + ".breakableBlocks")) {
+                arena.setBreakableBlocks(arenaCfg.getStringList(path + ".breakableBlocks"));
+            }
+
+            // Per-Arena FFA-Spawn (optional). Wenn gesetzt, kann diese Arena
+            // für Party-FFA reserviert werden — mehrere Parties = mehrere
+            // Maps gleichzeitig.
+            if (arenaCfg.isString(path + ".ffa-spawn")) {
+                arena.setFfaSpawn(stringToLoc(arenaCfg.getString(path + ".ffa-spawn")));
             }
 
             // Snapshot load (your existing method)
@@ -147,12 +177,36 @@ public class ArenaManager {
     }
 
     public void saveArena(Arena arena) {
+        // Vor dem Schreiben Disk-Stand laden, damit Hand-Edits an anderen
+        // Arenen / Keys in arena.yml erhalten bleiben (Config-Reset-Fix).
+        plugin.getConfigManager().reloadArenaConfigFromDisk();
         String path = "arenas." + arena.getName();
 
         plugin.getConfigManager().getArenaConfig().set(path + ".spawn1", locToString(arena.getSpawn1()));
         plugin.getConfigManager().getArenaConfig().set(path + ".spawn2", locToString(arena.getSpawn2()));
         plugin.getConfigManager().getArenaConfig().set(path + ".corner1", locToString(arena.getCorner1()));
         plugin.getConfigManager().getArenaConfig().set(path + ".corner2", locToString(arena.getCorner2()));
+        if (arena.hasFfaSpawn()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".ffa-spawn", locToString(arena.getFfaSpawn()));
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".ffa-spawn", null);
+        }
+
+        // Allowed kits
+        if (arena.getAllowedKits().isEmpty()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".allowedKits", null);
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".allowedKits",
+                    new ArrayList<>(arena.getAllowedKits()));
+        }
+
+        // Breakable arena blocks
+        if (arena.getBreakableBlocks().isEmpty()) {
+            plugin.getConfigManager().getArenaConfig().set(path + ".breakableBlocks", null);
+        } else {
+            plugin.getConfigManager().getArenaConfig().set(path + ".breakableBlocks",
+                    new ArrayList<>(arena.getBreakableBlocks()));
+        }
 
         saveArenaSnapshot(arena);
         plugin.getConfigManager().saveArenaConfig();
@@ -194,18 +248,87 @@ public class ArenaManager {
     }
 
     public Arena getRandomAvailableArena() {
+        return getRandomAvailableArenaForKit(null);
+    }
+
+    /**
+     * Returns a random fully-configured, free arena that allows the given kit.
+     * Pass {@code null} to ignore the kit constraint (legacy behaviour).
+     */
+    public Arena getRandomAvailableArenaForKit(String kitId) {
         List<Arena> available = new ArrayList<>();
         for (Arena arena : arenas.values()) {
-            if (!arena.isInUse() && arena.hasSnapshot() &&
-                    arena.getSpawn1() != null && arena.getSpawn2() != null &&
-                    arena.getCorner1() != null && arena.getCorner2() != null) {
-                available.add(arena);
-            }
-
+            if (arena.isInUse()) continue;
+            // Block-Level Snapshot ist NICHT mehr Pflicht für die Queue —
+            // bei Sumo/NoDebuff oder zu großen Arenen wird kein Snapshot
+            // genommen, das Duell läuft trotzdem. resetArena() überspringt
+            // dann nur den Block-Restore (Entities werden weiterhin
+            // gekillt).
+            if (arena.getSpawn1() == null || arena.getSpawn2() == null) continue;
+            if (kitId != null && !arena.isKitAllowed(kitId)) continue;
+            available.add(arena);
         }
 
+        if (available.isEmpty()) {
+            // Diagnostik: warum hat keine Arena gepasst? Hilft dem Admin
+            // Setup-Probleme zu finden ("freie Arena ist da, queue startet
+            // trotzdem nicht").
+            logArenaSelectionFailure(kitId);
+            return null;
+        }
+        return available.get(new Random().nextInt(available.size()));
+    }
+
+    /**
+     * Findet eine freie Arena, die das gegebene Kit erlaubt UND einen
+     * eigenen FFA-Spawn hat. Mehrere Parties können parallel auf
+     * verschiedenen Maps FFA spielen — jede Party belegt eine eigene
+     * Arena. Wenn keine passende Arena verfügbar ist, gibt {@code null}
+     * zurück (User muss dann warten oder Admin braucht mehr Maps).
+     */
+    public Arena getRandomFFAArenaForKit(String kitId) {
+        List<Arena> available = new ArrayList<>();
+        for (Arena arena : arenas.values()) {
+            if (arena.isInUse()) continue;
+            if (!arena.hasFfaSpawn()) continue;
+            if (kitId != null && !arena.isKitAllowed(kitId)) continue;
+            available.add(arena);
+        }
         if (available.isEmpty()) return null;
         return available.get(new Random().nextInt(available.size()));
+    }
+
+    /** Loggt pro Arena ob sie disqualifiziert wurde und warum. */
+    private void logArenaSelectionFailure(String kitId) {
+        if (arenas.isEmpty()) {
+            plugin.getLogger().warning("Arena selection: no arenas configured at all.");
+            return;
+        }
+        plugin.getLogger().warning("Arena selection failed for kit='" + kitId + "'. Reasons per arena:");
+        for (Arena arena : arenas.values()) {
+            StringBuilder reason = new StringBuilder();
+            if (arena.isInUse()) reason.append("inUse ");
+            if (arena.getSpawn1() == null) reason.append("noSpawn1 ");
+            if (arena.getSpawn2() == null) reason.append("noSpawn2 ");
+            if (kitId != null && !arena.isKitAllowed(kitId)) reason.append("kitNotAllowed ");
+            if (reason.length() == 0) reason.append("ok? (would have matched — race?)");
+            plugin.getLogger().warning("  - " + arena.getName() + ": " + reason.toString().trim());
+        }
+    }
+
+    /**
+     * Räumt nach Plugin-Restart alle "inUse"-Flags ab. Falls der Server
+     * mitten in einem Duel gecrasht/neu gestartet ist, wären sonst alle
+     * betroffenen Arenen für immer als belegt markiert und der User würde
+     * "no arena free" sehen obwohl alle frei sind.
+     */
+    public void resetAllInUseFlags() {
+        for (Arena arena : arenas.values()) {
+            if (arena.isInUse()) {
+                arena.setInUse(false);
+                plugin.getLogger().info("Arena '" + arena.getName() + "' inUse flag cleared on startup.");
+            }
+        }
     }
 
     public String reserveRandomFreeArenaName() {
@@ -214,29 +337,168 @@ public class ArenaManager {
     }
 
     public void resetArena(Arena arena, Runnable onComplete) {
-        if (arena == null || !arena.hasSnapshot()) {
+        if (arena == null) {
             if (onComplete != null) onComplete.run();
             return;
         }
 
-        org.bukkit.World world = Bukkit.getWorld(arena.getSnapshotWorld());
-        if (world == null) {
-            if (onComplete != null) onComplete.run();
-            return;
-        }
+        // Welt aus snapshot bevorzugen, sonst aus corners. So funktioniert der
+        // Reset auch für Arenen ohne Block-Snapshot (Sumo/NoDebuff/große Builds).
+        org.bukkit.World world = null;
+        if (arena.getSnapshotWorld() != null) world = Bukkit.getWorld(arena.getSnapshotWorld());
+        if (world == null && arena.getCorner1() != null) world = arena.getCorner1().getWorld();
+        if (world == null && arena.getSpawn1() != null) world = arena.getSpawn1().getWorld();
 
-        // Blocks setzen (sync, weil Block-API main thread)
+        final org.bukkit.World worldFinal = world;
         Bukkit.getScheduler().runTask(plugin, () -> {
-            for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
-                BlockVector v = e.getKey();
-                world.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+            try {
+                if (worldFinal != null) {
+                    // 1. Player-placed Blöcke entfernen (auch wenn kein Snapshot
+                    // existiert) — Crystal-Bases, Obsidian, etc. werden hier
+                    // aus der Welt geräumt.
+                    if (!arena.getPlayerPlacedBlocks().isEmpty()) {
+                        org.bukkit.block.data.BlockData air = Bukkit.createBlockData(org.bukkit.Material.AIR);
+                        for (BlockVector v : new java.util.ArrayList<>(arena.getPlayerPlacedBlocks())) {
+                            // Nur überschreiben wenn original nicht festlegt
+                            // (sonst übernimmt der Snapshot-Restore unten).
+                            if (!arena.getOriginalBlocks().containsKey(v)) {
+                                worldFinal.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(air, false);
+                            }
+                        }
+                        arena.clearPlayerPlacedBlocks();
+                    }
+
+                    // 2. Snapshot zurückspielen (falls erfasst)
+                    if (arena.hasSnapshot()) {
+                        for (Map.Entry<BlockVector, org.bukkit.block.data.BlockData> e : arena.getOriginalBlocks().entrySet()) {
+                            BlockVector v = e.getKey();
+                            worldFinal.getBlockAt(v.getX(), v.getY(), v.getZ()).setBlockData(e.getValue(), false);
+                        }
+                    }
+
+                    // 2.5 Flüssigkeits-Sweep: garantiert, dass kein Wasser/Lava
+                    // (auch fließendes "flaches" Wasser oder waterlogged Blöcke)
+                    // stehen bleibt, das beim Tracking durchgerutscht ist. Für
+                    // Snapshot-Arenen ein Sicherheitsnetz, für große Arenen ohne
+                    // Snapshot die eigentliche Flüssigkeits-Bereinigung.
+                    sweepStrayLiquids(worldFinal, arena);
+
+                    // 3. Entities (Pfeile, Drops, Crystals, Tridents) wegräumen
+                    cleanupArenaEntities(worldFinal, arena);
+
+                    // 4. Explizit getrackte Entities (End-Crystals) entfernen,
+                    // auch wenn Corner-Bounds das nicht abgedeckt haben.
+                    if (!arena.getTrackedEntities().isEmpty()) {
+                        for (java.util.UUID id : new java.util.ArrayList<>(arena.getTrackedEntities())) {
+                            org.bukkit.entity.Entity e = Bukkit.getEntity(id);
+                            if (e != null) {
+                                try { e.remove(); } catch (Throwable ignored) {}
+                            }
+                        }
+                        arena.clearTrackedEntities();
+                    }
+                }
+            } catch (Throwable t) {
+                plugin.getLogger().warning("resetArena failed for '" + arena.getName() + "': " + t.getMessage());
             }
             if (onComplete != null) onComplete.run();
         });
     }
 
+    /**
+     * Entfernt jegliches Wasser/Lava (inkl. fließendem "flachem" Wasser und
+     * waterlogged Blöcken) in der Arena-Bounding-Box, das nicht zum Original
+     * gehört. Das ist die zuverlässige Lösung für "Flüssigkeit wird beim Reset
+     * manchmal nicht entfernt", weil das ereignisbasierte Tracking einzelne
+     * Fließ-Kacheln verpassen kann.
+     */
+    private void sweepStrayLiquids(org.bukkit.World world, Arena arena) {
+        if (world == null || !arena.hasSnapshotBounds()) return;
+
+        int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
+        int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();
+
+        long volume = (long) (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        long cap = plugin.getConfigManager().getMainConfig().getLong("arena.max-liquid-sweep-blocks", 1000000L);
+        if (cap > 0 && volume > cap) return; // zu groß → überspringen, kein Lag-Spike
+
+        org.bukkit.block.data.BlockData air = Bukkit.createBlockData(org.bukkit.Material.AIR);
+        Map<BlockVector, org.bukkit.block.data.BlockData> originals = arena.getOriginalBlocks();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    org.bukkit.block.Block b = world.getBlockAt(x, y, z);
+                    org.bukkit.Material t = b.getType();
+                    boolean liquid = t == org.bukkit.Material.WATER || t == org.bukkit.Material.LAVA;
+                    org.bukkit.block.data.BlockData bd = b.getBlockData();
+                    boolean waterlogged = bd instanceof org.bukkit.block.data.Waterlogged wl && wl.isWaterlogged();
+                    if (!liquid && !waterlogged) continue;
+
+                    BlockVector v = new BlockVector(x, y, z);
+                    org.bukkit.block.data.BlockData orig = originals.get(v);
+                    if (orig != null) {
+                        // Original wiederherstellen (deckt Map-Wasser + waterlogged ab).
+                        if (!orig.equals(bd)) b.setBlockData(orig, false);
+                    } else if (liquid) {
+                        // Im Match entstandene Flüssigkeit ohne Original → entfernen.
+                        b.setBlockData(air, false);
+                    } else {
+                        // waterlogged ohne Original-Record → nur das Wasser entfernen.
+                        org.bukkit.block.data.Waterlogged wl = (org.bukkit.block.data.Waterlogged) bd;
+                        wl.setWaterlogged(false);
+                        b.setBlockData(wl, false);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Killt alle Nicht-Spieler-Entities (Arrows, gedroppte Items, EnderCrystals,
+     * Tridents, ItemFrames-Drops etc.) in der Bounding-Box der Arena. Spieler
+     * werden NIE entfernt — ein im Reset noch tp-mäßig drin steckender
+     * Spieler bleibt unangetastet. Falls Snapshot-Bounds fehlen, fallback auf
+     * Corner-Bounds.
+     */
+    private void cleanupArenaEntities(org.bukkit.World world, Arena arena) {
+        if (world == null) return;
+        int minX, minY, minZ, maxX, maxY, maxZ;
+        if (arena.hasSnapshotBounds()) {
+            minX = arena.getSnapshotMinX(); minY = arena.getSnapshotMinY(); minZ = arena.getSnapshotMinZ();
+            maxX = arena.getSnapshotMaxX(); maxY = arena.getSnapshotMaxY(); maxZ = arena.getSnapshotMaxZ();
+        } else if (arena.getCorner1() != null && arena.getCorner2() != null) {
+            Location c1 = arena.getCorner1(), c2 = arena.getCorner2();
+            minX = Math.min(c1.getBlockX(), c2.getBlockX()); maxX = Math.max(c1.getBlockX(), c2.getBlockX());
+            minY = Math.min(c1.getBlockY(), c2.getBlockY()); maxY = Math.max(c1.getBlockY(), c2.getBlockY());
+            minZ = Math.min(c1.getBlockZ(), c2.getBlockZ()); maxZ = Math.max(c1.getBlockZ(), c2.getBlockZ());
+        } else if (arena.getSpawn1() != null) {
+            // Letzter Fallback: kleine Box um spawn1
+            Location s = arena.getSpawn1();
+            int r = 50;
+            minX = s.getBlockX() - r; maxX = s.getBlockX() + r;
+            minY = Math.max(world.getMinHeight(), s.getBlockY() - r);
+            maxY = Math.min(world.getMaxHeight(), s.getBlockY() + r);
+            minZ = s.getBlockZ() - r; maxZ = s.getBlockZ() + r;
+        } else {
+            return;
+        }
+        double pad = 2.0;
+        for (org.bukkit.entity.Entity e : world.getNearbyEntities(
+                new org.bukkit.util.BoundingBox(
+                        minX - pad, minY - pad, minZ - pad,
+                        maxX + 1 + pad, maxY + 1 + pad, maxZ + 1 + pad))) {
+            if (e instanceof org.bukkit.entity.Player) continue;
+            try { e.remove(); } catch (Throwable ignored) {}
+        }
+    }
+
     public Arena getArena(String name) {
         return arenas.get(name);
+    }
+
+    public java.util.Collection<Arena> getAllArenas() {
+        return arenas.values();
     }
 
     public Arena getArenaAt(Location loc) {
@@ -269,12 +531,19 @@ public class ArenaManager {
         return true;
     }
 
-    private void captureArenaSnapshot(Arena arena) {
+    /**
+     * Erfasst den Block-Snapshot der Arena. Wenn die Arena das konfigurierte
+     * Volumen-Limit ({@code arena.max-snapshot-blocks}, default 200000)
+     * überschreitet, wird das Capture übersprungen — die Arena ist dann
+     * "spielbar, aber nicht reset-bar". Das verhindert OOM bei riesigen
+     * Build-Arenen.
+     */
+    private boolean captureArenaSnapshot(Arena arena) {
         arena.getOriginalBlocks().clear();
 
         Location c1 = arena.getCorner1();
         Location c2 = arena.getCorner2();
-        if (c1 == null || c2 == null || c1.getWorld() == null) return;
+        if (c1 == null || c2 == null || c1.getWorld() == null) return false;
 
         int minX = Math.min(c1.getBlockX(), c2.getBlockX());
         int maxX = Math.max(c1.getBlockX(), c2.getBlockX());
@@ -282,6 +551,17 @@ public class ArenaManager {
         int maxY = Math.max(c1.getBlockY(), c2.getBlockY());
         int minZ = Math.min(c1.getBlockZ(), c2.getBlockZ());
         int maxZ = Math.max(c1.getBlockZ(), c2.getBlockZ());
+
+        long volume = (long)(maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        var main = plugin.getConfigManager().getMainConfig();
+        long max = main.getLong("arena.max-snapshot-blocks", 200000L);
+        if (max > 0 && volume > max) {
+            plugin.getLogger().warning("Arena '" + arena.getName() + "' is too big to snapshot ("
+                    + volume + " > " + max + " blocks). Set 'arena.max-snapshot-blocks' higher to allow it.");
+            arena.setSnapshotWorld(c1.getWorld().getName());
+            arena.setSnapshotBounds(minX, minY, minZ, maxX, maxY, maxZ);
+            return false;
+        }
 
         arena.setSnapshotWorld(c1.getWorld().getName());
         arena.setSnapshotBounds(minX, minY, minZ, maxX, maxY, maxZ);
@@ -295,6 +575,7 @@ public class ArenaManager {
                 }
             }
         }
+        return true;
     }
 
     public boolean deleteArena(String name) {
@@ -303,6 +584,7 @@ public class ArenaManager {
 
         arenas.remove(name);
         availableArenas.remove(name);
+        plugin.getConfigManager().reloadArenaConfigFromDisk();
         plugin.getConfigManager().getArenaConfig().set("arenas." + name, null);
         plugin.getConfigManager().saveArenaConfig();
 
@@ -315,18 +597,197 @@ public class ArenaManager {
 
     public void setSpawnLocation(Location location) {
         this.spawnLocation = location;
-        plugin.getConfigManager().getMainConfig().set("spawn", location);
-        plugin.getConfigManager().saveAllConfigs();
+        String s = locToString(location);
+        this.pendingSpawnString = s;
 
-
+        // Reload-before-modify: Hand-Edits an config.yml überleben.
+        plugin.getConfigManager().reloadMainConfigFromDisk();
+        var main = plugin.getConfigManager().getMainConfig();
+        // Neues String-Format schreiben, altes Bukkit-Location-Format entfernen
+        // (damit nach einem /setspawn nur noch eine Variante in der config.yml
+        // steht; beim nächsten Reload liest loadSpawnFromConfig zuerst den
+        // String und ignoriert das alte Format).
+        main.set("spawn-string", s);
+        if (main.contains("spawn") && !main.isString("spawn")) {
+            main.set("spawn", null);
+        }
+        plugin.saveConfig();
+        // Kein saveAllConfigs() hier — das würde players.yml unnötig
+        // mitschreiben und keine andere Datei wurde geändert.
     }
 
 
     public Location getSpawnLocation() {
+        // Lazy-Resolve: wenn Welt beim Plugin-Enable noch nicht geladen war,
+        // versuchen wir hier nochmal — die Welt ist jetzt vielleicht da
+        // (z.B. weil Multiverse/PlotSquared nach uns initialisiert hat).
+        if (spawnLocation == null && pendingSpawnString != null) {
+            tryResolveSpawn();
+        }
         return spawnLocation;
     }
 
+    /**
+     * Wird vom {@code WorldListener} aufgerufen, sobald eine neue Welt geladen
+     * wird. Falls der Lobby-Spawn in genau dieser Welt liegt, wird die Location
+     * jetzt nachträglich aufgelöst.
+     */
+    public void onWorldLoaded(String worldName) {
+        // Lobby-Spawn
+        if (spawnLocation == null && pendingSpawnString != null) {
+            String[] parts = pendingSpawnString.split(",", 2);
+            if (parts.length >= 1 && parts[0].equalsIgnoreCase(worldName)) {
+                tryResolveSpawn();
+                if (spawnLocation != null) {
+                    plugin.getLogger().info("Resolved lobby spawn in world '" + worldName + "' after world load.");
+                }
+            }
+        }
+
+        // Party-FFA-Spawn — gleiches Lazy-Load-Schema
+        if (partyFFASpawn == null && pendingPartyFFASpawnString != null) {
+            String[] parts = pendingPartyFFASpawnString.split(",", 2);
+            if (parts.length >= 1 && parts[0].equalsIgnoreCase(worldName)) {
+                Location loc = stringToLoc(pendingPartyFFASpawnString);
+                if (loc != null) {
+                    partyFFASpawn = loc;
+                    plugin.getLogger().info("Resolved Party-FFA spawn in world '" + worldName + "' after world load.");
+                }
+            }
+        }
+    }
+
+    public Location getPartyFFASpawn() {
+        if (partyFFASpawn == null && pendingPartyFFASpawnString != null) {
+            Location loc = stringToLoc(pendingPartyFFASpawnString);
+            if (loc != null) partyFFASpawn = loc;
+        }
+        return partyFFASpawn;
+    }
+
+    public void setPartyFFASpawn(Location location) {
+        this.partyFFASpawn = location;
+        String s = locToString(location);
+        this.pendingPartyFFASpawnString = s;
+        plugin.getConfigManager().reloadMainConfigFromDisk();
+        var main = plugin.getConfigManager().getMainConfig();
+        main.set("party-ffa-spawn-string", s);
+        plugin.saveConfig();
+    }
+
+    private void loadPartyFFASpawnFromConfig() {
+        var main = plugin.getConfigManager().getMainConfig();
+        if (!main.isString("party-ffa-spawn-string")) return;
+        pendingPartyFFASpawnString = main.getString("party-ffa-spawn-string");
+        Location loc = stringToLoc(pendingPartyFFASpawnString);
+        if (loc != null) {
+            partyFFASpawn = loc;
+        } else {
+            String worldName = pendingPartyFFASpawnString.split(",", 2)[0];
+            plugin.getLogger().warning("Party-FFA spawn world '" + worldName
+                    + "' is not loaded yet. Will resolve after world load.");
+        }
+    }
+
+    private void loadSpawnFromConfig() {
+        var main = plugin.getConfigManager().getMainConfig();
+
+        // 1) Neues String-Format (bevorzugt, funktioniert auch wenn Welt
+        //    beim Plugin-Enable noch nicht geladen ist).
+        if (main.isString("spawn-string")) {
+            pendingSpawnString = main.getString("spawn-string");
+            tryResolveSpawn();
+            return;
+        }
+
+        // 2) Altes Bukkit-Location-Format (rückwärtskompatibel). Wenn die Welt
+        //    geladen ist, funktioniert getLocation normal. Falls nicht, bauen
+        //    wir den String manuell aus der ConfigurationSection und
+        //    migrieren beim nächsten /setspawn automatisch.
+        if (!main.contains("spawn") || main.isString("spawn")) return;
+
+        try {
+            Location legacy = main.getLocation("spawn");
+            if (legacy != null && legacy.getWorld() != null) {
+                spawnLocation = legacy;
+                pendingSpawnString = locToString(legacy);
+                // Migrieren: in neues Format überführen, altes Format löschen
+                main.set("spawn-string", pendingSpawnString);
+                main.set("spawn", null);
+                plugin.saveConfig();
+                return;
+            }
+        } catch (Throwable ignored) {}
+
+        // Welt nicht geladen — rekonstruiere pendingSpawnString aus dem
+        // ConfigurationSection-Key "world" etc. damit NICHTS verloren geht.
+        ConfigurationSection sec = main.getConfigurationSection("spawn");
+        if (sec != null) {
+            String worldName = sec.getString("world");
+            if (worldName != null && !worldName.isEmpty()) {
+                double x = sec.getDouble("x");
+                double y = sec.getDouble("y");
+                double z = sec.getDouble("z");
+                double yaw = sec.getDouble("yaw", 0);
+                double pitch = sec.getDouble("pitch", 0);
+                pendingSpawnString = worldName + "," + x + "," + y + "," + z + "," + yaw + "," + pitch;
+                // Migrieren, aber altes Format NICHT entfernen, bis Welt da
+                // ist — falls wir die String-Encoding falsch interpretiert
+                // haben, wäre sonst Datenverlust möglich.
+                main.set("spawn-string", pendingSpawnString);
+                plugin.saveConfig();
+                tryResolveSpawn();
+                if (spawnLocation == null) {
+                    plugin.getLogger().warning("Lobby spawn world '" + worldName
+                            + "' is not loaded yet. Spawn will be resolved after the world loads.");
+                }
+            }
+        }
+    }
+
+    private void tryResolveSpawn() {
+        if (pendingSpawnString == null || pendingSpawnString.isEmpty()) return;
+
+        Location loc = stringToLoc(pendingSpawnString);
+        if (loc != null) {
+            spawnLocation = loc;
+            return;
+        }
+
+        // Welt nicht geladen — versuchen zu laden
+        String worldName = pendingSpawnString.split(",", 2)[0];
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            try {
+                World loaded = new WorldCreator(worldName).createWorld();
+                if (loaded != null) {
+                    Location loc2 = stringToLoc(pendingSpawnString);
+                    if (loc2 != null) spawnLocation = loc2;
+                }
+            } catch (Throwable t) {
+                plugin.getLogger().warning("Could not auto-load world '" + worldName
+                        + "' for lobby spawn: " + t.getMessage());
+            }
+        }
+    }
+
     // Füge diese Methoden zur ArenaManager Klasse hinzu:
+
+    /**
+     * Setzt den FFA-Spawn für die gegebene Arena (Multi-Map FFA).
+     * Speichert sofort in arena.yml — überlebt Restart.
+     */
+    public boolean setArenaFfaSpawn(String arenaName, Location location) {
+        Arena arena = arenas.get(arenaName);
+        if (arena == null) {
+            arena = new Arena(arenaName);
+            arenas.put(arenaName, arena);
+            availableArenas.put(arenaName, arena);
+        }
+        arena.setFfaSpawn(location);
+        saveArena(arena);
+        return true;
+    }
 
     public boolean setArenaSpawn1(String arenaName, Location location) {
         Arena arena = arenas.get(arenaName);

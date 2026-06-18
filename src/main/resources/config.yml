@@ -33,6 +33,31 @@ duel-scoreboard-lines:
   - "§e🧪 §7ᴛɪᴍᴇ ʟᴇꜰᴛ §e%timeleft%"
   - ""
 
+# FFA scoreboard lines (supports: %alive%, %map%, %online%, %playing%, %kills%, %deaths%, %kd%, %wins%, %losses%, %winrate%)
+ffa-scoreboard-lines:
+  - ""
+  - "§a☻ §7ᴏɴʟɪɴᴇ §a%online%"
+  - "§6🏹 §7ɪɴ ᴅᴜᴇʟѕ §6%playing%"
+  - ""
+  - "§b🗺 §7ᴍᴀᴘ §b%map%"
+  - "§e☠ §7ᴀʟɪᴠᴇ §e%alive%"
+  - ""
+  - "§e🧪 §7ᴛɪᴍᴇ ʟᴇꜰᴛ §e%timeleft%"
+  - ""
+
+# Team scoreboard lines (supports: %yourteam%, %enemyteam%, %map%, %online%, %playing%, %kills%, %deaths%, %kd%, %wins%, %losses%, %winrate%)
+team-scoreboard-lines:
+  - ""
+  - "§a☻ §7ᴏɴʟɪɴᴇ §a%online%"
+  - "§6🏹 §7ɪɴ ᴅᴜᴇʟѕ §6%playing%"
+  - ""
+  - "§b🗺 §7ᴍᴀᴘ §b%map%"
+  - "§a✔ §7ʏᴏᴜʀ ᴛᴇᴀᴍ §a%yourteam%"
+  - "§c✘ §7ᴇɴᴇᴍʏ ᴛᴇᴀᴍ §c%enemyteam%"
+  - ""
+  - "§e🧪 §7ᴛɪᴍᴇ ʟᴇꜰᴛ §e%timeleft%"
+  - ""
+
 # Duel settings
 duel-time: 180  # Duel duration in seconds
 request-timeout: 30  # Request timeout in seconds
@@ -40,3 +65,29 @@ default-map: "§cᴅᴜᴇʟѕ ᴍᴀᴘ"  # Default map name
 
 # Spawn location
 spawn: null
+
+# Welt-Einschränkungen: In welchen Welten welche Aktion erlaubt ist.
+# Jeweils eine LISTE von Welt-Namen. Leere Liste ([]) = überall erlaubt.
+# Item-Ersetzungen (Lobby-Hotbar, Party-Items, Visibility-Item) passieren
+# IMMER nur in der Lobby-Welt (Welt in der /setspawn gesetzt wurde).
+worlds:
+  # Welten in denen man einer Party beitreten kann.
+  # Beispiel: ["world", "lobby"]
+  join-party:
+    - world
+  # Welten in denen die öffentliche Party-Nachricht angezeigt wird.
+  # Beispiel: ["world", "lobby"]
+  public-party-message:
+    - world
+  # Welten in denen man der Queue beitreten / duellieren kann.
+  # Beispiel: ["world"]
+  queue:
+    - world
+  # Welten in denen man Kits vorschauen kann (/previewkit).
+  # Beispiel: ["world"]
+  kit-preview:
+    - world
+  # Welten in denen man Kit-Layouts bearbeiten kann.
+  # Beispiel: ["world"]
+  kit-edit:
+    - world

@@ -19,11 +19,28 @@ public class QueueManager {
 
     public void joinQueue(Player player, String kitName) {
         if (!plugin.getKitManager().kitExists(kitName)) {
-            player.sendMessage(plugin.getPrefix() + "§cKit not found: " + kitName);
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.kit-not-found", "&cKit not found: {kit}", java.util.Map.of("kit", kitName)));
             return;
         }
 
         UUID uuid = player.getUniqueId();
+
+        // Welt-Whitelist: Spieler müssen in einer der unter
+        // queue.allowed-worlds konfigurierten Welten stehen, um eine Queue
+        // betreten zu können. Standard: nur die Lobby-Welt (die Welt, in
+        // der /setspawn gesetzt wurde) ist erlaubt.
+        if (!isAllowedWorld(player)) {
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.only-lobby", "&cYou can only queue from the lobby world."));
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            return;
+        }
+
+        // Spieler in einer Party können keine Queues betreten — sie sollen
+        // ausschließlich über das Party-Menü duellieren (User-Wunsch).
+        if (plugin.getPartyManager() != null && plugin.getPartyManager().isInParty(uuid)) {
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.in-party", "&cYou can't join a queue while in a party. Leave the party first."));
+            return;
+        }
 
         // Aus allen Queues entfernen
         leaveAllQueues(uuid);
@@ -34,7 +51,7 @@ public class QueueManager {
             queue.addLast(uuid);
             lastQueueKit.put(uuid, kitName);
             String kitDisplay = plugin.getKitManager().getKitDisplayName(kitName);
-            player.sendMessage(plugin.getPrefix() + "§aQueued §7for kit §r" + kitDisplay + "§7.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.joined", "&aQueued &7for kit &r{kit}&7.", java.util.Map.of("kit", kitDisplay)));
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
         }
 
@@ -47,11 +64,43 @@ public class QueueManager {
         boolean wasInQueue = leaveAllQueues(uuid);
 
         if (wasInQueue) {
-            player.sendMessage(plugin.getPrefix() + "§cLeft §7queue.");
+            player.sendMessage(plugin.getConfigManager().prefixed("queue.left", "&cLeft &7queue."));
             player.playSound(player.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 1f, 0.8f);
         }
 
         plugin.getGuiManager().refreshQueueGUIs();
+    }
+
+    /**
+     * Prüft, ob der Spieler in einer Welt steht, die laut Config zum Queue-
+     * Beitritt berechtigt ist.
+     *
+     * <p>Konfigurationsschlüssel:</p>
+     * <pre>
+     * queue:
+     *   allowed-worlds:
+     *     - lobby
+     *     - hub
+     * </pre>
+     *
+     * <p>Wenn die Liste leer/nicht gesetzt ist, fällt der Check auf die
+     * vom Plugin bekannte Lobby-Welt zurück (Welt mit /setspawn). Damit
+     * funktioniert das Plugin ohne Config-Eintrag genauso wie vorher.</p>
+     */
+    public boolean isAllowedWorld(Player player) {
+        if (player == null || player.getWorld() == null) return false;
+        // Backward-compat: alter Schlüssel queue.allowed-worlds hat Vorrang
+        // wenn gesetzt.
+        java.util.List<String> allowed = plugin.getConfig().getStringList("queue.allowed-worlds");
+        if (allowed != null && !allowed.isEmpty()) {
+            String world = player.getWorld().getName();
+            for (String w : allowed) {
+                if (w != null && w.equalsIgnoreCase(world)) return true;
+            }
+            return false;
+        }
+        // Neue config: worlds.queue (Liste). Leer = überall erlaubt.
+        return plugin.getConfigManager().isWorldAllowed(player, "queue");
     }
 
     public boolean leaveAllQueues(UUID uuid) {
@@ -92,18 +141,21 @@ public class QueueManager {
     }
 
     private void startQueueMatch(Player player1, Player player2, String kitName) {
-        // Arena holen
-        dev.duels.objects.Arena arena = plugin.getArenaManager().getRandomAvailableArena();
+        // Arena holen (nach erlaubtem Kit gefiltert)
+        dev.duels.objects.Arena arena = plugin.getArenaManager().getRandomAvailableArenaForKit(kitName);
         if (arena == null) {
-            player1.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
-            player2.sendMessage(plugin.getPrefix() + "§cNo available arenas!");
+            player1.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
+            player2.sendMessage(plugin.getConfigManager().prefixed("queue.no-arena", "&cNo arena available for this kit!"));
             joinQueue(player1, kitName);
             joinQueue(player2, kitName);
             return;
         }
 
-        // DuelRequest erstellen
-        int bestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 3);
+        // DuelRequest erstellen. Fallback konsistent mit ConfigManager-Default
+        // (1); früher war hier 3, sodass Queue-Matches immer Bo3 liefen, auch
+        // wenn der User default-bestof in der Config auf 1 gesetzt hatte und
+        // noch kein Key existierte.
+        int bestOf = plugin.getConfigManager().getMainConfig().getInt("default-bestof", 1);
         DuelRequest request = new DuelRequest(
                 player1.getUniqueId(),
                 player2.getUniqueId(),
