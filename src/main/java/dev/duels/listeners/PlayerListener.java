@@ -168,6 +168,36 @@ public class PlayerListener implements Listener {
         event.getRecipients().removeIf(r -> !finalAllowed.contains(r.getUniqueId()));
     }
 
+    /**
+     * Party-Welt-Lock: Wer in einer Party ist, darf die Welt nicht manuell
+     * wechseln (Portale, Befehle, andere Plugins). Plugin-eigene Teleports
+     * (Match-Start, Lobby-Rückkehr) und Spieler, die bereits in einem Match
+     * sind, werden NICHT geblockt — so funktioniert der Start eines Party-
+     * Duels/FFA/Team-Fights auch in eine andere Welt. Toggle: party.lock-world.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPartyWorldLock(PlayerTeleportEvent event) {
+        if (!plugin.getConfigManager().isPartyWorldLocked()) return;
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (from == null || to == null || from.getWorld() == null || to.getWorld() == null) return;
+        if (from.getWorld().equals(to.getWorld())) return; // gleiche Welt = ok
+
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        if (!plugin.getPartyManager().isInParty(uuid)) return;
+        // Plugin-eigener Teleport (Match-Start/Lobby) darf durch.
+        if (plugin.getPlayerManager().isTeleportBypass(uuid)) return;
+        // Bereits in einem Match -> Match-Teleports erlauben.
+        if (plugin.getDuelManager().isInDuel(uuid)) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) return;
+
+        event.setCancelled(true);
+        player.sendMessage(plugin.getConfigManager().prefixed("party.world-locked",
+                "&cYou can't change worlds while in a party."));
+    }
+
     @EventHandler
     public void onChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();

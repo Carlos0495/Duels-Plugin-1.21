@@ -237,6 +237,7 @@ public class ConfigManager {
         if (!mainConfig.contains("bestof-options")) { mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10)); dirty = true; }
         if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
+        if (!mainConfig.contains("party.lock-world")) { mainConfig.set("party.lock-world", false); dirty = true; }
         if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
         if (!mainConfig.contains("duel-request-timeout-seconds")) { mainConfig.set("duel-request-timeout-seconds", 30); dirty = true; }
 
@@ -494,7 +495,11 @@ public class ConfigManager {
                 "Brute-Force-Reset (Wasser/Lava sicher entfernen).");
         c("party",
                 "Party-Einstellungen.",
-                "ffa-grace-seconds: Schonzeit (Sek.) zu FFA-Start ohne Schaden.");
+                "ffa-grace-seconds: Schonzeit (Sek.) zu FFA-Start ohne Schaden.",
+                "lock-world: true = Wer in einer Party ist, kann die Welt nicht",
+                "  manuell wechseln (Portale/Befehle/andere Plugins). Der Start",
+                "  eines Party-Duels/FFA/Team-Fights teleportiert trotzdem (auch",
+                "  in eine andere Welt). Default false.");
         c("coins",
                 "Belohnungen in der konfigurierbaren Waehrung (siehe currency.name).",
                 "win-reward: wie viel man pro Sieg bekommt.");
@@ -684,6 +689,11 @@ public class ConfigManager {
         if (mainConfig == null) return "NONE";
         String s = mainConfig.getString("spectator.pass-through-breakable", "NONE");
         return (s == null || s.trim().isEmpty()) ? "NONE" : s.trim();
+    }
+
+    /** @return true, wenn Party-Mitglieder die Welt nicht manuell wechseln dürfen. */
+    public boolean isPartyWorldLocked() {
+        return mainConfig != null && mainConfig.getBoolean("party.lock-world", false);
     }
 
     // ---- Chat-Filter ----

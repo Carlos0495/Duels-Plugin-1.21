@@ -20,6 +20,14 @@ public class PlayerManager {
     private final Map<UUID, PlayerData> playerData = new HashMap<>();
     private final Set<UUID> hiddenPlayers = new HashSet<>();
     private final Map<UUID, Boolean> autoFly = new HashMap<>();
+    // Spieler, deren Teleport vom Plugin selbst ausgelöst wurde (z.B. Match-
+    // Start, Lobby-Rückkehr). Solche TPs dürfen den Party-Welt-Lock umgehen.
+    private final Set<UUID> teleportBypass = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** True, wenn der aktuelle Teleport vom Plugin selbst ausgelöst wird. */
+    public boolean isTeleportBypass(UUID uuid) {
+        return uuid != null && teleportBypass.contains(uuid);
+    }
 
     public PlayerManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -570,7 +578,14 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
      */
     public boolean safeTeleport(Player player, Location dest) {
         if (player == null || dest == null || dest.getWorld() == null) return false;
-        return attemptSafeTeleport(player, dest, 0);
+        // Plugin-eigener Teleport: Party-Welt-Lock umgehen, auch über die
+        // (verzögerten) Retries hinweg. Bypass wird kurz danach wieder entfernt.
+        final UUID id = player.getUniqueId();
+        teleportBypass.add(id);
+        boolean result = attemptSafeTeleport(player, dest, 0);
+        org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                () -> teleportBypass.remove(id), 10L);
+        return result;
     }
 
     private boolean attemptSafeTeleport(Player player, Location dest, int attempt) {

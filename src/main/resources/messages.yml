@@ -259,6 +259,7 @@ layout:
   reset: "&7Inventory layout for kit &r{kit} &a reset to default!"
   saved: "&7Inventory layout for kit &r{kit} &asaved!"
 party:
+  world-locked: "&cYou can't change worlds while in a party."
   already-in: "&cYou are already in a party."
   already-in-leave-first: "&cYou are already in a party. Leave it first."
   already-in-your-party: "&c{player} is already in your party."
