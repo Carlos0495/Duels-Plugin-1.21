@@ -301,6 +301,11 @@ public class ConfigManager {
         // Leere Liste [] = überall erlaubt.
         if (!mainConfig.contains("worlds.duel-command"))
             { mainConfig.set("worlds.duel-command", new java.util.ArrayList<String>()); dirty = true; }
+        // Welt(en) in denen das Spieler-Verstecken automatisch AUS ist: Spieler
+        // in diesen Welten sehen IMMER alle anderen Spieler (der Hide-Toggle
+        // wird dort ignoriert). Leere Liste [] = nirgends erzwungen.
+        if (!mainConfig.contains("worlds.always-show-players"))
+            { mainConfig.set("worlds.always-show-players", new java.util.ArrayList<String>()); dirty = true; }
 
         // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
         // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
@@ -524,7 +529,10 @@ public class ConfigManager {
                 "  kit-preview          - wo man Kits vorschauen kann (/previewkit)",
                 "  kit-edit             - wo man Kit-Layouts bearbeiten kann",
                 "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf",
-                "  duel-command         - wo man /duel <name> nutzen darf");
+                "  duel-command         - wo man /duel <name> nutzen darf",
+                "  always-show-players  - Welten, in denen Spieler-Verstecken",
+                "                         automatisch AUS ist (man sieht dort",
+                "                         IMMER alle Spieler)");
         c("spectator",
                 "Zuschauer eines Matches (via /spectate oder Auto-Spectate).",
                 "  block-collision: true = koennen NICHT durch Bloecke (auch",
@@ -724,6 +732,17 @@ public class ConfigManager {
     /** @return true wenn TAB im Match nur Gegner/Mitspieler zeigt (default aus). */
     public boolean isDuelTablistFilter() {
         return mainConfig != null && mainConfig.getBoolean("tablist.duel-filter", false);
+    }
+
+    /** @return Welt-Namen (lowercase) in denen Spieler-Verstecken automatisch AUS ist. */
+    public java.util.Set<String> getAlwaysShowPlayersWorlds() {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        if (mainConfig != null) {
+            for (String w : mainConfig.getStringList("worlds.always-show-players")) {
+                if (w != null && !w.trim().isEmpty()) set.add(w.trim().toLowerCase());
+            }
+        }
+        return set;
     }
 
     /** @return Welt-Namen (lowercase) mit eigenem, gefiltertem TAB. */
