@@ -63,10 +63,13 @@ public class SpectateManager {
         SpectateInfo existing = spectators.get(spectator.getUniqueId());
         if (existing != null) {
             // Schon im Spectate-Modus: einfach zum neuen Ziel teleportieren.
+            String newKey = computeMatchKey(target);
+            boolean changedMatch = newKey != null && !newKey.equals(existing.matchKey);
             existing.targetId = target.getUniqueId();
-            existing.matchKey = computeMatchKey(target);
+            existing.matchKey = newKey;
             spectator.teleport(target.getLocation());
             spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.now-spectating", "&7Now spectating &e{player}&7.", java.util.Map.of("player", target.getName())));
+            if (changedMatch) notifyMatchSpectated(spectator, target);
             return null;
         }
 
@@ -102,7 +105,28 @@ public class SpectateManager {
         spectator.sendMessage(plugin.getConfigManager().prefixed("spectate.start",
                 "&7Spectating &e{player}&7. Use &e/spectate stop &7or &e/spawn &7to leave.",
                 java.util.Map.of("player", target.getName())));
+        notifyMatchSpectated(spectator, target);
         return null;
+    }
+
+    /**
+     * Benachrichtigt die Teilnehmer des beobachteten Matches, dass
+     * {@code spectator} jetzt zuschaut. Bei einem 1v1-Duel sind das die zwei
+     * Spieler, bei Party-FFA/Team-Fight alle Match-Teilnehmer. Andere
+     * Spectator werden NICHT benachrichtigt.
+     */
+    private void notifyMatchSpectated(Player spectator, Player target) {
+        if (spectator == null || target == null) return;
+        java.util.Set<UUID> peers = plugin.getPlayerManager().getMatchPeers(target.getUniqueId());
+        if (peers == null) return;
+        String msg = plugin.getConfigManager().prefixed("spectate.player-now-spectating",
+                "&e{player} &7is now spectating this match.",
+                java.util.Map.of("player", spectator.getName()));
+        for (UUID u : peers) {
+            if (u == null || u.equals(spectator.getUniqueId())) continue;
+            Player peer = Bukkit.getPlayer(u);
+            if (peer != null && peer.isOnline()) peer.sendMessage(msg);
+        }
     }
 
     /**

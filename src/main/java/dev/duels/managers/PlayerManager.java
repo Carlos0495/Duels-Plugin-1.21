@@ -384,7 +384,7 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
         // In diesen Welten ist das Spieler-Verstecken automatisch AUS: der
         // Viewer sieht IMMER alle anderen Spieler (Hide-Toggle wird ignoriert).
         boolean forceShowAll = peers == null && viewer.getWorld() != null
-                && cfg.getAlwaysShowPlayersWorlds().contains(viewer.getWorld().getName().toLowerCase());
+                && cfg.isAlwaysShowPlayersWorld(viewer.getWorld().getName());
 
         for (Player other : Bukkit.getOnlinePlayers()) {
             if (other.equals(viewer)) continue;
@@ -453,11 +453,10 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
 
         // If other players have visibility OFF, they should hide the joiner too —
         // außer der Viewer ist in einer Welt, in der Verstecken automatisch AUS ist.
-        java.util.Set<String> alwaysShow = plugin.getConfigManager().getAlwaysShowPlayersWorlds();
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             if (viewer.equals(joiner)) continue;
             boolean viewerForceShow = viewer.getWorld() != null
-                    && alwaysShow.contains(viewer.getWorld().getName().toLowerCase())
+                    && plugin.getConfigManager().isAlwaysShowPlayersWorld(viewer.getWorld().getName())
                     && getMatchPeers(viewer.getUniqueId()) == null;
             if (!viewerForceShow && isHidden(viewer.getUniqueId())) {
                 viewer.hidePlayer(plugin, joiner);

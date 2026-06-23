@@ -360,6 +360,7 @@ spectate:
   ffa-auto: "&7You are now spectating the FFA. Last alive wins."
   not-spectating: "&cYou are not spectating anyone."
   now-spectating: "&7Now spectating &e{player}&7."
+  player-now-spectating: "&e{player} &7is now spectating this match."
   start: "&7Spectating &e{player}&7. Use &e/spectate stop &7or &e/spawn &7to leave."
   stop: "&7You stopped spectating."
   tp-only-match: "&cYou can only teleport to players in your match."

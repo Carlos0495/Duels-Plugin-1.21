@@ -341,12 +341,10 @@ public class DuelListener implements Listener {
                 || to.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
             return;
         }
-        // Fall 1: Der echte 3D-Pearl-Pfad (Start -> Ziel) kreuzt einen laut
-        // Anti-Glitch-Config geblockten Block -> diagonaler/seitlicher Wurf
-        // DURCH die Wand. Schon zum Event-Zeitpunkt erkennbar -> abbrechen und
-        // zurückstoßen. Ausnahme: ein echter Hochwurf (deutlich nach oben auf
-        // einen offenen Landeplatz) wird NICHT geblockt (User-Wunsch).
-        if (pathCrossesBlockedBlock(from, to) && !isLegitUpwardLanding(from, to)) {
+        // Fall 1: Der Pfad (Start -> Ziel) kreuzt eine Wand AUF Lande-Höhe ->
+        // seitlicher/diagonaler Wurf DURCH die Wand. Schon zum Event-Zeitpunkt
+        // erkennbar -> abbrechen und zurückstoßen.
+        if (crossesWallAtLandingLevel(from, to)) {
             event.setCancelled(true);
             org.bukkit.util.Vector back = from.toVector().subtract(to.toVector());
             back.setY(0);
@@ -356,18 +354,16 @@ public class DuelListener implements Listener {
             }
             return;
         }
-        // Fall 2: An die Wand ran-tpn ist ERLAUBT, ebenso ein Wurf NACH OBEN auf
-        // einen höher gelegenen Boden. Wer aber vor einer Wand eine Pearl gerade
-        // nach unten wirft, wird von Minecraft durch die Wand geschoben
+        // Fall 2: An die Wand ran-tpn UND ein Hochwurf auf einen höher
+        // gelegenen Boden sind ERLAUBT. Wer aber vor einer Wand eine Pearl
+        // gerade nach unten wirft, wird von Minecraft durch die Wand geschoben
         // (Ejection) — das passiert erst NACH dem Teleport. Deshalb prüfen wir
-        // 1 Tick später die tatsächliche Position: liegt der Pfad von Start zur
-        // End-Position durch einen geblockten Block (und ist kein echter
-        // Hochwurf), wird der Spieler zur Startposition zurückgesetzt.
+        // 1 Tick später die tatsächliche Position.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!p.isOnline()) return;
             org.bukkit.Location now = p.getLocation();
             if (now.getWorld() == null || !now.getWorld().equals(from.getWorld())) return;
-            if (pathCrossesBlockedBlock(from, now) && !isLegitUpwardLanding(from, now)) {
+            if (crossesWallAtLandingLevel(from, now)) {
                 p.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                 p.teleport(from);
             }
@@ -375,30 +371,38 @@ public class DuelListener implements Listener {
     }
 
     /**
-     * Prüft ob die direkte 3D-Linie von {@code from} nach {@code dest} durch
-     * einen laut Anti-Glitch-Config geblockten Block läuft. Es werden entlang
-     * der Linie Füße- und Kopfblock abgetastet. Reine Mini-Bewegung wird
-     * ignoriert.
+     * Prüft ob der Weg von {@code from} nach {@code dest} durch eine Wand auf
+     * die andere Seite führt — aber NUR Wand-Blöcke AUF/ÜBER der Lande-Fußhöhe
+     * zählen. Damit wird ein echter Hochwurf, der ÜBER eine Wand auf einen
+     * höher gelegenen Boden fliegt, NICHT als Glitch gewertet (die Wand liegt
+     * dann unter dem Landepunkt), während ein seitliches Durch-Glitchen auf
+     * gleicher Höhe weiterhin geblockt wird.
+     *
+     * <p>Rein vertikale Bewegung (gleiche XZ) ist nie eine Wand-Durchquerung.</p>
      */
-    private boolean pathCrossesBlockedBlock(org.bukkit.Location from, org.bukkit.Location dest) {
+    private boolean crossesWallAtLandingLevel(org.bukkit.Location from, org.bukkit.Location dest) {
         if (from == null || dest == null || dest.getWorld() == null) return false;
         org.bukkit.World world = dest.getWorld();
         double dx = dest.getX() - from.getX();
         double dy = dest.getY() - from.getY();
         double dz = dest.getZ() - from.getZ();
+        double horiz = Math.sqrt(dx * dx + dz * dz);
+        // Keine (nennenswerte) horizontale Bewegung -> keine Wand-Durchquerung
+        // (z.B. Pearl gerade hoch/runter).
+        if (horiz < 0.30) return false;
         double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist < 0.30) return false;
         int steps = (int) Math.ceil(dist / 0.25);
         if (steps < 1) steps = 1;
+        int destFootY = dest.getBlockY();
         java.util.Set<Long> seen = new java.util.HashSet<>();
         for (int i = 0; i <= steps; i++) {
             double t = (double) i / steps;
-            double px = from.getX() + dx * t;
-            double py = from.getY() + dy * t;
-            double pz = from.getZ() + dz * t;
-            int bx = org.bukkit.Location.locToBlock(px);
-            int by = org.bukkit.Location.locToBlock(py);
-            int bz = org.bukkit.Location.locToBlock(pz);
+            int bx = org.bukkit.Location.locToBlock(from.getX() + dx * t);
+            int by = org.bukkit.Location.locToBlock(from.getY() + dy * t);
+            int bz = org.bukkit.Location.locToBlock(from.getZ() + dz * t);
+            // Nur Wände AUF/ÜBER der Lande-Fußhöhe zählen. Tiefer liegende
+            // Blöcke wurden überflogen (Hochwurf) -> kein Glitch.
+            if (by < destFootY) continue;
             long key = (((long) (bx & 0x3FFFFF)) << 44)
                     | (((long) (by & 0xFFFFF)) << 22)
                     | ((long) (bz & 0x3FFFFF));
@@ -411,21 +415,6 @@ public class DuelListener implements Listener {
             }
         }
         return false;
-    }
-
-    /**
-     * Echter Hochwurf: das Ziel liegt deutlich höher als der Start und der
-     * Landeplatz ist offen (Spieler steckt nicht in einer Wand). Solche
-     * Pearls sollen IMMER teleportieren — auch wenn die direkte Linie vom
-     * tiefen Start zur höheren Plattform durch eine Wand laufen würde (die
-     * Pearl ist real darüber geflogen, nicht durchgeglitcht).
-     */
-    private boolean isLegitUpwardLanding(org.bukkit.Location from, org.bukkit.Location dest) {
-        if (from == null || dest == null || dest.getWorld() == null) return false;
-        if (dest.getY() - from.getY() < 1.5) return false;
-        org.bukkit.block.Block feet = dest.getBlock();
-        org.bukkit.block.Block head = feet.getRelative(0, 1, 0);
-        return feet.isPassable() && head.isPassable();
     }
 
 

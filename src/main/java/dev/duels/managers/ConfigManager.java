@@ -238,8 +238,11 @@ public class ConfigManager {
         if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
         if (!mainConfig.contains("party.lock-world")) { mainConfig.set("party.lock-world", false); dirty = true; }
+        if (!mainConfig.contains("party.world-change-mode")) { mainConfig.set("party.world-change-mode", "BLACKLIST"); dirty = true; }
+        if (!mainConfig.contains("party.world-change-worlds")) { mainConfig.set("party.world-change-worlds", new java.util.ArrayList<String>()); dirty = true; }
         if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
         if (!mainConfig.contains("duel-request-timeout-seconds")) { mainConfig.set("duel-request-timeout-seconds", 30); dirty = true; }
+        if (!mainConfig.contains("duel-request-cooldown-seconds")) { mainConfig.set("duel-request-cooldown-seconds", 30); dirty = true; }
 
         // ---- Konfigurierbare Messages ----
         // Alle Texte unter `messages.*` lassen sich in der config.yml frei
@@ -306,6 +309,10 @@ public class ConfigManager {
         // wird dort ignoriert). Leere Liste [] = nirgends erzwungen.
         if (!mainConfig.contains("worlds.always-show-players"))
             { mainConfig.set("worlds.always-show-players", new java.util.ArrayList<String>()); dirty = true; }
+        // Modus für always-show-players: WHITELIST = nur in den gelisteten
+        // Welten erzwungen (Default); BLACKLIST = überall AUSSER den gelisteten.
+        if (!mainConfig.contains("worlds.always-show-players-mode"))
+            { mainConfig.set("worlds.always-show-players-mode", "WHITELIST"); dirty = true; }
 
         // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
         // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
@@ -458,7 +465,7 @@ public class ConfigManager {
      * @return true, wenn Kommentare (neu) gesetzt wurden und gespeichert werden muss.
      */
     private boolean applyComments() {
-        final int CURRENT = 2;
+        final int CURRENT = 3;
         if (mainConfig.getInt("config-comments-version", 0) >= CURRENT) return false;
 
         c("prefix",
@@ -504,12 +511,22 @@ public class ConfigManager {
                 "lock-world: true = Wer in einer Party ist, kann die Welt nicht",
                 "  manuell wechseln (Portale/Befehle/andere Plugins). Der Start",
                 "  eines Party-Duels/FFA/Team-Fights teleportiert trotzdem (auch",
-                "  in eine andere Welt). Default false.");
+                "  in eine andere Welt). Default false.",
+                "world-change-mode: BLACKLIST | WHITELIST. Steuert zusammen mit",
+                "  world-change-worlds, FUER welche Ziel-Welten der Lock gilt:",
+                "  - world-change-worlds leer  -> ALLE Welt-Wechsel gesperrt",
+                "  - BLACKLIST -> nur der Wechsel IN die gelisteten Welten gesperrt",
+                "  - WHITELIST -> nur der Wechsel in die gelisteten Welten erlaubt",
+                "  Beispiel: world-change-worlds: [\"pvp\"], mode BLACKLIST =",
+                "  in der Party kommt man nicht nach \"pvp\", sonst ueberall hin.");
         c("coins",
                 "Belohnungen in der konfigurierbaren Waehrung (siehe currency.name).",
                 "win-reward: wie viel man pro Sieg bekommt.");
         c("duel-request-timeout-seconds",
                 "Timeout (Sek.) einer Duel-Anfrage (alternativer Schluessel).");
+        c("duel-request-cooldown-seconds",
+                "Cooldown (Sek.) zwischen zwei Duel-Anfragen desselben Spielers.",
+                "Default 30 (so lang wie der Timeout). 0 = kein Cooldown.");
         c("messages",
                 "Titel/Untertitel (Title-Animationen) fuer Sieg/Niederlage usw.",
                 "ALLE Chat-Texte stehen separat in der messages.yml!",
@@ -532,7 +549,10 @@ public class ConfigManager {
                 "  duel-command         - wo man /duel <name> nutzen darf",
                 "  always-show-players  - Welten, in denen Spieler-Verstecken",
                 "                         automatisch AUS ist (man sieht dort",
-                "                         IMMER alle Spieler)");
+                "                         IMMER alle Spieler)",
+                "  always-show-players-mode - WHITELIST = nur in den gelisteten",
+                "                         Welten erzwungen (Default); BLACKLIST =",
+                "                         ueberall AUSSER den gelisteten Welten");
         c("spectator",
                 "Zuschauer eines Matches (via /spectate oder Auto-Spectate).",
                 "  block-collision: true = koennen NICHT durch Bloecke (auch",
@@ -704,6 +724,38 @@ public class ConfigManager {
         return mainConfig != null && mainConfig.getBoolean("party.lock-world", false);
     }
 
+    /**
+     * Prüft ob ein Party-Mitglied NICHT in die Ziel-Welt wechseln darf.
+     * Gesteuert über {@code party.world-change-mode} (BLACKLIST | WHITELIST)
+     * und {@code party.world-change-worlds}:
+     * <ul>
+     *   <li>Liste leer → ALLE Welt-Wechsel gesperrt (Default-Verhalten).</li>
+     *   <li>BLACKLIST → nur der Wechsel IN die gelisteten Welten ist gesperrt.</li>
+     *   <li>WHITELIST → nur der Wechsel in die gelisteten Welten ist erlaubt
+     *       (alle anderen gesperrt).</li>
+     * </ul>
+     * Setzt voraus, dass {@link #isPartyWorldLocked()} true ist.
+     */
+    public boolean isPartyWorldChangeBlocked(String toWorld) {
+        if (mainConfig == null || toWorld == null) return true;
+        java.util.List<String> worlds = mainConfig.getStringList("party.world-change-worlds");
+        if (worlds == null || worlds.isEmpty()) return true; // alle gesperrt
+        boolean listed = false;
+        for (String w : worlds) {
+            if (w != null && w.equalsIgnoreCase(toWorld)) { listed = true; break; }
+        }
+        String mode = mainConfig.getString("party.world-change-mode", "BLACKLIST");
+        if ("WHITELIST".equalsIgnoreCase(mode)) {
+            return !listed; // nur gelistete erlaubt -> sperre wenn nicht gelistet
+        }
+        return listed; // BLACKLIST -> sperre wenn gelistet
+    }
+
+    /** @return Cooldown (Sek.) zwischen zwei Duel-Anfragen desselben Spielers (Default 30, 0 = aus). */
+    public int getDuelRequestCooldownSeconds() {
+        return mainConfig != null ? mainConfig.getInt("duel-request-cooldown-seconds", 30) : 30;
+    }
+
     // ---- Chat-Filter ----
 
     /** @return true wenn Chat in laufenden Matches isoliert sein soll. */
@@ -734,7 +786,7 @@ public class ConfigManager {
         return mainConfig != null && mainConfig.getBoolean("tablist.duel-filter", false);
     }
 
-    /** @return Welt-Namen (lowercase) in denen Spieler-Verstecken automatisch AUS ist. */
+    /** @return Welt-Namen (lowercase) aus {@code worlds.always-show-players}. */
     public java.util.Set<String> getAlwaysShowPlayersWorlds() {
         java.util.Set<String> set = new java.util.HashSet<>();
         if (mainConfig != null) {
@@ -743,6 +795,26 @@ public class ConfigManager {
             }
         }
         return set;
+    }
+
+    /**
+     * Prüft ob in der angegebenen Welt das Spieler-Verstecken automatisch AUS
+     * ist (man sieht dort IMMER alle Spieler). Gesteuert über
+     * {@code worlds.always-show-players-mode} (WHITELIST | BLACKLIST) und die
+     * Liste {@code worlds.always-show-players}:
+     * <ul>
+     *   <li>WHITELIST (Default) → nur in den gelisteten Welten erzwungen.</li>
+     *   <li>BLACKLIST → überall erzwungen AUSSER in den gelisteten Welten.</li>
+     * </ul>
+     */
+    public boolean isAlwaysShowPlayersWorld(String world) {
+        if (world == null || mainConfig == null) return false;
+        boolean listed = getAlwaysShowPlayersWorlds().contains(world.toLowerCase());
+        String mode = mainConfig.getString("worlds.always-show-players-mode", "WHITELIST");
+        if ("BLACKLIST".equalsIgnoreCase(mode)) {
+            return !listed;
+        }
+        return listed;
     }
 
     /** @return Welt-Namen (lowercase) mit eigenem, gefiltertem TAB. */

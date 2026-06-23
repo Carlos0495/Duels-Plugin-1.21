@@ -27,7 +27,6 @@ public class DuelManager {
     private final Set<UUID> roundDead = new HashSet<>();
     private final Map<PairKey, AutoSelect> autoSelect = new HashMap<>();
     private final Map<UUID, Long> lastRequestMs = new HashMap<>();
-    private static final long REQUEST_COOLDOWN_MS = 10_000; // 10 Sekunden
 
     private final Map<UUID, PlayerState> savedStates = new HashMap<>();
 
@@ -826,14 +825,18 @@ public class DuelManager {
             }
         }
 
-        // cooldown (per sender)
-        Long last = lastRequestMs.get(senderId);
-        if (last != null && (now - last) < REQUEST_COOLDOWN_MS) {
-            long leftSec = (REQUEST_COOLDOWN_MS - (now - last) + 999) / 1000;
-            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-cooldown", "&cWait &f{seconds}s &cbefore sending another request.", java.util.Map.of("seconds", String.valueOf(leftSec))));
-            return;
+        // cooldown (per sender) — konfigurierbar via config.yml:
+        // duel-request-cooldown-seconds (Default 30s, 0 = aus).
+        long cooldownMs = plugin.getConfigManager().getDuelRequestCooldownSeconds() * 1000L;
+        if (cooldownMs > 0) {
+            Long last = lastRequestMs.get(senderId);
+            if (last != null && (now - last) < cooldownMs) {
+                long leftSec = (cooldownMs - (now - last) + 999) / 1000;
+                if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-cooldown", "&cWait &f{seconds}s &cbefore sending another request.", java.util.Map.of("seconds", String.valueOf(leftSec))));
+                return;
+            }
+            lastRequestMs.put(senderId, now);
         }
-        lastRequestMs.put(senderId, now);
 
         // Falls target schon eine Request hatte -> alte Arena freigeben
         DuelRequest old = duelRequests.remove(target);

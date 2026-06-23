@@ -192,10 +192,25 @@ public class PlayerListener implements Listener {
         if (plugin.getDuelManager().isInDuel(uuid)) return;
         if (plugin.getPartyFFAManager() != null
                 && plugin.getPartyFFAManager().isParticipant(uuid)) return;
+        // Welt-Whitelist/Blacklist: nur in bestimmte Welten sperren/erlauben.
+        if (!plugin.getConfigManager().isPartyWorldChangeBlocked(to.getWorld().getName())) return;
 
         event.setCancelled(true);
         player.sendMessage(plugin.getConfigManager().prefixed("party.world-locked",
                 "&cYou can't change worlds while in a party."));
+
+        // Manche Befehle teleportieren UND ändern das Inventar (z.B. setzen die
+        // Lobby-Hotbar) verzögert. Da wir den Teleport abbrechen, bleibt der
+        // Spieler in seiner Welt — aber die (verspätete) Inventar-Änderung
+        // läuft trotzdem. Deshalb stellen wir das korrekte Inventar für die
+        // Welt, in der der Spieler bleibt, ein paar Ticks später wieder her.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            if (plugin.getDuelManager().isInDuel(uuid)) return;
+            if (plugin.getPartyFFAManager() != null
+                    && plugin.getPartyFFAManager().isParticipant(uuid)) return;
+            plugin.getPlayerManager().setupPlayerInventory(player);
+        }, 12L);
     }
 
     @EventHandler
@@ -352,10 +367,8 @@ public class PlayerListener implements Listener {
                             return;
                         }
                     }
-                    // Fallback: Distance-Check > 80 Blöcke vom Target → zurück.
-                    if (player.getLocation().distanceSquared(target.getLocation()) > 80 * 80) {
-                        player.teleport(target.getLocation());
-                    }
+                    // (Kein Distanz-Zurück-TP mehr: Block-Kollision + Arena-
+                    // Corners reichen aus. Der Spectator darf sich frei bewegen.)
                 }
             }
         }
