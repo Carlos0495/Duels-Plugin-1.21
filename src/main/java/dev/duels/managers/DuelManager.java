@@ -27,7 +27,6 @@ public class DuelManager {
     private final Set<UUID> roundDead = new HashSet<>();
     private final Map<PairKey, AutoSelect> autoSelect = new HashMap<>();
     private final Map<UUID, Long> lastRequestMs = new HashMap<>();
-    private static final long REQUEST_COOLDOWN_MS = 10_000; // 10 Sekunden
 
     private final Map<UUID, PlayerState> savedStates = new HashMap<>();
 
@@ -81,13 +80,13 @@ public class DuelManager {
 
         Location spawn = plugin.getArenaManager().getSpawnLocation();
         if (spawn != null) {
-            p.teleport(spawn);
+            plugin.getPlayerManager().safeTeleport(p, spawn);
             return;
         }
 
         // Fallback: World Spawn
         Location worldSpawn = p.getWorld().getSpawnLocation();
-        if (worldSpawn != null) p.teleport(worldSpawn);
+        if (worldSpawn != null) plugin.getPlayerManager().safeTeleport(p, worldSpawn);
     }
 
     private static final long AUTOSELECT_TIMEOUT_MS = 20000;
@@ -211,6 +210,12 @@ public class DuelManager {
     }
 
     private void preparePlayersForDuel(Player p1, Player p2, DuelSession session, Arena arena) {
+        // Offene Chat-Eingaben abbrechen, damit man sie nicht ins Match
+        // mitnimmt (auch wenn die Arena in derselben Welt liegt).
+        if (plugin.getGuiManager() != null) {
+            plugin.getGuiManager().cancelPendingChatInput(p1);
+            plugin.getGuiManager().cancelPendingChatInput(p2);
+        }
         // GameMode auf SURVIVAL erzwingen (z.B. falls Spieler vorher
         // spectatet hat). isInDuel ist hier bereits true → onGameModeChange
         // überschreibt das Inventar nicht.
@@ -236,8 +241,8 @@ public class DuelManager {
 
         // Teleportieren
         if (arena.getSpawn1() != null && arena.getSpawn2() != null) {
-            p1.teleport(arena.getSpawn1());
-            p2.teleport(arena.getSpawn2());
+            plugin.getPlayerManager().safeTeleport(p1, arena.getSpawn1());
+            plugin.getPlayerManager().safeTeleport(p2, arena.getSpawn2());
         }
 
         // Tab-Liste anpassen
@@ -246,9 +251,12 @@ public class DuelManager {
         plugin.getPlayerManager().refreshAllVisibility();
 
 
-        // Nachrichten senden
-        clearChat(p1);
-        clearChat(p2);
+        // Nachrichten senden. Das "Chat leeren" (viele Leerzeilen) ist per
+        // config abschaltbar (duel.clear-chat-on-start, default false = aus).
+        if (plugin.getConfigManager().isClearChatOnStart()) {
+            clearChat(p1);
+            clearChat(p2);
+        }
         String kitDisplay = plugin.getKitManager().getKitDisplayName(session.getKitName());
 
         // Kit/Arena-Zeile: Map nur anzeigen wenn in config aktiviert.
@@ -468,7 +476,7 @@ public class DuelManager {
 
         Location target = pendingRoundRespawn.get(uuid);
         if (target != null) {
-            player.teleport(target);
+            plugin.getPlayerManager().safeTeleport(player, target);
         }
 
         forceRoundState(player);
@@ -826,14 +834,18 @@ public class DuelManager {
             }
         }
 
-        // cooldown (per sender)
-        Long last = lastRequestMs.get(senderId);
-        if (last != null && (now - last) < REQUEST_COOLDOWN_MS) {
-            long leftSec = (REQUEST_COOLDOWN_MS - (now - last) + 999) / 1000;
-            if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-cooldown", "&cWait &f{seconds}s &cbefore sending another request.", java.util.Map.of("seconds", String.valueOf(leftSec))));
-            return;
+        // cooldown (per sender) — konfigurierbar via config.yml:
+        // duel-request-cooldown-seconds (Default 30s, 0 = aus).
+        long cooldownMs = plugin.getConfigManager().getDuelRequestCooldownSeconds() * 1000L;
+        if (cooldownMs > 0) {
+            Long last = lastRequestMs.get(senderId);
+            if (last != null && (now - last) < cooldownMs) {
+                long leftSec = (cooldownMs - (now - last) + 999) / 1000;
+                if (sender != null) sender.sendMessage(plugin.getConfigManager().prefixed("duel.request-cooldown", "&cWait &f{seconds}s &cbefore sending another request.", java.util.Map.of("seconds", String.valueOf(leftSec))));
+                return;
+            }
+            lastRequestMs.put(senderId, now);
         }
-        lastRequestMs.put(senderId, now);
 
         // Falls target schon eine Request hatte -> alte Arena freigeben
         DuelRequest old = duelRequests.remove(target);

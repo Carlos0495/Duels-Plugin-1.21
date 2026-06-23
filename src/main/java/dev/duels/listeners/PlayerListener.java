@@ -168,9 +168,60 @@ public class PlayerListener implements Listener {
         event.getRecipients().removeIf(r -> !finalAllowed.contains(r.getUniqueId()));
     }
 
+    /**
+     * Party-Welt-Lock: Wer in einer Party ist, darf die Welt nicht manuell
+     * wechseln (Portale, Befehle, andere Plugins). Plugin-eigene Teleports
+     * (Match-Start, Lobby-Rückkehr) und Spieler, die bereits in einem Match
+     * sind, werden NICHT geblockt — so funktioniert der Start eines Party-
+     * Duels/FFA/Team-Fights auch in eine andere Welt. Toggle: party.lock-world.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPartyWorldLock(PlayerTeleportEvent event) {
+        if (!plugin.getConfigManager().isPartyWorldLocked()) return;
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (from == null || to == null || from.getWorld() == null || to.getWorld() == null) return;
+        if (from.getWorld().equals(to.getWorld())) return; // gleiche Welt = ok
+
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        if (!plugin.getPartyManager().isInParty(uuid)) return;
+        // Plugin-eigener Teleport (Match-Start/Lobby) darf durch.
+        if (plugin.getPlayerManager().isTeleportBypass(uuid)) return;
+        // Bereits in einem Match -> Match-Teleports erlauben.
+        if (plugin.getDuelManager().isInDuel(uuid)) return;
+        if (plugin.getPartyFFAManager() != null
+                && plugin.getPartyFFAManager().isParticipant(uuid)) return;
+        // Welt-Whitelist/Blacklist: nur in bestimmte Welten sperren/erlauben.
+        if (!plugin.getConfigManager().isPartyWorldChangeBlocked(to.getWorld().getName())) return;
+
+        event.setCancelled(true);
+        player.sendMessage(plugin.getConfigManager().prefixed("party.world-locked",
+                "&cYou can't change worlds while in a party."));
+
+        // Manche Befehle teleportieren UND ändern das Inventar (z.B. setzen die
+        // Lobby-Hotbar) verzögert. Da wir den Teleport abbrechen, bleibt der
+        // Spieler in seiner Welt — aber die (verspätete) Inventar-Änderung
+        // läuft trotzdem. Deshalb stellen wir das korrekte Inventar für die
+        // Welt, in der der Spieler bleibt, ein paar Ticks später wieder her.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            if (plugin.getDuelManager().isInDuel(uuid)) return;
+            if (plugin.getPartyFFAManager() != null
+                    && plugin.getPartyFFAManager().isParticipant(uuid)) return;
+            plugin.getPlayerManager().setupPlayerInventory(player);
+        }, 12L);
+    }
+
     @EventHandler
     public void onChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
+        // Offene Chat-Eingaben (Name suchen, Kit benennen, Rundenzahl) beim
+        // Welt-Wechsel abbrechen, damit man sie nicht in eine andere Welt
+        // mitnehmen kann.
+        if (plugin.getGuiManager() != null) {
+            plugin.getGuiManager().cancelPendingChatInput(player);
+        }
         // Spieler im Duel/FFA: nichts machen, ihre Inventare gehören dem Match.
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
         if (plugin.getPartyFFAManager() != null
@@ -287,21 +338,6 @@ public class PlayerListener implements Listener {
                         player.teleport(target.getLocation());
                         return;
                     }
-                    // Block-Kollision für Match-Spectator: sie dürfen aus einem
-                    // Block RAUS fliegen (z.B. wenn sie in der FFA in einem
-                    // Block gestorben sind), aber nicht in einen Block REIN.
-                    // -> Bewegung nur abbrechen wenn das Ziel in einem Block
-                    //    liegt UND die Startposition NICHT in einem Block lag.
-                    // Leute im normalen SPECTATOR-GameMode (kein Match) sind
-                    // hier nicht erfasst (nicht in der SpectateManager-Map).
-                    if (plugin.getConfigManager().isSpectatorBlockCollision()) {
-                        Location to = event.getTo();
-                        Location from = event.getFrom();
-                        if (to != null && isInsideSolid(to) && !isInsideSolid(from)) {
-                            event.setTo(from);
-                            return;
-                        }
-                    }
                     // Arena-Corners des Targets als Grenze nutzen.
                     dev.duels.objects.Arena specArena = null;
                     if (plugin.getDuelManager().isInDuel(target.getUniqueId())) {
@@ -310,6 +346,26 @@ public class PlayerListener implements Listener {
                             && plugin.getPartyFFAManager().isParticipant(target.getUniqueId())) {
                         specArena = plugin.getPartyFFAManager().getArenaOf(target.getUniqueId());
                     }
+                    // Block-Kollision für Match-Spectator: sie dürfen aus einem
+                    // Block RAUS fliegen (z.B. wenn sie in der FFA in einem
+                    // Block gestorben sind), aber nicht in einen Block REIN.
+                    // -> Bewegung nur abbrechen wenn das Ziel in einem Block
+                    //    liegt UND die Startposition NICHT in einem Block lag.
+                    // Leute im normalen SPECTATOR-GameMode (kein Match) sind
+                    // hier nicht erfasst (nicht in der SpectateManager-Map).
+                    // Ausnahme: durch breakable Arena-/Kit-Blöcke darf der
+                    // Spectator fliegen (konfigurierbar: NONE/ARENA/KIT/BOTH).
+                    if (plugin.getConfigManager().isSpectatorBlockCollision()) {
+                        Location to = event.getTo();
+                        Location from = event.getFrom();
+                        java.util.Set<org.bukkit.Material> passThrough =
+                                spectatorPassThrough(specArena, target);
+                        if (to != null && isInsideSolid(to, passThrough)
+                                && !isInsideSolid(from, passThrough)) {
+                            event.setTo(from);
+                            return;
+                        }
+                    }
                     if (specArena != null) {
                         Location clamped = specArena.clampInside(event.getTo());
                         if (clamped != null) {
@@ -317,10 +373,8 @@ public class PlayerListener implements Listener {
                             return;
                         }
                     }
-                    // Fallback: Distance-Check > 80 Blöcke vom Target → zurück.
-                    if (player.getLocation().distanceSquared(target.getLocation()) > 80 * 80) {
-                        player.teleport(target.getLocation());
-                    }
+                    // (Kein Distanz-Zurück-TP mehr: Block-Kollision + Arena-
+                    // Corners reichen aus. Der Spectator darf sich frei bewegen.)
                 }
             }
         }
@@ -328,13 +382,58 @@ public class PlayerListener implements Listener {
 
     /**
      * Prüft ob die Position (Füße oder Kopf) in einem nicht-passierbaren
-     * Block liegt. Barrier zählt als nicht-passierbar.
+     * Block liegt. Barrier zählt als nicht-passierbar. Materialien in
+     * {@code passThrough} (breakable Arena-/Kit-Blöcke) gelten als passierbar.
      */
-    private boolean isInsideSolid(Location loc) {
+    private boolean isInsideSolid(Location loc, java.util.Set<org.bukkit.Material> passThrough) {
         if (loc == null || loc.getWorld() == null) return false;
         org.bukkit.block.Block feet = loc.getBlock();
         org.bukkit.block.Block head = feet.getRelative(0, 1, 0);
-        return !feet.isPassable() || !head.isPassable();
+        return isSolidForSpectator(feet, passThrough) || isSolidForSpectator(head, passThrough);
+    }
+
+    private boolean isSolidForSpectator(org.bukkit.block.Block b, java.util.Set<org.bukkit.Material> passThrough) {
+        if (b.isPassable()) return false;
+        return passThrough == null || !passThrough.contains(b.getType());
+    }
+
+    /**
+     * Sammelt die Materialien, durch die ein Match-Spectator fliegen darf.
+     * Gesteuert über {@code spectator.pass-through-breakable}:
+     * NONE (keine), ARENA (breakable Arena-Blöcke), KIT (breakable Kit-Blöcke)
+     * oder BOTH (beides). Default NONE = alte Strikt-Kollision.
+     */
+    private java.util.Set<org.bukkit.Material> spectatorPassThrough(
+            dev.duels.objects.Arena arena, Player target) {
+        String mode = plugin.getConfigManager().getSpectatorPassThroughBreakable();
+        if (mode == null || "NONE".equalsIgnoreCase(mode)) return null;
+        boolean useArena = "ARENA".equalsIgnoreCase(mode) || "BOTH".equalsIgnoreCase(mode);
+        boolean useKit = "KIT".equalsIgnoreCase(mode) || "BOTH".equalsIgnoreCase(mode);
+        java.util.Set<org.bukkit.Material> set =
+                java.util.EnumSet.noneOf(org.bukkit.Material.class);
+        if (useArena && arena != null) {
+            for (String m : arena.getBreakableBlocks()) {
+                org.bukkit.Material mat = org.bukkit.Material.matchMaterial(m);
+                if (mat != null) set.add(mat);
+            }
+        }
+        if (useKit && target != null) {
+            String kitId = null;
+            dev.duels.objects.DuelSession ds =
+                    plugin.getDuelManager().getDuelSession(target.getUniqueId());
+            if (ds != null) {
+                kitId = ds.getKitName();
+            } else if (plugin.getPartyFFAManager() != null) {
+                dev.duels.managers.PartyFFAManager.FFASession fs =
+                        plugin.getPartyFFAManager().getSession(target.getUniqueId());
+                if (fs != null) kitId = fs.kitName;
+            }
+            if (kitId != null) {
+                dev.duels.managers.KitManager.Kit kit = plugin.getKitManager().getKit(kitId);
+                if (kit != null) set.addAll(kit.getBreakableBlocks());
+            }
+        }
+        return set.isEmpty() ? null : set;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

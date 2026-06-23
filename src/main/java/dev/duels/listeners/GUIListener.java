@@ -23,7 +23,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.event.inventory.InventoryAction;
 import dev.duels.objects.DuelRequest;
 import java.util.UUID;
-import java.util.Set;
+
 
 import java.util.List;
 
@@ -38,7 +38,6 @@ public class GUIListener implements Listener {
     private final NamespacedKey editKitKey;
     private final NamespacedKey bestOfValueKey;
     private final NamespacedKey duelTargetKey;
-    private final Set<UUID> awaitingStatsSearch = new java.util.HashSet<>();
 
 
     public GUIListener(DuelsPlugin plugin) {
@@ -82,6 +81,22 @@ public class GUIListener implements Listener {
     public void onChat(org.bukkit.event.player.AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+
+        // Sicherheits-Gate: wartet der Spieler auf eine Chat-Eingabe, ist aber
+        // inzwischen in einem Match oder in einer nicht erlaubten Welt
+        // (worlds.chat-input), dann brechen wir die Eingabe ab statt sie zu
+        // verarbeiten. Verhindert den Exploit "Eingabe ins Duel mitnehmen".
+        if (plugin.getGuiManager().hasPendingChatInput(uuid)) {
+            boolean inMatch = plugin.getDuelManager().isInDuel(uuid)
+                    || (plugin.getPartyFFAManager() != null
+                        && plugin.getPartyFFAManager().isParticipant(uuid));
+            boolean worldOk = plugin.getConfigManager().isWorldAllowed(player, "chat-input");
+            if (inMatch || !worldOk) {
+                event.setCancelled(true);
+                plugin.getGuiManager().cancelPendingChatInput(player);
+                return;
+            }
+        }
 
         // Custom Kit Name Eingabe.
         if (plugin.getGuiManager().getPendingCustomKitName().containsKey(uuid)) {
@@ -146,13 +161,13 @@ public class GUIListener implements Listener {
             return;
         }
 
-        if (!awaitingStatsSearch.contains(uuid)) return;
+        if (!plugin.getGuiManager().getAwaitingStatsSearch().contains(uuid)) return;
 
         event.setCancelled(true);
 
         String msg = event.getMessage().trim();
         if (msg.equalsIgnoreCase("cancel")) {
-            awaitingStatsSearch.remove(uuid);
+            plugin.getGuiManager().getAwaitingStatsSearch().remove(uuid);
             player.sendMessage(plugin.getConfigManager().prefixed("general.search-cancelled", "&7Search cancelled."));
             return;
         }
@@ -164,7 +179,7 @@ public class GUIListener implements Listener {
             return;
         }
 
-        awaitingStatsSearch.remove(uuid);
+        plugin.getGuiManager().getAwaitingStatsSearch().remove(uuid);
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             plugin.getGuiManager().openCompareGUI(player, targetUuid);
@@ -197,7 +212,7 @@ public class GUIListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        awaitingStatsSearch.remove(event.getPlayer().getUniqueId());
+        plugin.getGuiManager().getAwaitingStatsSearch().remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -329,7 +344,8 @@ public class GUIListener implements Listener {
                 player.closeInventory();
                 plugin.getGuiManager().closeGUI(player.getUniqueId());
 
-                awaitingStatsSearch.add(player.getUniqueId());
+                if (!plugin.getGuiManager().canStartChatInput(player)) return;
+                plugin.getGuiManager().getAwaitingStatsSearch().add(player.getUniqueId());
                 player.sendMessage(plugin.getConfigManager().prefixed("general.type-player-name", "&7Type a player name in chat. &7or Type &ccancel"));
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
                 return;
@@ -948,6 +964,7 @@ public class GUIListener implements Listener {
         if ("CREATE".equals(action)) {
             player.closeInventory();
             plugin.getGuiManager().closeGUI(player.getUniqueId());
+            if (!plugin.getGuiManager().canStartChatInput(player)) return;
             // Ask for kit name via chat
             plugin.getGuiManager().getPendingCustomKitName().put(player.getUniqueId(), true);
             plugin.getGuiManager().getPendingCustomKitEditIndex().put(player.getUniqueId(), -1);

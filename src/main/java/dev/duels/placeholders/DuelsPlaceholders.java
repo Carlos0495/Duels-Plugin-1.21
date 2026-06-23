@@ -205,7 +205,12 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
         } catch (NumberFormatException ex) {
             return null;
         }
-        String field = parts.length >= 3 ? parts[2] : "line";
+        // Default (kein Suffix) = nur der NAME des Spielers (User-Wunsch).
+        //   %duels_kills_1%        → nur der Name auf Platz 1
+        //   %duels_kills_1_name%   → nur der Name
+        //   %duels_kills_1_value%  → nur der Wert
+        //   %duels_kills_1_line%   → komplette Format-Zeile (#1 Name - Wert)
+        String field = parts.length >= 3 ? parts[2] : "name";
 
         if (plugin.getPlayerManager() == null) return "";
         org.bukkit.configuration.file.FileConfiguration cfg = plugin.getConfig();
@@ -213,9 +218,11 @@ public class DuelsPlaceholders extends PlaceholderExpansion {
                 plugin.getPlayerManager().getLeaderboard(cat);
 
         if (rank < 1 || rank > lb.size()) {
-            if ("name".equals(field) || "value".equals(field)) return "";
-            return org.bukkit.ChatColor.translateAlternateColorCodes('&',
-                    cfg.getString("leaderboard.empty", "&7---"));
+            if ("line".equals(field)) {
+                return org.bukkit.ChatColor.translateAlternateColorCodes('&',
+                        cfg.getString("leaderboard.empty", "&7---"));
+            }
+            return "";
         }
 
         dev.duels.objects.PlayerData pd = lb.get(rank - 1);

@@ -237,8 +237,12 @@ public class ConfigManager {
         if (!mainConfig.contains("bestof-options")) { mainConfig.set("bestof-options", java.util.Arrays.asList(1, 3, 5, 10)); dirty = true; }
         if (!mainConfig.contains("arena.max-snapshot-blocks")) { mainConfig.set("arena.max-snapshot-blocks", 200000); dirty = true; }
         if (!mainConfig.contains("party.ffa-grace-seconds")) { mainConfig.set("party.ffa-grace-seconds", 10); dirty = true; }
+        if (!mainConfig.contains("party.lock-world")) { mainConfig.set("party.lock-world", false); dirty = true; }
+        if (!mainConfig.contains("party.world-change-mode")) { mainConfig.set("party.world-change-mode", "BLACKLIST"); dirty = true; }
+        if (!mainConfig.contains("party.world-change-worlds")) { mainConfig.set("party.world-change-worlds", new java.util.ArrayList<String>()); dirty = true; }
         if (!mainConfig.contains("coins.win-reward")) { mainConfig.set("coins.win-reward", 10); dirty = true; }
         if (!mainConfig.contains("duel-request-timeout-seconds")) { mainConfig.set("duel-request-timeout-seconds", 30); dirty = true; }
+        if (!mainConfig.contains("duel-request-cooldown-seconds")) { mainConfig.set("duel-request-cooldown-seconds", 30); dirty = true; }
 
         // ---- Konfigurierbare Messages ----
         // Alle Texte unter `messages.*` lassen sich in der config.yml frei
@@ -296,6 +300,25 @@ public class ConfigManager {
             { mainConfig.set("worlds.kit-edit", java.util.Arrays.asList("world")); dirty = true; }
         if (!mainConfig.contains("worlds.custom-kit"))
             { mainConfig.set("worlds.custom-kit", java.util.Arrays.asList("world")); dirty = true; }
+        // Welt(en) in denen man /duel <name> (Spieler herausfordern) nutzen darf.
+        // Leere Liste [] = überall erlaubt.
+        if (!mainConfig.contains("worlds.duel-command"))
+            { mainConfig.set("worlds.duel-command", new java.util.ArrayList<String>()); dirty = true; }
+        // Welt(en) in denen Chat-Eingaben (Spielername suchen, Custom-Kit
+        // benennen, Rundenzahl eingeben) erlaubt sind. Leere Liste [] = überall
+        // erlaubt. Eine laufende Eingabe wird beim Welt-Wechsel/Match-Start
+        // automatisch abgebrochen.
+        if (!mainConfig.contains("worlds.chat-input"))
+            { mainConfig.set("worlds.chat-input", new java.util.ArrayList<String>()); dirty = true; }
+        // Welt(en) in denen das Spieler-Verstecken automatisch AUS ist: Spieler
+        // in diesen Welten sehen IMMER alle anderen Spieler (der Hide-Toggle
+        // wird dort ignoriert). Leere Liste [] = nirgends erzwungen.
+        if (!mainConfig.contains("worlds.always-show-players"))
+            { mainConfig.set("worlds.always-show-players", new java.util.ArrayList<String>()); dirty = true; }
+        // Modus für always-show-players: WHITELIST = nur in den gelisteten
+        // Welten erzwungen (Default); BLACKLIST = überall AUSSER den gelisteten.
+        if (!mainConfig.contains("worlds.always-show-players-mode"))
+            { mainConfig.set("worlds.always-show-players-mode", "WHITELIST"); dirty = true; }
 
         // Spectator-Block-Kollision: Wenn true, können Spieler die ein Match
         // zuschauen (über /spectate oder Auto-Spectate) NICHT durch Blöcke
@@ -303,6 +326,13 @@ public class ConfigManager {
         // SPECTATOR-GameMode (die kein Match zuschauen) sind NICHT betroffen.
         if (!mainConfig.contains("spectator.block-collision"))
             { mainConfig.set("spectator.block-collision", true); dirty = true; }
+        // Durch welche breakable Blöcke ein Match-Spectator dennoch fliegen darf:
+        //   NONE  = keine (volle Kollision, wie block-collision)
+        //   ARENA = breakable Arena-Blöcke (pro Arena gesetzt)
+        //   KIT   = breakable Kit-Blöcke (des laufenden Kits)
+        //   BOTH  = beides
+        if (!mainConfig.contains("spectator.pass-through-breakable"))
+            { mainConfig.set("spectator.pass-through-breakable", "NONE"); dirty = true; }
 
         // Anti-Glitch: verhindert dass Spieler sich durch konfigurierte Blöcke
         // glitchen (z.B. mit Ender-Pearls durch Wände). Der Pearl-Teleport wird
@@ -386,6 +416,10 @@ public class ConfigManager {
         // Duel-Einladung: ob die Map/Arena in der Benachrichtigung steht.
         if (!mainConfig.contains("duel.show-map-in-request"))
             { mainConfig.set("duel.show-map-in-request", true); dirty = true; }
+        // Beim Duel-Start den Chat leeren (viele Leerzeilen). Default false =
+        // keine störenden Leerzeilen; die Kit/Match-Info wird trotzdem gezeigt.
+        if (!mainConfig.contains("duel.clear-chat-on-start"))
+            { mainConfig.set("duel.clear-chat-on-start", false); dirty = true; }
 
         // Custom-Kit-System Defaults
         if (!mainConfig.contains("custom-kits.enabled"))
@@ -441,7 +475,7 @@ public class ConfigManager {
      * @return true, wenn Kommentare (neu) gesetzt wurden und gespeichert werden muss.
      */
     private boolean applyComments() {
-        final int CURRENT = 1;
+        final int CURRENT = 4;
         if (mainConfig.getInt("config-comments-version", 0) >= CURRENT) return false;
 
         c("prefix",
@@ -483,12 +517,26 @@ public class ConfigManager {
                 "Brute-Force-Reset (Wasser/Lava sicher entfernen).");
         c("party",
                 "Party-Einstellungen.",
-                "ffa-grace-seconds: Schonzeit (Sek.) zu FFA-Start ohne Schaden.");
+                "ffa-grace-seconds: Schonzeit (Sek.) zu FFA-Start ohne Schaden.",
+                "lock-world: true = Wer in einer Party ist, kann die Welt nicht",
+                "  manuell wechseln (Portale/Befehle/andere Plugins). Der Start",
+                "  eines Party-Duels/FFA/Team-Fights teleportiert trotzdem (auch",
+                "  in eine andere Welt). Default false.",
+                "world-change-mode: BLACKLIST | WHITELIST. Steuert zusammen mit",
+                "  world-change-worlds, FUER welche Ziel-Welten der Lock gilt:",
+                "  - world-change-worlds leer  -> ALLE Welt-Wechsel gesperrt",
+                "  - BLACKLIST -> nur der Wechsel IN die gelisteten Welten gesperrt",
+                "  - WHITELIST -> nur der Wechsel in die gelisteten Welten erlaubt",
+                "  Beispiel: world-change-worlds: [\"pvp\"], mode BLACKLIST =",
+                "  in der Party kommt man nicht nach \"pvp\", sonst ueberall hin.");
         c("coins",
                 "Belohnungen in der konfigurierbaren Waehrung (siehe currency.name).",
                 "win-reward: wie viel man pro Sieg bekommt.");
         c("duel-request-timeout-seconds",
                 "Timeout (Sek.) einer Duel-Anfrage (alternativer Schluessel).");
+        c("duel-request-cooldown-seconds",
+                "Cooldown (Sek.) zwischen zwei Duel-Anfragen desselben Spielers.",
+                "Default 30 (so lang wie der Timeout). 0 = kein Cooldown.");
         c("messages",
                 "Titel/Untertitel (Title-Animationen) fuer Sieg/Niederlage usw.",
                 "ALLE Chat-Texte stehen separat in der messages.yml!",
@@ -507,11 +555,26 @@ public class ConfigManager {
                 "  queue                - wo man Queue/Duell starten kann",
                 "  kit-preview          - wo man Kits vorschauen kann (/previewkit)",
                 "  kit-edit             - wo man Kit-Layouts bearbeiten kann",
-                "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf");
+                "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf",
+                "  duel-command         - wo man /duel <name> nutzen darf",
+                "  chat-input           - wo Chat-Eingaben (Name suchen, Custom-",
+                "                         Kit benennen, Rundenzahl) erlaubt sind;",
+                "                         wird beim Welt-Wechsel/Match-Start",
+                "                         automatisch abgebrochen",
+                "  always-show-players  - Welten, in denen Spieler-Verstecken",
+                "                         automatisch AUS ist (man sieht dort",
+                "                         IMMER alle Spieler)",
+                "  always-show-players-mode - WHITELIST = nur in den gelisteten",
+                "                         Welten erzwungen (Default); BLACKLIST =",
+                "                         ueberall AUSSER den gelisteten Welten");
         c("spectator",
-                "Zuschauer eines Matches (via /spectate oder Auto-Spectate)",
-                "koennen NICHT durch Bloecke (auch Barrier) fliegen, wenn true.",
-                "Echte SPECTATOR-Gamemode-Spieler sind nie betroffen.");
+                "Zuschauer eines Matches (via /spectate oder Auto-Spectate).",
+                "  block-collision: true = koennen NICHT durch Bloecke (auch",
+                "                   Barrier) fliegen. Echte SPECTATOR-Gamemode-",
+                "                   Spieler sind nie betroffen.",
+                "  pass-through-breakable: durch welche breakable Bloecke der",
+                "                   Spectator dennoch fliegen darf:",
+                "                   NONE | ARENA | KIT | BOTH (default NONE)");
         c("anti-glitch",
                 "Verhindert Durch-Glitchen (z.B. Ender-Pearls durch Waende).",
                 "  enabled: an/aus",
@@ -522,7 +585,10 @@ public class ConfigManager {
                 "  blocks:  Material-Liste fuer BLACKLIST/WHITELIST");
         c("leaderboard",
                 "Ranglisten-Placeholder (%duels_<kategorie>_<platz>%).",
-                "  format: Zeilen-Format. Platzhalter {rank} {name} {value} {category}",
+                "  Basis-Placeholder gibt NUR DEN NAMEN aus (Top 10), z.B.",
+                "  %duels_coins_1% -> Name von Platz 1. Siehe Placeholder-Liste",
+                "  ganz unten in dieser Datei.",
+                "  format: Zeilen-Format fuer ..._line. {rank} {name} {value} {category}",
                 "  empty:  Text wenn kein Spieler auf dem Platz existiert",
                 "  names:  Anzeigename je Kategorie (kills/deaths/wins/losses/",
                 "          coins/kd/winrate) fuer {category}");
@@ -545,7 +611,10 @@ public class ConfigManager {
                 "  auto-disable-armortrim: kein Recht -> Armortrims werden entfernt");
         c("duel",
                 "Duel-Anzeige.",
-                "  show-map-in-request: Map/Arena in der Einladung + beim Start zeigen?");
+                "  show-map-in-request: Map/Arena in der Einladung + beim Start zeigen?",
+                "  clear-chat-on-start: beim Duel-Start den Chat mit vielen",
+                "                       Leerzeilen leeren? Default false = aus",
+                "                       (Kit/Match-Info wird trotzdem gezeigt).");
         c("custom-kits",
                 "Custom-Kit-System (von Spielern selbst erstellte Kits).",
                 "  enabled:     System an/aus",
@@ -566,7 +635,63 @@ public class ConfigManager {
         mainConfig.setComments("config-comments-version", java.util.Arrays.asList(
                 "Interner Marker, damit die Kommentare nur einmal geschrieben werden.",
                 "Nicht aendern."));
+
+        // Komplette Placeholder-Referenz ganz unten in die Datei schreiben.
+        mainConfig.options().setFooter(buildPlaceholderReference());
         return true;
+    }
+
+    /**
+     * Baut die komplette Placeholder-Referenz, die als Kommentar-Footer ganz
+     * unten in die config.yml geschrieben wird (User-Wunsch).
+     */
+    private java.util.List<String> buildPlaceholderReference() {
+        return java.util.Arrays.asList(
+                "",
+                "==============================================================",
+                "  PLACEHOLDER-REFERENZ (alle verfuegbaren Platzhalter)",
+                "==============================================================",
+                "",
+                "--- PlaceholderAPI ( %duels_...% , fuer TAB/Scoreboard-Plugins ) ---",
+                "Benoetigt das Plugin PlaceholderAPI.",
+                "  %duels_status%          Status-Symbol m. Farbe (duel/spec/lobby/world)",
+                "  %duels_status_icon%     nur das Symbol (ohne Farbe)",
+                "  %duels_currency%        Name der Waehrung (currency.name, z.B. Elo)",
+                "  %duels_coins%           Coins/Waehrung des Spielers",
+                "  %duels_wins%            Siege",
+                "  %duels_losses%          Niederlagen",
+                "  %duels_kills%           Kills",
+                "  %duels_deaths%          Tode",
+                "  %duels_playing_<kit>%   Anzahl Spieler gerade IM Match mit dem Kit",
+                "  %duels_queue_<kit>%     Anzahl Spieler in der Queue fuer das Kit",
+                "  %duels_armortrim_<teil>%  Trim-Pattern (helmet/chestplate/leggings/boots)",
+                "  %duels_material_<teil>%   Trim-Material (helmet/chestplate/leggings/boots)",
+                "      optional Name anhaengen: %duels_armortrim_helmet_Steve%",
+                "",
+                "--- Ranglisten / Top 10 ( %duels_<kategorie>_<platz>% ) ---",
+                "Kategorien: kills, deaths, wins, losses, coins, kd, winrate",
+                "Platz: 1 bis 10",
+                "  %duels_coins_1%         NUR der Name auf Platz 1 (Standard!)",
+                "  %duels_coins_1_name%    NUR der Name",
+                "  %duels_coins_1_value%   NUR der Wert",
+                "  %duels_coins_1_line%    komplette Zeile (Format: leaderboard.format)",
+                "  Beispiele: %duels_kills_3%  %duels_winrate_1_value%  %duels_wins_2_line%",
+                "",
+                "--- Scoreboard-Zeilen (config: *-scoreboard-lines) ---",
+                "Diese gelten NUR in den scoreboard-lines-Optionen (kein PAPI noetig):",
+                "  Lobby: %online% %playing% %currency% %coins% %kills% %deaths%",
+                "         %kd% %wins% %losses% %winrate%",
+                "  Duel:  %opponent% %map% %round% %bestof% %score% %requiredwins%",
+                "         %playerping% %opponentping% %timeleft%",
+                "  FFA:   %alive% %map% %timeleft% (+ Lobby-Platzhalter)",
+                "  Team:  %yourteam% %enemyteam% %map% %timeleft%",
+                "",
+                "--- Nachrichten-Platzhalter (messages.yml + messages: hier) ---",
+                "In geschweiften Klammern, je nach Nachricht verfuegbar:",
+                "  {player} {arena} {map} {kit} {currency} {coins} {value}",
+                "  {winner} {loser} {score} {round} {bestof} {team} {seconds}",
+                "  {amount} {rank} {name}",
+                "==============================================================");
     }
 
     /** Setzt einen Kommentar-Block ueber den angegebenen config-Key. */
@@ -596,9 +721,61 @@ public class ConfigManager {
         return mainConfig == null || mainConfig.getBoolean("duel.show-map-in-request", true);
     }
 
+    /** @return true wenn beim Duel-Start der Chat geleert wird (viele Leerzeilen). Default false. */
+    public boolean isClearChatOnStart() {
+        return mainConfig != null && mainConfig.getBoolean("duel.clear-chat-on-start", false);
+    }
+
     /** @return true wenn Match-Spectator-Block-Kollision aktiv ist. */
     public boolean isSpectatorBlockCollision() {
         return mainConfig == null || mainConfig.getBoolean("spectator.block-collision", true);
+    }
+
+    /**
+     * @return durch welche breakable Blöcke ein Match-Spectator fliegen darf:
+     * NONE / ARENA / KIT / BOTH (default NONE).
+     */
+    public String getSpectatorPassThroughBreakable() {
+        if (mainConfig == null) return "NONE";
+        String s = mainConfig.getString("spectator.pass-through-breakable", "NONE");
+        return (s == null || s.trim().isEmpty()) ? "NONE" : s.trim();
+    }
+
+    /** @return true, wenn Party-Mitglieder die Welt nicht manuell wechseln dürfen. */
+    public boolean isPartyWorldLocked() {
+        return mainConfig != null && mainConfig.getBoolean("party.lock-world", false);
+    }
+
+    /**
+     * Prüft ob ein Party-Mitglied NICHT in die Ziel-Welt wechseln darf.
+     * Gesteuert über {@code party.world-change-mode} (BLACKLIST | WHITELIST)
+     * und {@code party.world-change-worlds}:
+     * <ul>
+     *   <li>Liste leer → ALLE Welt-Wechsel gesperrt (Default-Verhalten).</li>
+     *   <li>BLACKLIST → nur der Wechsel IN die gelisteten Welten ist gesperrt.</li>
+     *   <li>WHITELIST → nur der Wechsel in die gelisteten Welten ist erlaubt
+     *       (alle anderen gesperrt).</li>
+     * </ul>
+     * Setzt voraus, dass {@link #isPartyWorldLocked()} true ist.
+     */
+    public boolean isPartyWorldChangeBlocked(String toWorld) {
+        if (mainConfig == null || toWorld == null) return true;
+        java.util.List<String> worlds = mainConfig.getStringList("party.world-change-worlds");
+        if (worlds == null || worlds.isEmpty()) return true; // alle gesperrt
+        boolean listed = false;
+        for (String w : worlds) {
+            if (w != null && w.equalsIgnoreCase(toWorld)) { listed = true; break; }
+        }
+        String mode = mainConfig.getString("party.world-change-mode", "BLACKLIST");
+        if ("WHITELIST".equalsIgnoreCase(mode)) {
+            return !listed; // nur gelistete erlaubt -> sperre wenn nicht gelistet
+        }
+        return listed; // BLACKLIST -> sperre wenn gelistet
+    }
+
+    /** @return Cooldown (Sek.) zwischen zwei Duel-Anfragen desselben Spielers (Default 30, 0 = aus). */
+    public int getDuelRequestCooldownSeconds() {
+        return mainConfig != null ? mainConfig.getInt("duel-request-cooldown-seconds", 30) : 30;
     }
 
     // ---- Chat-Filter ----
@@ -629,6 +806,37 @@ public class ConfigManager {
     /** @return true wenn TAB im Match nur Gegner/Mitspieler zeigt (default aus). */
     public boolean isDuelTablistFilter() {
         return mainConfig != null && mainConfig.getBoolean("tablist.duel-filter", false);
+    }
+
+    /** @return Welt-Namen (lowercase) aus {@code worlds.always-show-players}. */
+    public java.util.Set<String> getAlwaysShowPlayersWorlds() {
+        java.util.Set<String> set = new java.util.HashSet<>();
+        if (mainConfig != null) {
+            for (String w : mainConfig.getStringList("worlds.always-show-players")) {
+                if (w != null && !w.trim().isEmpty()) set.add(w.trim().toLowerCase());
+            }
+        }
+        return set;
+    }
+
+    /**
+     * Prüft ob in der angegebenen Welt das Spieler-Verstecken automatisch AUS
+     * ist (man sieht dort IMMER alle Spieler). Gesteuert über
+     * {@code worlds.always-show-players-mode} (WHITELIST | BLACKLIST) und die
+     * Liste {@code worlds.always-show-players}:
+     * <ul>
+     *   <li>WHITELIST (Default) → nur in den gelisteten Welten erzwungen.</li>
+     *   <li>BLACKLIST → überall erzwungen AUSSER in den gelisteten Welten.</li>
+     * </ul>
+     */
+    public boolean isAlwaysShowPlayersWorld(String world) {
+        if (world == null || mainConfig == null) return false;
+        boolean listed = getAlwaysShowPlayersWorlds().contains(world.toLowerCase());
+        String mode = mainConfig.getString("worlds.always-show-players-mode", "WHITELIST");
+        if ("BLACKLIST".equalsIgnoreCase(mode)) {
+            return !listed;
+        }
+        return listed;
     }
 
     /** @return Welt-Namen (lowercase) mit eigenem, gefiltertem TAB. */

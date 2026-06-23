@@ -20,6 +20,14 @@ public class PlayerManager {
     private final Map<UUID, PlayerData> playerData = new HashMap<>();
     private final Set<UUID> hiddenPlayers = new HashSet<>();
     private final Map<UUID, Boolean> autoFly = new HashMap<>();
+    // Spieler, deren Teleport vom Plugin selbst ausgelöst wurde (z.B. Match-
+    // Start, Lobby-Rückkehr). Solche TPs dürfen den Party-Welt-Lock umgehen.
+    private final Set<UUID> teleportBypass = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** True, wenn der aktuelle Teleport vom Plugin selbst ausgelöst wird. */
+    public boolean isTeleportBypass(UUID uuid) {
+        return uuid != null && teleportBypass.contains(uuid);
+    }
 
     public PlayerManager(DuelsPlugin plugin) {
         this.plugin = plugin;
@@ -373,12 +381,18 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
         boolean duelFilter = cfg.isDuelTablistFilter() && peers != null;
         boolean sameWorldOnly = !duelFilter && viewer.getWorld() != null
                 && cfg.getPerWorldTablistWorlds().contains(viewer.getWorld().getName().toLowerCase());
+        // In diesen Welten ist das Spieler-Verstecken automatisch AUS: der
+        // Viewer sieht IMMER alle anderen Spieler (Hide-Toggle wird ignoriert).
+        boolean forceShowAll = peers == null && viewer.getWorld() != null
+                && cfg.isAlwaysShowPlayersWorld(viewer.getWorld().getName());
 
         for (Player other : Bukkit.getOnlinePlayers()) {
             if (other.equals(viewer)) continue;
 
             boolean show;
             if (peers != null && peers.contains(other.getUniqueId())) {
+                show = true;
+            } else if (forceShowAll) {
                 show = true;
             } else if (hidden) {
                 show = false;
@@ -437,10 +451,14 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
         // Apply joiner's own preference
         applyVisibility(joiner);
 
-        // If other players have visibility OFF, they should hide the joiner too
+        // If other players have visibility OFF, they should hide the joiner too —
+        // außer der Viewer ist in einer Welt, in der Verstecken automatisch AUS ist.
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             if (viewer.equals(joiner)) continue;
-            if (isHidden(viewer.getUniqueId())) {
+            boolean viewerForceShow = viewer.getWorld() != null
+                    && plugin.getConfigManager().isAlwaysShowPlayersWorld(viewer.getWorld().getName())
+                    && getMatchPeers(viewer.getUniqueId()) == null;
+            if (!viewerForceShow && isHidden(viewer.getUniqueId())) {
                 viewer.hidePlayer(plugin, joiner);
             }
         }
@@ -554,6 +572,55 @@ public String formatLeaderboardValue(PlayerData pd, String category) {
         }
 
         plugin.getScoreboardManager().updateScoreboard(player);
+    }
+
+    /**
+     * Robuster Teleport für beliebige Ziele (Arena-Spawn, Lobby, Runden-
+     * Respawn usw.). Ein nacktes {@code player.teleport()} schlägt manchmal
+     * still fehl (gibt false zurück), wenn der Spieler noch in einem Vehikel
+     * sitzt, Passagiere hat, gerade eine Entity spectatet (Kamera) oder der
+     * Ziel-Chunk noch nicht geladen ist. Das führte zum Bug "manchmal
+     * funktioniert jeglicher TP einfach nicht" (Spieler bekam Kit/Items, wurde
+     * aber nicht bewegt). Wir lösen die Blocker, laden den Ziel-Chunk und
+     * wiederholen den Teleport ein paar Mal.
+     *
+     * @return true, wenn der Teleport (sofort) erfolgreich war.
+     */
+    public boolean safeTeleport(Player player, Location dest) {
+        if (player == null || dest == null || dest.getWorld() == null) return false;
+        // Plugin-eigener Teleport: Party-Welt-Lock umgehen, auch über die
+        // (verzögerten) Retries hinweg. Bypass wird kurz danach wieder entfernt.
+        final UUID id = player.getUniqueId();
+        teleportBypass.add(id);
+        boolean result = attemptSafeTeleport(player, dest, 0);
+        org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                () -> teleportBypass.remove(id), 10L);
+        return result;
+    }
+
+    private boolean attemptSafeTeleport(Player player, Location dest, int attempt) {
+        if (player == null || !player.isOnline() || dest == null || dest.getWorld() == null) return false;
+
+        // Häufige Teleport-Blocker auflösen.
+        try { if (player.getSpectatorTarget() != null) player.setSpectatorTarget(null); } catch (Throwable ignored) {}
+        if (player.isInsideVehicle()) player.leaveVehicle();
+        if (!player.getPassengers().isEmpty()) player.eject();
+        // Ziel-Chunk laden — Teleport in einen ungeladenen Chunk schlägt
+        // gelegentlich still fehl.
+        try { dest.getWorld().getChunkAt(dest).load(); } catch (Throwable ignored) {}
+
+        boolean ok;
+        try {
+            ok = player.teleport(dest, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        } catch (Throwable t) {
+            ok = false;
+        }
+
+        if (!ok && attempt < 3) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> attemptSafeTeleport(player, dest, attempt + 1), 2L);
+        }
+        return ok;
     }
 
     // Füge diese Methoden zur PlayerManager Klasse hinzu:

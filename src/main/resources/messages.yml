@@ -133,6 +133,7 @@ duel:
   request-sent-firstto: "&7Sent duel request to &c{player} &7| Kit: &e{kit} &7| First to &f{value}"
   request-sent-to: "&aDuel request sent to &e{player}"
   requester-offline: "&cThe player who sent the request is no longer online!"
+  wrong-world: "&cYou can't use /duel in this world!"
   requester-offline-short: "&cRequester is offline."
   round-count-prompt: "&eType a number &f1-100 &ein chat to set the round count, or &ccancel&e."
   round-draw: "&eRound &f#{round} &eended in a draw &7(time up) &8| {score}"
@@ -180,6 +181,9 @@ fly:
   only-lobby: "&cYou can only use /fly in the lobby!"
 general:
   beds-disabled: "&cBeds are disabled! Spawn is fixed."
+  chat-input-cancelled: "&7Chat input cancelled."
+  chat-input-in-match: "&cYou can't do that during a match."
+  chat-input-wrong-world: "&cYou can't enter chat input in this world."
   error: "&c{error}"
   kit-edit-lobby-only: "&cYou can only edit kits in the lobby world."
   no-free-arena: "&cNo free arena available!"
@@ -258,6 +262,7 @@ layout:
   reset: "&7Inventory layout for kit &r{kit} &a reset to default!"
   saved: "&7Inventory layout for kit &r{kit} &asaved!"
 party:
+  world-locked: "&cYou can't change worlds while in a party."
   already-in: "&cYou are already in a party."
   already-in-leave-first: "&cYou are already in a party. Leave it first."
   already-in-your-party: "&c{player} is already in your party."
@@ -358,6 +363,7 @@ spectate:
   ffa-auto: "&7You are now spectating the FFA. Last alive wins."
   not-spectating: "&cYou are not spectating anyone."
   now-spectating: "&7Now spectating &e{player}&7."
+  player-now-spectating: "&e{player} &7is now spectating this match."
   start: "&7Spectating &e{player}&7. Use &e/spectate stop &7or &e/spawn &7to leave."
   stop: "&7You stopped spectating."
   tp-only-match: "&cYou can only teleport to players in your match."

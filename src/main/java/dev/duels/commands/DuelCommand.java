@@ -44,6 +44,14 @@ public class DuelCommand implements CommandExecutor {
 
 
         // Normal: /duel <player>
+        // Welt-Einschränkung: nur in den konfigurierten Duels-Welten erlaubt
+        // (worlds.duel-command; leere Liste = überall).
+        if (!plugin.getConfigManager().isWorldAllowed(player, "duel-command")) {
+            player.sendMessage(plugin.getConfigManager().prefixed("duel.wrong-world",
+                    "&cYou can't use /duel in this world!"));
+            return true;
+        }
+
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) {
             player.sendMessage(plugin.getConfigManager().prefixed("duel.already-in-duel", "&cYou are already in a duel!"));
             return true;

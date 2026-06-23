@@ -212,12 +212,10 @@ public class DuelListener implements Listener {
         boolean inFFA = plugin.getPartyFFAManager() != null
                 && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
         if (!inDuel && !inFFA) return;
-        // Custom-Kit-Items dürfen NIEMALS gedroppt werden (Safety).
-        if (plugin.getKitManager() != null
-                && plugin.getKitManager().isNoDrop(event.getItemDrop().getItemStack())) {
-            event.setCancelled(true);
-            return;
-        }
+        // Custom-Kit-Items dürfen jetzt im Match gedroppt werden (User-Wunsch).
+        // Sicherheit bleibt gewahrt: am Match-Ende wird das Inventar auf den
+        // gespeicherten Lobby-State zurückgesetzt und der Arena-Reset entfernt
+        // alle am Boden liegenden Items -> kein Leak in die Wirtschaft.
         // Hotbar-Lock-Item? Dann NICHT erlauben (theoretisch nie der Fall im
         // Duel, aber sicher ist sicher).
         if (plugin.getHotbarManager() != null) {
@@ -245,11 +243,6 @@ public class DuelListener implements Listener {
         boolean inFFA = plugin.getPartyFFAManager() != null
                 && plugin.getPartyFFAManager().isParticipant(player.getUniqueId());
         if (!inDuel && !inFFA) return;
-        // Custom-Kit-Items niemals manuell nachdroppen (Safety).
-        if (plugin.getKitManager() != null
-                && plugin.getKitManager().isNoDrop(event.getItemDrop().getItemStack())) {
-            return;
-        }
         // Hotbar-Lock-Item nicht manuell droppen (defense-in-depth).
         if (plugin.getHotbarManager() != null) {
             String action = plugin.getHotbarManager()
@@ -341,30 +334,29 @@ public class DuelListener implements Listener {
                 || to.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
             return;
         }
-        // Fall 1: Der Pearl-Pfad geht direkt durch einen geblockten Block
-        // (diagonaler Wurf durch die Wand). Schon zum Event-Zeitpunkt erkennbar
-        // -> Teleport abbrechen und ein Stück zurückstoßen.
-        if (pathCrossesBlockedBlock(from, to)) {
+        // Fall 1: Der Pfad (Start -> Ziel) kreuzt eine Wand AUF Lande-Höhe ->
+        // seitlicher/diagonaler Wurf DURCH die Wand. Schon zum Event-Zeitpunkt
+        // erkennbar -> abbrechen und zurückstoßen.
+        if (crossesWallAtLandingLevel(from, to)) {
             event.setCancelled(true);
             org.bukkit.util.Vector back = from.toVector().subtract(to.toVector());
+            back.setY(0);
             if (back.lengthSquared() > 0.0001) {
                 back.normalize().multiply(0.4).setY(0.2);
                 p.setVelocity(back);
             }
             return;
         }
-        // Fall 2: An die Wand ran-tpn ist ERLAUBT. Wer aber vor einer Wand eine
-        // Pearl gerade nach unten wirft, wird von Minecraft durch die Wand
-        // geschoben (Ejection). Das passiert erst NACH dem Teleport. Deshalb
-        // prüfen wir 1 Tick später die tatsächliche Position: liegt zwischen
-        // Start (from) und der echten End-Position ein geblockter Block, ist
-        // der Spieler durchgeglitcht -> zurück nach 'from'. Ein normales
-        // Andocken an die Wand (gleiche Seite) kreuzt nichts und bleibt erlaubt.
+        // Fall 2: An die Wand ran-tpn UND ein Hochwurf auf einen höher
+        // gelegenen Boden sind ERLAUBT. Wer aber vor einer Wand eine Pearl
+        // gerade nach unten wirft, wird von Minecraft durch die Wand geschoben
+        // (Ejection) — das passiert erst NACH dem Teleport. Deshalb prüfen wir
+        // 1 Tick später die tatsächliche Position.
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!p.isOnline()) return;
             org.bukkit.Location now = p.getLocation();
             if (now.getWorld() == null || !now.getWorld().equals(from.getWorld())) return;
-            if (pathCrossesBlockedBlock(from, now)) {
+            if (crossesWallAtLandingLevel(from, now)) {
                 p.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
                 p.teleport(from);
             }
@@ -372,26 +364,41 @@ public class DuelListener implements Listener {
     }
 
     /**
-     * Sampled den geraden Pfad zwischen {@code from} und {@code to} und prüft
-     * ob ein dort liegender Block laut Anti-Glitch-Config geblockt ist.
+     * Prüft ob der Weg von {@code from} nach {@code dest} durch eine Wand auf
+     * die andere Seite führt — aber NUR Wand-Blöcke AUF/ÜBER der Lande-Fußhöhe
+     * zählen. Damit wird ein echter Hochwurf, der ÜBER eine Wand auf einen
+     * höher gelegenen Boden fliegt, NICHT als Glitch gewertet (die Wand liegt
+     * dann unter dem Landepunkt), während ein seitliches Durch-Glitchen auf
+     * gleicher Höhe weiterhin geblockt wird.
+     *
+     * <p>Rein vertikale Bewegung (gleiche XZ) ist nie eine Wand-Durchquerung.</p>
      */
-    private boolean pathCrossesBlockedBlock(org.bukkit.Location from, org.bukkit.Location to) {
-        org.bukkit.util.Vector start = from.toVector();
-        org.bukkit.util.Vector dir = to.toVector().subtract(start);
-        double length = dir.length();
-        if (length <= 0) {
-            return isBlockedAt(to);
-        }
-        dir.normalize();
-        org.bukkit.World world = from.getWorld();
-        double step = 0.25;
+    private boolean crossesWallAtLandingLevel(org.bukkit.Location from, org.bukkit.Location dest) {
+        if (from == null || dest == null || dest.getWorld() == null) return false;
+        org.bukkit.World world = dest.getWorld();
+        double dx = dest.getX() - from.getX();
+        double dy = dest.getY() - from.getY();
+        double dz = dest.getZ() - from.getZ();
+        double horiz = Math.sqrt(dx * dx + dz * dz);
+        // Keine (nennenswerte) horizontale Bewegung -> keine Wand-Durchquerung
+        // (z.B. Pearl gerade hoch/runter).
+        if (horiz < 0.30) return false;
+        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        int steps = (int) Math.ceil(dist / 0.25);
+        if (steps < 1) steps = 1;
+        int destFootY = dest.getBlockY();
         java.util.Set<Long> seen = new java.util.HashSet<>();
-        for (double d = 0; d <= length; d += step) {
-            org.bukkit.util.Vector point = start.clone().add(dir.clone().multiply(d));
-            int bx = point.getBlockX();
-            int by = point.getBlockY();
-            int bz = point.getBlockZ();
-            long key = (((long) bx & 0x3FFFFFF) << 38) | (((long) by & 0xFFF) << 26) | ((long) bz & 0x3FFFFFF);
+        for (int i = 0; i <= steps; i++) {
+            double t = (double) i / steps;
+            int bx = org.bukkit.Location.locToBlock(from.getX() + dx * t);
+            int by = org.bukkit.Location.locToBlock(from.getY() + dy * t);
+            int bz = org.bukkit.Location.locToBlock(from.getZ() + dz * t);
+            // Nur Wände AUF/ÜBER der Lande-Fußhöhe zählen. Tiefer liegende
+            // Blöcke wurden überflogen (Hochwurf) -> kein Glitch.
+            if (by < destFootY) continue;
+            long key = (((long) (bx & 0x3FFFFF)) << 44)
+                    | (((long) (by & 0xFFFFF)) << 22)
+                    | ((long) (bz & 0x3FFFFF));
             if (!seen.add(key)) continue;
             org.bukkit.Material feet = world.getBlockAt(bx, by, bz).getType();
             org.bukkit.Material head = world.getBlockAt(bx, by + 1, bz).getType();
@@ -400,15 +407,7 @@ public class DuelListener implements Listener {
                 return true;
             }
         }
-        return isBlockedAt(to);
-    }
-
-    private boolean isBlockedAt(org.bukkit.Location loc) {
-        if (loc == null || loc.getWorld() == null) return false;
-        org.bukkit.Material feet = loc.getBlock().getType();
-        org.bukkit.Material head = loc.getBlock().getRelative(0, 1, 0).getType();
-        return plugin.getConfigManager().isAntiGlitchBlocked(feet)
-                || plugin.getConfigManager().isAntiGlitchBlocked(head);
+        return false;
     }
 
 
