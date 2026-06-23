@@ -402,6 +402,22 @@ public class ArenaManager {
                 plugin.getLogger().warning("resetArena failed for '" + arena.getName() + "': " + t.getMessage());
             }
             if (onComplete != null) onComplete.run();
+
+            // Nach-Sweeps: Flüssigkeit breitet sich über bereits eingeplante
+            // Fluid-Ticks aus, die NACH unserem ersten Sweep noch feuern können
+            // (Minecraft cancelt diese nicht, wenn wir Blöcke ohne Physik
+            // setzen). Deshalb räumen wir ein paar Ticks später erneut auf —
+            // das beseitigt das "flache Wasser bleibt manchmal stehen".
+            // Nur solange die Arena nicht bereits neu vergeben wurde.
+            if (worldFinal != null && arena.hasSnapshotBounds()) {
+                for (int delay : new int[]{3, 10, 25}) {
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (arena.isInUse()) return;
+                        try { sweepStrayLiquids(worldFinal, arena); }
+                        catch (Throwable ignored) {}
+                    }, delay);
+                }
+            }
         });
     }
 
@@ -414,6 +430,11 @@ public class ArenaManager {
      */
     private void sweepStrayLiquids(org.bukkit.World world, Arena arena) {
         if (world == null || !arena.hasSnapshotBounds()) return;
+        // Nur sweepen, wenn ein VOLLER Block-Snapshot existiert. Ohne erfasste
+        // Originale (z.B. zu große Arena ohne Snapshot) würden wir sonst auch
+        // legitimes Map-Wasser löschen. In dem Fall greift das player-placed-
+        // Tracking in resetArena().
+        if (!arena.hasSnapshot()) return;
 
         int minX = arena.getSnapshotMinX(), minY = arena.getSnapshotMinY(), minZ = arena.getSnapshotMinZ();
         int maxX = arena.getSnapshotMaxX(), maxY = arena.getSnapshotMaxY(), maxZ = arena.getSnapshotMaxZ();

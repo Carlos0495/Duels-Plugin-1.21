@@ -216,6 +216,12 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
+        // Offene Chat-Eingaben (Name suchen, Kit benennen, Rundenzahl) beim
+        // Welt-Wechsel abbrechen, damit man sie nicht in eine andere Welt
+        // mitnehmen kann.
+        if (plugin.getGuiManager() != null) {
+            plugin.getGuiManager().cancelPendingChatInput(player);
+        }
         // Spieler im Duel/FFA: nichts machen, ihre Inventare gehören dem Match.
         if (plugin.getDuelManager().isInDuel(player.getUniqueId())) return;
         if (plugin.getPartyFFAManager() != null

@@ -304,6 +304,12 @@ public class ConfigManager {
         // Leere Liste [] = überall erlaubt.
         if (!mainConfig.contains("worlds.duel-command"))
             { mainConfig.set("worlds.duel-command", new java.util.ArrayList<String>()); dirty = true; }
+        // Welt(en) in denen Chat-Eingaben (Spielername suchen, Custom-Kit
+        // benennen, Rundenzahl eingeben) erlaubt sind. Leere Liste [] = überall
+        // erlaubt. Eine laufende Eingabe wird beim Welt-Wechsel/Match-Start
+        // automatisch abgebrochen.
+        if (!mainConfig.contains("worlds.chat-input"))
+            { mainConfig.set("worlds.chat-input", new java.util.ArrayList<String>()); dirty = true; }
         // Welt(en) in denen das Spieler-Verstecken automatisch AUS ist: Spieler
         // in diesen Welten sehen IMMER alle anderen Spieler (der Hide-Toggle
         // wird dort ignoriert). Leere Liste [] = nirgends erzwungen.
@@ -410,6 +416,10 @@ public class ConfigManager {
         // Duel-Einladung: ob die Map/Arena in der Benachrichtigung steht.
         if (!mainConfig.contains("duel.show-map-in-request"))
             { mainConfig.set("duel.show-map-in-request", true); dirty = true; }
+        // Beim Duel-Start den Chat leeren (viele Leerzeilen). Default false =
+        // keine störenden Leerzeilen; die Kit/Match-Info wird trotzdem gezeigt.
+        if (!mainConfig.contains("duel.clear-chat-on-start"))
+            { mainConfig.set("duel.clear-chat-on-start", false); dirty = true; }
 
         // Custom-Kit-System Defaults
         if (!mainConfig.contains("custom-kits.enabled"))
@@ -465,7 +475,7 @@ public class ConfigManager {
      * @return true, wenn Kommentare (neu) gesetzt wurden und gespeichert werden muss.
      */
     private boolean applyComments() {
-        final int CURRENT = 3;
+        final int CURRENT = 4;
         if (mainConfig.getInt("config-comments-version", 0) >= CURRENT) return false;
 
         c("prefix",
@@ -547,6 +557,10 @@ public class ConfigManager {
                 "  kit-edit             - wo man Kit-Layouts bearbeiten kann",
                 "  custom-kit           - wo man Custom-Kits erstellen/bearbeiten darf",
                 "  duel-command         - wo man /duel <name> nutzen darf",
+                "  chat-input           - wo Chat-Eingaben (Name suchen, Custom-",
+                "                         Kit benennen, Rundenzahl) erlaubt sind;",
+                "                         wird beim Welt-Wechsel/Match-Start",
+                "                         automatisch abgebrochen",
                 "  always-show-players  - Welten, in denen Spieler-Verstecken",
                 "                         automatisch AUS ist (man sieht dort",
                 "                         IMMER alle Spieler)",
@@ -597,7 +611,10 @@ public class ConfigManager {
                 "  auto-disable-armortrim: kein Recht -> Armortrims werden entfernt");
         c("duel",
                 "Duel-Anzeige.",
-                "  show-map-in-request: Map/Arena in der Einladung + beim Start zeigen?");
+                "  show-map-in-request: Map/Arena in der Einladung + beim Start zeigen?",
+                "  clear-chat-on-start: beim Duel-Start den Chat mit vielen",
+                "                       Leerzeilen leeren? Default false = aus",
+                "                       (Kit/Match-Info wird trotzdem gezeigt).");
         c("custom-kits",
                 "Custom-Kit-System (von Spielern selbst erstellte Kits).",
                 "  enabled:     System an/aus",
@@ -702,6 +719,11 @@ public class ConfigManager {
     /** @return true wenn die Map in der Duel-Einladung angezeigt wird. */
     public boolean isShowMapInRequest() {
         return mainConfig == null || mainConfig.getBoolean("duel.show-map-in-request", true);
+    }
+
+    /** @return true wenn beim Duel-Start der Chat geleert wird (viele Leerzeilen). Default false. */
+    public boolean isClearChatOnStart() {
+        return mainConfig != null && mainConfig.getBoolean("duel.clear-chat-on-start", false);
     }
 
     /** @return true wenn Match-Spectator-Block-Kollision aktiv ist. */

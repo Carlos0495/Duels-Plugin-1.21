@@ -421,6 +421,7 @@ public class GUIManager {
     }
 
     public void beginCustomBestOfPrompt(Player sender, UUID target, String kitId) {
+        if (!canStartChatInput(sender)) return;
         pendingCustomBestOf.put(sender.getUniqueId(), new PendingCustomBestOf(target, kitId));
         sender.sendMessage(plugin.getConfigManager().prefixed("duel.round-count-prompt", "&eType a number &f1-100 &ein chat to set the round count, or &ccancel&e."));
     }
@@ -431,6 +432,66 @@ public class GUIManager {
 
     public PendingCustomBestOf peekPendingCustomBestOf(UUID player) {
         return pendingCustomBestOf.get(player);
+    }
+
+    /** Spieler, die gerade einen Spielernamen für /stats-Vergleich im Chat
+     *  eingeben sollen. Liegt zentral hier, damit alle Chat-Eingaben über
+     *  {@link #cancelPendingChatInput(Player)} zusammen abgebrochen werden. */
+    private final java.util.Set<UUID> awaitingStatsSearch =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public java.util.Set<UUID> getAwaitingStatsSearch() { return awaitingStatsSearch; }
+
+    /** @return true wenn der Spieler gerade auf irgendeine Chat-Eingabe wartet. */
+    public boolean hasPendingChatInput(UUID uuid) {
+        if (uuid == null) return false;
+        return pendingCustomKitName.containsKey(uuid)
+                || pendingCustomBestOf.containsKey(uuid)
+                || awaitingStatsSearch.contains(uuid);
+    }
+
+    /**
+     * Prüft ob der Spieler eine Chat-Eingabe (Name suchen, Kit benennen,
+     * Rundenzahl) starten darf: nur in den erlaubten Welten
+     * ({@code worlds.chat-input}) und nicht während eines laufenden Matches.
+     * Schickt bei Ablehnung eine passende Meldung.
+     */
+    public boolean canStartChatInput(Player player) {
+        if (player == null) return false;
+        UUID uuid = player.getUniqueId();
+        boolean inMatch = (plugin.getDuelManager() != null && plugin.getDuelManager().isInDuel(uuid))
+                || (plugin.getPartyFFAManager() != null && plugin.getPartyFFAManager().isParticipant(uuid));
+        if (inMatch) {
+            player.sendMessage(plugin.getConfigManager().prefixed("general.chat-input-in-match",
+                    "&cYou can't do that during a match."));
+            return false;
+        }
+        if (!plugin.getConfigManager().isWorldAllowed(player, "chat-input")) {
+            player.sendMessage(plugin.getConfigManager().prefixed("general.chat-input-wrong-world",
+                    "&cYou can't enter chat input in this world."));
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Bricht alle offenen Chat-Eingaben des Spielers ab (Kit-Name, Rundenzahl,
+     * Stats-Suche). Wird beim Welt-Wechsel und beim Match-Start aufgerufen,
+     * damit man eine Eingabe nicht in eine andere Welt / ein Duel "mitnehmen"
+     * kann.
+     */
+    public void cancelPendingChatInput(Player player) {
+        if (player == null) return;
+        UUID uuid = player.getUniqueId();
+        boolean had = hasPendingChatInput(uuid);
+        pendingCustomKitName.remove(uuid);
+        pendingCustomKitEditIndex.remove(uuid);
+        pendingCustomBestOf.remove(uuid);
+        awaitingStatsSearch.remove(uuid);
+        if (had && player.isOnline()) {
+            player.sendMessage(plugin.getConfigManager().prefixed("general.chat-input-cancelled",
+                    "&7Chat input cancelled."));
+        }
     }
 
     public void openSettingsGUI(Player player) {

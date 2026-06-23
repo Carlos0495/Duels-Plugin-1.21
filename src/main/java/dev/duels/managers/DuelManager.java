@@ -210,6 +210,12 @@ public class DuelManager {
     }
 
     private void preparePlayersForDuel(Player p1, Player p2, DuelSession session, Arena arena) {
+        // Offene Chat-Eingaben abbrechen, damit man sie nicht ins Match
+        // mitnimmt (auch wenn die Arena in derselben Welt liegt).
+        if (plugin.getGuiManager() != null) {
+            plugin.getGuiManager().cancelPendingChatInput(p1);
+            plugin.getGuiManager().cancelPendingChatInput(p2);
+        }
         // GameMode auf SURVIVAL erzwingen (z.B. falls Spieler vorher
         // spectatet hat). isInDuel ist hier bereits true → onGameModeChange
         // überschreibt das Inventar nicht.
@@ -245,9 +251,12 @@ public class DuelManager {
         plugin.getPlayerManager().refreshAllVisibility();
 
 
-        // Nachrichten senden
-        clearChat(p1);
-        clearChat(p2);
+        // Nachrichten senden. Das "Chat leeren" (viele Leerzeilen) ist per
+        // config abschaltbar (duel.clear-chat-on-start, default false = aus).
+        if (plugin.getConfigManager().isClearChatOnStart()) {
+            clearChat(p1);
+            clearChat(p2);
+        }
         String kitDisplay = plugin.getKitManager().getKitDisplayName(session.getKitName());
 
         // Kit/Arena-Zeile: Map nur anzeigen wenn in config aktiviert.

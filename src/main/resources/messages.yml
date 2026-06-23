@@ -181,6 +181,9 @@ fly:
   only-lobby: "&cYou can only use /fly in the lobby!"
 general:
   beds-disabled: "&cBeds are disabled! Spawn is fixed."
+  chat-input-cancelled: "&7Chat input cancelled."
+  chat-input-in-match: "&cYou can't do that during a match."
+  chat-input-wrong-world: "&cYou can't enter chat input in this world."
   error: "&c{error}"
   kit-edit-lobby-only: "&cYou can only edit kits in the lobby world."
   no-free-arena: "&cNo free arena available!"
